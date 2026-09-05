@@ -58,6 +58,137 @@ func (q *Queries) CreateLease(ctx context.Context, arg CreateLeaseParams) (Lease
 	return i, err
 }
 
+const expireLeases = `-- name: ExpireLeases :many
+UPDATE leases
+SET released_at = now(), release_reason = 'expired'
+WHERE org_id = $1 AND id = ANY($2::text[]) AND released_at IS NULL AND expires_at <= now()
+RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref, claimed_at, expires_at, released_at, release_reason
+`
+
+type ExpireLeasesParams struct {
+	OrgID string
+	Ids   []string
+}
+
+// Releases the given leases as expired, when their TTL has passed by the
+// time the statement runs. A lease renewed since it was listed is left
+// alone.
+func (q *Queries) ExpireLeases(ctx context.Context, arg ExpireLeasesParams) ([]Lease, error) {
+	rows, err := q.db.Query(ctx, expireLeases, arg.OrgID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Lease{}
+	for rows.Next() {
+		var i Lease
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.NodeID,
+			&i.Holder,
+			&i.OnBehalfOf,
+			&i.Harness,
+			&i.AgentRef,
+			&i.SessionRef,
+			&i.ClaimedAt,
+			&i.ExpiresAt,
+			&i.ReleasedAt,
+			&i.ReleaseReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const expireLeasesForNode = `-- name: ExpireLeasesForNode :many
+UPDATE leases
+SET released_at = now(), release_reason = 'expired'
+WHERE org_id = $1 AND node_id = $2 AND released_at IS NULL AND expires_at <= now()
+RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref, claimed_at, expires_at, released_at, release_reason
+`
+
+type ExpireLeasesForNodeParams struct {
+	OrgID  string
+	NodeID string
+}
+
+// Releases the expired lease on one node, if there is one, so a claim can
+// take the node before the expiry timer has been round.
+func (q *Queries) ExpireLeasesForNode(ctx context.Context, arg ExpireLeasesForNodeParams) ([]Lease, error) {
+	rows, err := q.db.Query(ctx, expireLeasesForNode, arg.OrgID, arg.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Lease{}
+	for rows.Next() {
+		var i Lease
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.NodeID,
+			&i.Holder,
+			&i.OnBehalfOf,
+			&i.Harness,
+			&i.AgentRef,
+			&i.SessionRef,
+			&i.ClaimedAt,
+			&i.ExpiresAt,
+			&i.ReleasedAt,
+			&i.ReleaseReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const extendLease = `-- name: ExtendLease :one
+UPDATE leases
+SET expires_at = GREATEST(expires_at, $3::timestamptz)
+WHERE org_id = $1 AND id = $2 AND released_at IS NULL AND expires_at > now()
+RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref, claimed_at, expires_at, released_at, release_reason
+`
+
+type ExtendLeaseParams struct {
+	OrgID     string
+	ID        string
+	ExpiresAt time.Time
+}
+
+// Implicit renewal: a write by the holder moves the expiry out to the given
+// time and never back, so a long explicit TTL survives a write. Fenced like
+// RenewLease.
+func (q *Queries) ExtendLease(ctx context.Context, arg ExtendLeaseParams) (Lease, error) {
+	row := q.db.QueryRow(ctx, extendLease, arg.OrgID, arg.ID, arg.ExpiresAt)
+	var i Lease
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.NodeID,
+		&i.Holder,
+		&i.OnBehalfOf,
+		&i.Harness,
+		&i.AgentRef,
+		&i.SessionRef,
+		&i.ClaimedAt,
+		&i.ExpiresAt,
+		&i.ReleasedAt,
+		&i.ReleaseReason,
+	)
+	return i, err
+}
+
 const getLease = `-- name: GetLease :one
 SELECT id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref, claimed_at, expires_at, released_at, release_reason FROM leases
 WHERE org_id = $1 AND id = $2
@@ -70,6 +201,38 @@ type GetLeaseParams struct {
 
 func (q *Queries) GetLease(ctx context.Context, arg GetLeaseParams) (Lease, error) {
 	row := q.db.QueryRow(ctx, getLease, arg.OrgID, arg.ID)
+	var i Lease
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.NodeID,
+		&i.Holder,
+		&i.OnBehalfOf,
+		&i.Harness,
+		&i.AgentRef,
+		&i.SessionRef,
+		&i.ClaimedAt,
+		&i.ExpiresAt,
+		&i.ReleasedAt,
+		&i.ReleaseReason,
+	)
+	return i, err
+}
+
+const getLiveLease = `-- name: GetLiveLease :one
+SELECT id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref, claimed_at, expires_at, released_at, release_reason FROM leases
+WHERE org_id = $1 AND id = $2 AND released_at IS NULL AND expires_at > now()
+`
+
+type GetLiveLeaseParams struct {
+	OrgID string
+	ID    string
+}
+
+// The named lease only while it is live: unreleased, and its TTL not yet
+// passed by the server clock. The fencing lookup a write starts with.
+func (q *Queries) GetLiveLease(ctx context.Context, arg GetLiveLeaseParams) (Lease, error) {
+	row := q.db.QueryRow(ctx, getLiveLease, arg.OrgID, arg.ID)
 	var i Lease
 	err := row.Scan(
 		&i.ID,
@@ -269,6 +432,41 @@ type ReleaseLeaseParams struct {
 
 func (q *Queries) ReleaseLease(ctx context.Context, arg ReleaseLeaseParams) (Lease, error) {
 	row := q.db.QueryRow(ctx, releaseLease, arg.OrgID, arg.ID, arg.ReleaseReason)
+	var i Lease
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.NodeID,
+		&i.Holder,
+		&i.OnBehalfOf,
+		&i.Harness,
+		&i.AgentRef,
+		&i.SessionRef,
+		&i.ClaimedAt,
+		&i.ExpiresAt,
+		&i.ReleasedAt,
+		&i.ReleaseReason,
+	)
+	return i, err
+}
+
+const releaseLiveLease = `-- name: ReleaseLiveLease :one
+UPDATE leases
+SET released_at = now(), release_reason = $3
+WHERE org_id = $1 AND id = $2 AND released_at IS NULL AND expires_at > now()
+RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref, claimed_at, expires_at, released_at, release_reason
+`
+
+type ReleaseLiveLeaseParams struct {
+	OrgID         string
+	ID            string
+	ReleaseReason *string
+}
+
+// Fenced release: the named lease, only while it is live. A lease whose TTL
+// has passed is released as expired by ExpireLeases and by nothing else.
+func (q *Queries) ReleaseLiveLease(ctx context.Context, arg ReleaseLiveLeaseParams) (Lease, error) {
+	row := q.db.QueryRow(ctx, releaseLiveLease, arg.OrgID, arg.ID, arg.ReleaseReason)
 	var i Lease
 	err := row.Scan(
 		&i.ID,

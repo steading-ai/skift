@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -41,6 +42,11 @@ type Patch struct {
 	// Project is the project the patch applies to: a slug, `org/slug`, or
 	// an id. Operations do not repeat it, and a bare `#7` resolves here.
 	Project string `json:"project"`
+	// LeaseID is the fencing token of the lease the caller holds, when it
+	// holds one. It must be live and the caller's, and it must be the
+	// current lease of every held node the patch writes to; the patch
+	// renews it. See the Fencing section of docs/domain-model.md.
+	LeaseID string `json:"lease_id,omitempty"`
 	// Ops are applied in order.
 	Ops []Op `json:"ops"`
 }
@@ -278,6 +284,14 @@ func (e *OpError) Unwrap() error { return e.Err }
 // graph and together commit a cycle. Patches that only create or update
 // node fields take none. See the Concurrency section of
 // docs/domain-model.md.
+//
+// Every existing node a patch writes to is fenced: its row is locked, and
+// if a live lease holds it the patch must carry that lease's id, else it is
+// rejected with [ErrLeaseRequired] or [ErrLeaseMismatch]. A patch carrying
+// a lease id that is not live and the actor's is rejected with
+// [ErrLeaseNotLive] or [ErrNotLeaseHolder] whatever it touches. A patch
+// that passes renews its lease to [DefaultLeaseTTL] from now, never
+// shortening it.
 func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Patch) (*Result, error) {
 	if p.RequestID == "" {
 		return nil, ErrNoRequestID
@@ -320,57 +334,85 @@ func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Pat
 
 // applyOnce is one attempt at the patch inside tx.
 func applyOnce(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Patch, hash string) (*Result, error) {
-	if stored, err := replay(ctx, tx, orgID, p.RequestID, hash); stored != nil || err != nil {
-		return stored, err
-	}
-	// Claim the key before any work. A concurrent application of the same
-	// request blocks here until this transaction ends: on commit it fails
-	// with a key conflict, restarts, and replays; on rollback it proceeds
-	// as the first application.
-	if _, err := tx.CreateIdempotencyKey(ctx, store.CreateIdempotencyKeyParams{
-		OrgID: orgID, RequestID: p.RequestID, RequestHash: hash, Response: []byte("null"),
-	}); err != nil {
-		return nil, fmt.Errorf("claim request %q: %w", p.RequestID, err)
-	}
+	result, replayed, err := withRequest(ctx, tx, orgID, p.RequestID, hash, func(ctx context.Context) (*Result, error) {
+		if mutatesWaits(p) {
+			if err := lockOrganization(ctx, tx, orgID); err != nil {
+				return nil, err
+			}
+		}
 
-	if mutatesWaits(p) {
-		if err := lockOrganization(ctx, tx, orgID); err != nil {
+		a, err := newApplier(ctx, tx, orgID, actor, p)
+		if err != nil {
 			return nil, err
 		}
-	}
-
-	a, err := newApplier(ctx, tx, orgID, actor, p)
-	if err != nil {
-		return nil, err
-	}
-	for i, op := range p.Ops {
-		if err := a.apply(ctx, op); err != nil {
-			return nil, &OpError{Index: i, Op: op.Name(), Err: err}
+		for i, op := range p.Ops {
+			if err := a.apply(ctx, op); err != nil {
+				return nil, &OpError{Index: i, Op: op.Name(), Err: err}
+			}
 		}
-	}
-	if err := CheckAcyclic(ctx, tx, orgID, a.touched); err != nil {
+		if err := CheckAcyclic(ctx, tx, orgID, a.touched); err != nil {
+			return nil, err
+		}
+		if err := a.renewLease(ctx); err != nil {
+			return nil, err
+		}
+		return a.result(), nil
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	result := a.result()
-	encoded, err := json.Marshal(result)
-	if err != nil {
-		return nil, fmt.Errorf("encode patch response: %w", err)
-	}
-	if _, err := tx.SetIdempotencyKeyResponse(ctx, store.SetIdempotencyKeyResponseParams{
-		OrgID: orgID, RequestID: p.RequestID, Response: encoded,
-	}); err != nil {
-		return nil, fmt.Errorf("record request %q: %w", p.RequestID, err)
-	}
-	// The caller receives exactly the bytes a retry will, so the two
-	// responses are identical rather than merely equivalent.
-	return decodeResult(encoded)
+	result.Replayed = replayed
+	return result, nil
 }
 
-// replay returns the stored response when the request was applied before
-// with the same content, nil when it was never seen, and a
+// withRequest runs one mutation under its idempotency key. A request seen
+// before with the same content returns its stored response, decoded as T,
+// with replayed set; seen with different content, a
+// [*RequestConflictError]. Otherwise the key is claimed before any work,
+// run's result is stored as the response, and the caller receives exactly
+// the bytes a retry will, so the two responses are identical rather than
+// merely equivalent.
+//
+// A concurrent application of the same request blocks on the key row
+// until this transaction ends: on commit it fails with a key conflict, and
+// the caller restarts it to replay; on rollback it proceeds as the first
+// application.
+func withRequest[T any](ctx context.Context, tx store.Tx, orgID, requestID, hash string, run func(context.Context) (*T, error)) (result *T, replayed bool, err error) {
+	stored, err := storedResponse(ctx, tx, orgID, requestID, hash)
+	if err != nil {
+		return nil, false, err
+	}
+	if stored != nil {
+		result, err = decodeResponse[T](stored)
+		return result, true, err
+	}
+	if _, err := tx.CreateIdempotencyKey(ctx, store.CreateIdempotencyKeyParams{
+		OrgID: orgID, RequestID: requestID, RequestHash: hash, Response: []byte("null"),
+	}); err != nil {
+		return nil, false, fmt.Errorf("claim request %q: %w", requestID, err)
+	}
+
+	fresh, err := run(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	encoded, err := json.Marshal(fresh)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode response: %w", err)
+	}
+	if _, err := tx.SetIdempotencyKeyResponse(ctx, store.SetIdempotencyKeyResponseParams{
+		OrgID: orgID, RequestID: requestID, Response: encoded,
+	}); err != nil {
+		return nil, false, fmt.Errorf("record request %q: %w", requestID, err)
+	}
+	result, err = decodeResponse[T](encoded)
+	return result, false, err
+}
+
+// storedResponse returns the stored response when the request was applied
+// before with the same content, nil when it was never seen, and a
 // [*RequestConflictError] when it was seen with different content.
-func replay(ctx context.Context, tx store.Tx, orgID, requestID, hash string) (*Result, error) {
+func storedResponse(ctx context.Context, tx store.Tx, orgID, requestID, hash string) ([]byte, error) {
 	key, err := tx.GetIdempotencyKey(ctx, store.GetIdempotencyKeyParams{OrgID: orgID, RequestID: requestID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -381,28 +423,23 @@ func replay(ctx context.Context, tx store.Tx, orgID, requestID, hash string) (*R
 	if key.RequestHash != hash {
 		return nil, &RequestConflictError{RequestID: requestID}
 	}
-	result, err := decodeResult(key.Response)
-	if err != nil {
-		return nil, err
-	}
-	result.Replayed = true
-	return result, nil
+	return key.Response, nil
 }
 
-func decodeResult(encoded []byte) (*Result, error) {
-	var r Result
-	if err := json.Unmarshal(encoded, &r); err != nil {
-		return nil, fmt.Errorf("decode patch response: %w", err)
+func decodeResponse[T any](encoded []byte) (*T, error) {
+	var t T
+	if err := json.Unmarshal(encoded, &t); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	return &r, nil
+	return &t, nil
 }
 
 // requestHash is the digest the idempotency key stores, in the canonical
-// `sha256:` form the schema checks.
-func requestHash(p Patch) (string, error) {
-	canonical, err := json.Marshal(p)
+// `sha256:` form the schema checks, taken over the request's JSON form.
+func requestHash(request any) (string, error) {
+	canonical, err := json.Marshal(request)
 	if err != nil {
-		return "", fmt.Errorf("encode patch: %w", err)
+		return "", fmt.Errorf("encode request: %w", err)
 	}
 	sum := sha256.Sum256(canonical)
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
@@ -446,12 +483,15 @@ func lockOrganization(ctx context.Context, tx store.Tx, orgID string) error {
 
 // applier carries the state of one patch through its operations.
 type applier struct {
-	tx       store.Tx
-	orgID    string
-	actor    Actor
-	request  string
+	recorder
 	project  *store.Project
 	resolver *Resolver
+	// lease is the live lease the patch carries, or nil.
+	lease *store.Lease
+	// created are the nodes this patch created: new, so nothing holds them.
+	created map[string]bool
+	// fenced are the existing nodes already checked and locked.
+	fenced map[string]bool
 	// nextNumber is the next unused number of the block allocated for the
 	// patch's create_node operations.
 	nextNumber int64
@@ -461,7 +501,6 @@ type applier struct {
 	nodes   []store.Node
 	index   map[string]int
 	aliases map[string]string
-	events  []store.Event
 }
 
 func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Patch) (*applier, error) {
@@ -473,9 +512,18 @@ func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p P
 		return nil, fmt.Errorf("project %s: %w", project.Slug, ErrProjectArchived)
 	}
 	a := &applier{
-		tx: tx, orgID: orgID, actor: actor, request: p.RequestID, project: project,
+		recorder: recorder{tx: tx, orgID: orgID, actor: actor, request: &p.RequestID},
+		project:  project,
 		resolver: NewResolver(tx, orgID, project),
-		index:    map[string]int{}, aliases: map[string]string{},
+		created:  map[string]bool{}, fenced: map[string]bool{},
+		index: map[string]int{}, aliases: map[string]string{},
+	}
+	if p.LeaseID != "" {
+		lease, err := heldLease(ctx, tx, orgID, actor, p.LeaseID)
+		if err != nil {
+			return nil, err
+		}
+		a.lease = &lease
 	}
 	creates := 0
 	for _, op := range p.Ops {
@@ -491,6 +539,59 @@ func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p P
 		a.nextNumber = first
 	}
 	return a, nil
+}
+
+// fenceSQL locks one node's row for the rest of the transaction and reads
+// the id of its live lease, or null. The lock is what makes the check
+// hold until commit: a claim selects with SKIP LOCKED and so cannot take
+// the node while a fenced write is in flight, and a fenced write cannot
+// proceed on a node a claim is taking.
+const fenceSQL = `
+SELECT l.id
+FROM nodes n
+LEFT JOIN leases l ON l.org_id = n.org_id AND l.node_id = n.id AND l.released_at IS NULL AND l.expires_at > now()
+WHERE n.org_id = $1 AND n.id = $2
+FOR UPDATE OF n`
+
+// fence admits a write to an existing node: if a live lease holds it, the
+// patch must carry that lease. Nodes the patch created are its own, and a
+// node is checked once per patch.
+func (a *applier) fence(ctx context.Context, nodeID string) error {
+	if a.created[nodeID] || a.fenced[nodeID] {
+		return nil
+	}
+	var held *string
+	if err := a.tx.Tx.QueryRow(ctx, fenceSQL, a.orgID, nodeID).Scan(&held); err != nil {
+		return fmt.Errorf("fence node %s: %w", nodeID, err)
+	}
+	a.fenced[nodeID] = true
+	switch {
+	case held == nil:
+		return nil
+	case a.lease == nil:
+		return fmt.Errorf("node %s: %w", nodeID, ErrLeaseRequired)
+	case *held != a.lease.ID:
+		return fmt.Errorf("node %s: %w", nodeID, ErrLeaseMismatch)
+	}
+	return nil
+}
+
+// renewLease is the renewal any write by the holder earns: the lease's
+// expiry moves out to [DefaultLeaseTTL] from now, and never back. The
+// statement is fenced, so a lease that stopped being live while the patch
+// ran rejects the whole patch here.
+func (a *applier) renewLease(ctx context.Context) error {
+	if a.lease == nil {
+		return nil
+	}
+	_, err := a.tx.ExtendLease(ctx, store.ExtendLeaseParams{OrgID: a.orgID, ID: a.lease.ID, ExpiresAt: time.Now().Add(DefaultLeaseTTL)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("lease %s: %w", a.lease.ID, ErrLeaseNotLive)
+	}
+	if err != nil {
+		return fmt.Errorf("renew lease %s: %w", a.lease.ID, err)
+	}
+	return nil
 }
 
 // ulidShape is the canonical ULID text the schema accepts, used to tell an
@@ -569,6 +670,9 @@ func (a *applier) createNode(ctx context.Context, op *CreateNode) error {
 		if err != nil {
 			return err
 		}
+		if err := a.fence(ctx, parent.ID); err != nil {
+			return err
+		}
 		params.ParentID = &parent.ID
 		a.touched = append(a.touched, parent.ID)
 	}
@@ -585,6 +689,7 @@ func (a *applier) createNode(ctx context.Context, op *CreateNode) error {
 	if err != nil {
 		return fmt.Errorf("create node: %w", err)
 	}
+	a.created[node.ID] = true
 	if op.Alias != "" {
 		if err := a.resolver.Bind(op.Alias, node); err != nil {
 			return err
@@ -608,6 +713,9 @@ func (a *applier) updateNode(ctx context.Context, op *UpdateNode) error {
 	if err != nil {
 		return err
 	}
+	if err := a.fence(ctx, ref.ID); err != nil {
+		return err
+	}
 	before, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: ref.ID})
 	if err != nil {
 		return fmt.Errorf("read node %s: %w", op.Node, err)
@@ -622,6 +730,9 @@ func (a *applier) updateNode(ctx context.Context, op *UpdateNode) error {
 		if *op.Parent != "" {
 			parent, err := a.resolver.Resolve(ctx, *op.Parent)
 			if err != nil {
+				return err
+			}
+			if err := a.fence(ctx, parent.ID); err != nil {
 				return err
 			}
 			params.ParentID = &parent.ID
@@ -686,6 +797,9 @@ func (a *applier) transition(ctx context.Context, op, ref string, reason *string
 	if err != nil {
 		return err
 	}
+	if err := a.fence(ctx, resolved.ID); err != nil {
+		return err
+	}
 	before, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: resolved.ID})
 	if err != nil {
 		return fmt.Errorf("read node %s: %w", ref, err)
@@ -709,8 +823,12 @@ func (a *applier) addEdge(ctx context.Context, op *AddEdge) error {
 	return a.link(ctx, from.ID, to.ID, kind)
 }
 
-// link adds one edge and records it as an event on the waiting side.
+// link adds one edge and records it as an event on the waiting side, which
+// is the side whose readiness changes and so the side that is fenced.
 func (a *applier) link(ctx context.Context, fromID, toID, kind string) error {
+	if err := a.fence(ctx, toID); err != nil {
+		return err
+	}
 	edge, err := a.tx.CreateEdge(ctx, store.CreateEdgeParams{OrgID: a.orgID, FromNode: fromID, ToNode: toID, Kind: kind})
 	if err != nil {
 		return fmt.Errorf("add edge: %w", err)
@@ -725,6 +843,9 @@ func (a *applier) link(ctx context.Context, fromID, toID, kind string) error {
 func (a *applier) removeEdge(ctx context.Context, op *RemoveEdge) error {
 	from, to, kind, err := a.endpoints(ctx, op.From, op.To, op.Kind)
 	if err != nil {
+		return err
+	}
+	if err := a.fence(ctx, to.ID); err != nil {
 		return err
 	}
 	edge := store.Edge{OrgID: a.orgID, FromNode: from.ID, ToNode: to.ID, Kind: kind}

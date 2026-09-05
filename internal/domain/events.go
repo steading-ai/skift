@@ -51,10 +51,21 @@ func requiresReason(op string) bool {
 	return op == OpDropNode || op == OpReopenNode
 }
 
+// recorder writes the events of one transaction for one actor, and keeps
+// them in the order written. request is nil for writes no client asked
+// for, such as the expiry timer releasing a lease.
+type recorder struct {
+	tx      store.Tx
+	orgID   string
+	actor   Actor
+	request *string
+	events  []store.Event
+}
+
 // event writes the record of one operation. reason is nil for operations
 // that carry none. before and after are encoded as JSON; nil leaves the
 // column null.
-func (a *applier) event(ctx context.Context, op, nodeID, projectID string, reason *string, before, after any) error {
+func (r *recorder) event(ctx context.Context, op, nodeID, projectID string, reason *string, before, after any) error {
 	if requiresReason(op) && (reason == nil || *reason == "") {
 		return fmt.Errorf("%s: %w", op, ErrReasonRequired)
 	}
@@ -66,16 +77,16 @@ func (a *applier) event(ctx context.Context, op, nodeID, projectID string, reaso
 	if err != nil {
 		return err
 	}
-	ev, err := a.tx.CreateEvent(ctx, store.CreateEventParams{
-		ID: newULID(), OrgID: a.orgID, ProjectID: &projectID, NodeID: &nodeID,
-		PrincipalID: a.actor.PrincipalID, PrincipalKind: a.actor.PrincipalKind,
-		IdentityScheme: a.actor.IdentityScheme, RequestID: &a.request,
+	ev, err := r.tx.CreateEvent(ctx, store.CreateEventParams{
+		ID: newULID(), OrgID: r.orgID, ProjectID: &projectID, NodeID: &nodeID,
+		PrincipalID: r.actor.PrincipalID, PrincipalKind: r.actor.PrincipalKind,
+		IdentityScheme: r.actor.IdentityScheme, RequestID: r.request,
 		Op: op, Reason: reason, Before: beforeJSON, After: afterJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("record %s event: %w", op, err)
 	}
-	a.events = append(a.events, ev)
+	r.events = append(r.events, ev)
 	return nil
 }
 
