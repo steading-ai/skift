@@ -38,13 +38,7 @@ func (c *statementCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQu
 // every statement to counter.
 func countingStore(ctx context.Context, pool *pgxpool.Pool, counter *statementCounter) *store.Store {
 	GinkgoHelper()
-	cfg, err := pgxpool.ParseConfig(pool.Config().ConnString())
-	Expect(err).NotTo(HaveOccurred())
-	cfg.ConnConfig.Tracer = counter
-	traced, err := pgxpool.NewWithConfig(ctx, cfg)
-	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(traced.Close)
-	return store.FromPool(traced)
+	return tracedStore(ctx, pool, counter)
 }
 
 // createBlock allocates count numbers in one call and creates one node per

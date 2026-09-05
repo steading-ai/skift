@@ -555,17 +555,21 @@ func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID stri
 	return a, nil
 }
 
-// fenceSQL locks one node's row for the rest of the transaction and reads
-// the id of its live lease, or null. The lock is what makes the check
-// hold until commit: a claim selects with SKIP LOCKED and so cannot take
-// the node while a fenced write is in flight, and a fenced write cannot
-// proceed on a node a claim is taking.
-const fenceSQL = `
-SELECT l.id
-FROM nodes n
-LEFT JOIN leases l ON l.org_id = n.org_id AND l.node_id = n.id AND l.released_at IS NULL AND l.expires_at > now()
-WHERE n.org_id = $1 AND n.id = $2
-FOR UPDATE OF n`
+// lockNodeSQL locks one node's row for the rest of the transaction. The
+// lock is what makes the fence hold until commit: a claim selects with
+// SKIP LOCKED and so cannot take the node while a fenced write is in
+// flight, and a fenced write cannot proceed on a node a claim is taking.
+const lockNodeSQL = `SELECT 1 FROM nodes n WHERE n.org_id = $1 AND n.id = $2 FOR UPDATE`
+
+// heldBySQL is the id of the node's live lease, or null. It runs as a
+// statement of its own after the lock, never in the same statement: under
+// read committed a statement's snapshot is taken when it starts, and a
+// row that is only locked, not updated, is not re-read once the lock is
+// granted. Joined to the lock, this would miss a lease a claim committed
+// while the lock was waited for.
+const heldBySQL = `
+SELECT (SELECT l.id FROM leases l
+        WHERE l.org_id = $1 AND l.node_id = $2 AND l.released_at IS NULL AND l.expires_at > now())`
 
 // fence admits a write to an existing node: if a live lease holds it, the
 // patch must carry that lease. Nodes the patch created are its own, and a
@@ -574,8 +578,11 @@ func (a *applier) fence(ctx context.Context, nodeID string) error {
 	if a.created[nodeID] || a.fenced[nodeID] {
 		return nil
 	}
+	if _, err := a.tx.Tx.Exec(ctx, lockNodeSQL, a.orgID, nodeID); err != nil {
+		return fmt.Errorf("fence node %s: %w", nodeID, err)
+	}
 	var held *string
-	if err := a.tx.Tx.QueryRow(ctx, fenceSQL, a.orgID, nodeID).Scan(&held); err != nil {
+	if err := a.tx.Tx.QueryRow(ctx, heldBySQL, a.orgID, nodeID).Scan(&held); err != nil {
 		return fmt.Errorf("fence node %s: %w", nodeID, err)
 	}
 	a.fenced[nodeID] = true
