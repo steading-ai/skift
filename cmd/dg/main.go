@@ -3,16 +3,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/ivy/dagger/internal/cli"
 )
 
 func main() {
-	root := cli.NewRootCommand(os.Stdout, os.Stderr)
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "dg:", err)
-		os.Exit(1)
-	}
+	os.Exit(cli.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }

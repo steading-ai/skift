@@ -33,13 +33,15 @@ var _ = Describe("root command", Label("unit"), func() {
 		Expect(stdout.String()).To(ContainSubstring(version.String()))
 	})
 
-	It("wires the three faces of the binary", func() {
+	It("wires the three faces of the binary and every CLI command", func() {
 		root := cli.NewRootCommand(stdout, stderr)
 		names := []string{}
 		for _, c := range root.Commands() {
 			names = append(names, c.Name())
 		}
-		Expect(names).To(ConsistOf("version", "mcp", "serve"))
+		Expect(names).To(ConsistOf("version", "mcp", "serve",
+			"project", "node", "patch", "create", "link", "ready", "explain",
+			"claim", "heartbeat", "release", "complete", "comment", "search", "events"))
 	})
 
 	DescribeTable("faces without behaviour fail loudly",
