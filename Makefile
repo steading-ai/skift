@@ -15,7 +15,7 @@ VERSION      ?= $(if $(GIT_DESCRIBE),$(GIT_DESCRIBE),0.0.0-dev+$(GIT_SHA))
 
 LDFLAGS := -X $(MODULE)/internal/version.version=$(VERSION)
 
-GINKGO := go tool ginkgo -r --randomize-all --fail-on-pending --keep-going
+GINKGO := go tool ginkgo -r -p --randomize-all --fail-on-pending --keep-going
 
 COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.

@@ -97,6 +97,33 @@ touch your development data. The compose specs at the repository root
 exercise `make db-up` and `make db-reset` under a separate compose project
 name (`dagger-spec`) on a random port, and remove it when they finish.
 
+Suites run their specs in parallel processes. A suite that needs the
+database starts one container in its first process through
+`internal/testsupport`, migrates a template database once, and hands every
+`db`-labelled spec a fresh clone of it that is dropped when the spec ends:
+
+```go
+var pg *testsupport.Postgres
+
+var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
+	started, err := testsupport.Start(ctx, migrate)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(started.Stop)
+	return []byte(started.URL())
+}, func(ctx context.Context, adminURL []byte) {
+	var err error
+	pg, err = testsupport.Attach(ctx, string(adminURL))
+	Expect(err).NotTo(HaveOccurred())
+})
+
+It("reads its own database", Label("db"), func(ctx SpecContext) {
+	db := pg.Database(ctx) // a *pgxpool.Pool on a database nobody else sees
+})
+```
+
+The harness finds the rootless podman socket on its own. Set `DOCKER_HOST`
+to point it somewhere else.
+
 ## Documentation
 
 - [Vision](docs/vision.md)
