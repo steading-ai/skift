@@ -21,7 +21,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build test test-unit test-db test-policy lint check-generated generate clean install-units db-up db-down db-reset db-migrate
+.PHONY: all build test test-unit test-db test-acceptance test-policy lint check-generated generate clean install-units db-up db-down db-reset db-migrate
 
 all: build
 
@@ -44,6 +44,11 @@ test-policy:
 # Specs that need a real PostgreSQL, labelled "db".
 test-db:
 	$(GINKGO) --label-filter='db' ./...
+
+# The end-to-end scenarios: the built binary serving a fresh database,
+# driven through the CLI and the MCP server. Needs podman, like test-db.
+test-acceptance:
+	$(GINKGO) ./tests/acceptance
 
 lint:
 	go vet ./...
