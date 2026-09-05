@@ -146,7 +146,10 @@ def merged_nodes(state):
     _, nodes = backlog.load(BACKLOG)
     backlog.validate(nodes)
     for num, node in nodes.items():
-        node["status"] = node_state(state, num)["status"]
+        status = node_state(state, num)["status"]
+        # A node interrupted mid-flight is resumable, not stranded. Attempts are
+        # preserved, so a crash costs one attempt rather than the whole node.
+        node["status"] = "open" if status == "in_progress" else status
     return nodes
 
 
@@ -163,6 +166,17 @@ def ready_nodes(state):
         out.append(num)
     out.sort(key=lambda n: (backlog.PRIORITIES.index(nodes[n].get("priority", "p2")), n))
     return out, nodes
+
+
+def is_grouping(node, kids):
+    """A node that groups work rather than being work.
+
+    It has children and states no acceptance criteria, so there is nothing for
+    an agent to satisfy and nothing for a reviewer to judge. The domain model
+    says such a node becomes claimable when its children close; here the honest
+    completion is bookkeeping, not an agent.
+    """
+    return bool(kids) and "## Acceptance criteria" not in node.get("body", "")
 
 
 def git(*args, check=True):
@@ -190,6 +204,17 @@ def touched_protected():
         if any(path.startswith(p) for p in PROTECTED):
             hits.append(path)
     return hits
+
+
+def head():
+    return git("rev-parse", "HEAD")
+
+
+def undo_agent_commits(before):
+    """Keep the work, drop the commit. The harness owns the history."""
+    if head() != before:
+        git("reset", "--soft", before)
+        print("  .. agent committed; un-committed, harness owns history", flush=True)
 
 
 async def run_agent(kind, system_prompt, prompt, log_path, args):
@@ -263,6 +288,18 @@ def work_order_text(num, nodes, slug):
 async def do_node(num, nodes, slug, state, args):
     node = nodes[num]
     ns = node_state(state, num)
+    kids = backlog.children(nodes)[num]
+
+    if is_grouping(node, kids):
+        print(f"\n  {slug}#{num}  {node['title']}  (grouping; children complete)", flush=True)
+        ns["status"] = "done"
+        state["history"].append({
+            "at": now(), "node": num, "attempt": 0,
+            "verdict": "grouping", "cost_usd": 0.0, "turns": 0,
+        })
+        save_state(state)
+        return True
+
     order = work_order_text(num, nodes, slug)
     LOGS.mkdir(parents=True, exist_ok=True)
     log_path = LOGS / f"{num:03d}-{node['title'][:40].replace('/', '-')}.log"
@@ -284,9 +321,18 @@ async def do_node(num, nodes, slug, state, args):
                 "Fix them. Do not start over; build on what is already there.\n\n"
                 f"{feedback}\n"
             )
-        _, cost_i, turns_i = await run_agent(
-            "implementer", IMPLEMENTER_PROMPT, prompt, log_path, args
-        )
+        before = head()
+        try:
+            _, cost_i, turns_i = await asyncio.wait_for(
+                run_agent("implementer", IMPLEMENTER_PROMPT, prompt, log_path, args),
+                timeout=args.timeout,
+            )
+        except asyncio.TimeoutError:
+            print(f"  !! implementer exceeded {args.timeout}s", flush=True)
+            undo_agent_commits(before)
+            feedback = f"- The previous attempt ran past {args.timeout}s and was stopped. Work in smaller steps."
+            continue
+        undo_agent_commits(before)
 
         protected = touched_protected()
         if protected:
@@ -310,9 +356,14 @@ async def do_node(num, nodes, slug, state, args):
             f"# Changes in the working tree\n\n```\n{diff}\n```\n\n"
             "Inspect the working tree, run the suite, and judge the contract."
         )
-        verdict_text, cost_r, turns_r = await run_agent(
-            "reviewer", REVIEWER_PROMPT, review_prompt, log_path, args
-        )
+        try:
+            verdict_text, cost_r, turns_r = await asyncio.wait_for(
+                run_agent("reviewer", REVIEWER_PROMPT, review_prompt, log_path, args),
+                timeout=args.timeout,
+            )
+        except asyncio.TimeoutError:
+            print(f"  !! reviewer exceeded {args.timeout}s; treating as fail", flush=True)
+            verdict_text, cost_r, turns_r = "VERDICT: FAIL", 0.0, 0
         passed, feedback = parse_verdict(verdict_text)
 
         entry = {
@@ -369,6 +420,10 @@ async def main():
                    choices=["low", "medium", "high", "xhigh", "max"],
                    help="reasoning effort (default: medium)")
     p.add_argument("--node", type=int, default=None, help="force one node")
+    p.add_argument("--budget", type=float, default=None,
+                   help="stop once total spend passes this many USD")
+    p.add_argument("--timeout", type=int, default=3600,
+                   help="seconds before one agent is abandoned (default: 3600)")
     p.add_argument("--dry-run", action="store_true", help="show the plan and exit")
     p.add_argument("--no-push", action="store_true", help="commit but do not push")
     args = p.parse_args()
@@ -404,7 +459,12 @@ async def main():
 
         ok = await do_node(order[0], nodes, slug, state, args)
         total = sum(h["cost_usd"] for h in state["history"])
-        print(f"\n  running total: ${total:.2f}", flush=True)
+        done = sum(1 for v in state["nodes"].values() if v["status"] == "done")
+        print(f"\n  {done}/{len(nodes)} done, ${total:.2f} spent", flush=True)
+        if args.budget and total >= args.budget:
+            STOP.write_text(f"BLOCKED: budget ${args.budget} reached at ${total:.2f}\n")
+            print(f"\nStopping: budget ${args.budget:.2f} reached")
+            return 2
         if not ok:
             print(f"  {slug}#{order[0]} blocked after {args.attempts} attempts; moving on",
                   flush=True)
