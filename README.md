@@ -163,4 +163,5 @@ safe to run by hand alongside the timer. Set `DG=/path/to/dg` on
 - [Domain model](docs/domain-model.md)
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
+- [Retrospectives](docs/retrospectives/)
 - [Architecture decision records](docs/adrs/)
