@@ -1,0 +1,10 @@
+# Proto module configuration. The proto package is the domain model; see
+# docs/adrs/002-connect-rpc-is-the-only-door.md.
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+    # Every message, field, enum, and value states its meaning.
+    - COMMENTS

@@ -43,6 +43,7 @@ test-db:
 lint:
 	go vet ./...
 	golangci-lint run ./...
+	buf lint
 
 # Code generators. buf and sqlc run only once their configs exist, so the
 # target is safe before the proto and schema nodes land.
