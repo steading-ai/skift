@@ -170,3 +170,72 @@ func (q *Queries) ListEventsForNode(ctx context.Context, arg ListEventsForNodePa
 	}
 	return items, nil
 }
+
+const listEventsForRequest = `-- name: ListEventsForRequest :many
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at FROM events
+WHERE org_id = $1 AND request_id = $2
+ORDER BY id
+`
+
+type ListEventsForRequestParams struct {
+	OrgID     string
+	RequestID *string
+}
+
+// One patch, reconstructed: every event carrying its request id, in the
+// order the operations were applied.
+func (q *Queries) ListEventsForRequest(ctx context.Context, arg ListEventsForRequestParams) ([]Event, error) {
+	rows, err := q.db.Query(ctx, listEventsForRequest, arg.OrgID, arg.RequestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Event{}
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.NodeID,
+			&i.PrincipalID,
+			&i.PrincipalKind,
+			&i.OnBehalfOf,
+			&i.IdentityScheme,
+			&i.RequestID,
+			&i.Op,
+			&i.Reason,
+			&i.Before,
+			&i.After,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const nodeHumanTouched = `-- name: NodeHumanTouched :one
+SELECT EXISTS (
+    SELECT 1 FROM events
+    WHERE org_id = $1 AND node_id = $2 AND principal_kind = 'user'
+)::boolean AS human_touched
+`
+
+type NodeHumanTouchedParams struct {
+	OrgID  string
+	NodeID *string
+}
+
+// Whether a user principal has ever written to a node. Derived from the
+// log, never stored: see the Event section of docs/domain-model.md.
+func (q *Queries) NodeHumanTouched(ctx context.Context, arg NodeHumanTouchedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, nodeHumanTouched, arg.OrgID, arg.NodeID)
+	var human_touched bool
+	err := row.Scan(&human_touched)
+	return human_touched, err
+}

@@ -16,3 +16,18 @@ SELECT * FROM events
 WHERE org_id = $1 AND node_id = $2
 ORDER BY id
 LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
+
+-- One patch, reconstructed: every event carrying its request id, in the
+-- order the operations were applied.
+-- name: ListEventsForRequest :many
+SELECT * FROM events
+WHERE org_id = $1 AND request_id = $2
+ORDER BY id;
+
+-- Whether a user principal has ever written to a node. Derived from the
+-- log, never stored: see the Event section of docs/domain-model.md.
+-- name: NodeHumanTouched :one
+SELECT EXISTS (
+    SELECT 1 FROM events
+    WHERE org_id = $1 AND node_id = $2 AND principal_kind = 'user'
+)::boolean AS human_touched;

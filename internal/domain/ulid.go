@@ -2,26 +2,57 @@ package domain
 
 import (
 	"crypto/rand"
+	"sync"
 	"time"
 )
 
 // crockford is the ULID alphabet: base32 without I, L, O, and U.
 const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
+// ulidClock serializes minting so that ids issued within one millisecond
+// still sort in issue order.
+var ulidClock struct {
+	sync.Mutex
+	ms      uint64
+	entropy [10]byte
+}
+
 // newULID mints an identifier in canonical ULID text: 48 bits of
 // millisecond time then 80 random bits, encoded as 26 characters. Time
-// leads so that ids sort by creation, which the event stream relies on;
-// nothing else reads the layout back.
+// leads so that ids sort by creation. Within one millisecond the random
+// part is incremented rather than redrawn, so ids minted in sequence by
+// this process sort in that sequence: the events of one patch read back in
+// operation order. Nothing else reads the layout back.
 func newULID() string {
-	var b [16]byte
+	ulidClock.Lock()
+	defer ulidClock.Unlock()
+
 	ms := uint64(time.Now().UnixMilli())
+	if ms > ulidClock.ms {
+		ulidClock.ms = ms
+		if _, err := rand.Read(ulidClock.entropy[:]); err != nil {
+			panic(err)
+		}
+		// Clearing the top bit leaves room for 2^79 increments before
+		// the random part could overflow into the timestamp.
+		ulidClock.entropy[0] &= 0x7f
+	} else {
+		ms = ulidClock.ms
+		for i := len(ulidClock.entropy) - 1; i >= 0; i-- {
+			ulidClock.entropy[i]++
+			if ulidClock.entropy[i] != 0 {
+				break
+			}
+		}
+	}
+
+	var b [16]byte
+	t := ms
 	for i := 5; i >= 0; i-- {
-		b[i] = byte(ms)
-		ms >>= 8
+		b[i] = byte(t)
+		t >>= 8
 	}
-	if _, err := rand.Read(b[6:]); err != nil {
-		panic(err)
-	}
+	copy(b[6:], ulidClock.entropy[:])
 
 	// 128 bits packed into 26 five-bit groups, most significant first. The
 	// leading group holds two bits of padding, so it is at most 7.

@@ -7,3 +7,7 @@ const WaitReachSQL = waitReach
 // LockNamespace is the first half of the advisory lock key Apply takes, for
 // specs that hold the lock from outside.
 const LockNamespace = lockNamespace
+
+// NewULID mints an id the way events and nodes get theirs, for specs that
+// check the ordering the event log relies on.
+var NewULID = newULID

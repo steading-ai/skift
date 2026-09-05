@@ -26,21 +26,15 @@ var (
 	ErrProjectArchived = errors.New("project is archived")
 )
 
-// Actor is the principal applying a patch, as the transport resolved it.
-// Every event the patch writes records it. Nothing here comes from the
-// request body: see docs/adrs/006-provenance-not-authority.md.
-type Actor struct {
-	PrincipalID string
-	// PrincipalKind is `user`, `agent`, or `service`.
-	PrincipalKind string
-	// IdentityScheme is the transport identity the actor arrived with.
-	IdentityScheme string
-}
-
 // Patch is one atomic mutation of the graph. See the Patch section of
 // docs/domain-model.md. Its JSON form is the canonical encoding the
 // idempotency hash is taken over, so two patches with the same fields hash
 // the same however they were built.
+//
+// A patch carries no actor. The principal that applied it is an [Actor]
+// the transport resolved, passed to [Apply] beside the patch and recorded
+// on every event; a principal field in a request body has nothing here to
+// land on. See docs/adrs/006-provenance-not-authority.md.
 type Patch struct {
 	// RequestID is the client-supplied idempotency key.
 	RequestID string `json:"request_id"`
@@ -55,6 +49,8 @@ type Patch struct {
 type Op struct {
 	CreateNode *CreateNode `json:"create_node,omitempty"`
 	UpdateNode *UpdateNode `json:"update_node,omitempty"`
+	DropNode   *DropNode   `json:"drop_node,omitempty"`
+	ReopenNode *ReopenNode `json:"reopen_node,omitempty"`
 	AddEdge    *AddEdge    `json:"add_edge,omitempty"`
 	RemoveEdge *RemoveEdge `json:"remove_edge,omitempty"`
 }
@@ -67,6 +63,10 @@ func (o Op) Name() string {
 		return OpCreateNode
 	case o.UpdateNode != nil:
 		return OpUpdateNode
+	case o.DropNode != nil:
+		return OpDropNode
+	case o.ReopenNode != nil:
+		return OpReopenNode
 	case o.AddEdge != nil:
 		return OpAddEdge
 	case o.RemoveEdge != nil:
@@ -75,10 +75,27 @@ func (o Op) Name() string {
 	return ""
 }
 
+// validate rejects an operation that cannot be applied however the graph
+// stands: no operation set, or a transition missing the reason it must
+// carry.
+func (o Op) validate() error {
+	switch {
+	case o.Name() == "":
+		return errors.New("no operation set")
+	case o.DropNode != nil:
+		return o.DropNode.validate()
+	case o.ReopenNode != nil && o.ReopenNode.Reason == "":
+		return ErrReasonRequired
+	}
+	return nil
+}
+
 // Operation names, as written to events.op.
 const (
 	OpCreateNode = "create_node"
 	OpUpdateNode = "update_node"
+	OpDropNode   = "drop_node"
+	OpReopenNode = "reopen_node"
 	OpAddEdge    = "add_edge"
 	OpRemoveEdge = "remove_edge"
 )
@@ -124,6 +141,63 @@ type UpdateNode struct {
 	Assignee *string `json:"assignee,omitempty"`
 	// Labels replaces the label set; an empty slice clears it.
 	Labels *[]string `json:"labels,omitempty"`
+}
+
+// DropNode abandons a node with a reason. Without a reason the patch is
+// rejected: a drop is an assertion about the work, and the event is where
+// the assertion is kept. See Drop semantics in docs/domain-model.md.
+type DropNode struct {
+	// Node is a node reference.
+	Node string `json:"node"`
+	// Reason classifies why: one of the Drop constants.
+	Reason string `json:"reason"`
+	// Detail is free text expanding on the reason. Required when Reason
+	// is [DropOther], since the classification then says nothing.
+	Detail string `json:"detail,omitempty"`
+}
+
+// Drop reasons, as a drop_node classifies itself.
+const (
+	// DropSuperseded means other work replaced the node.
+	DropSuperseded = "superseded"
+	// DropNotViable means the work cannot be done as specified.
+	DropNotViable = "not_viable"
+	// DropNoLongerRelevant means the need for the work went away.
+	DropNoLongerRelevant = "no_longer_relevant"
+	// DropOther means Detail is the whole explanation.
+	DropOther = "other"
+)
+
+func (d *DropNode) validate() error {
+	switch d.Reason {
+	case DropSuperseded, DropNotViable, DropNoLongerRelevant:
+		return nil
+	case DropOther:
+		if d.Detail == "" {
+			return fmt.Errorf("%w: a drop for another reason says which in detail", ErrReasonRequired)
+		}
+		return nil
+	case "":
+		return ErrReasonRequired
+	}
+	return fmt.Errorf("unknown drop reason %q", d.Reason)
+}
+
+// eventReason is the text the event records: the classification, and the
+// detail after it when there is one.
+func (d *DropNode) eventReason() string {
+	if d.Detail == "" {
+		return d.Reason
+	}
+	return d.Reason + ": " + d.Detail
+}
+
+// ReopenNode moves a done or dropped node back to open, with a reason.
+// It is not retroactive: nothing downstream changes.
+type ReopenNode struct {
+	// Node is a node reference.
+	Node   string `json:"node"`
+	Reason string `json:"reason"`
 }
 
 // AddEdge adds a directed edge: From blocks To.
@@ -189,6 +263,10 @@ func (e *OpError) Unwrap() error { return e.Err }
 // checked for cycles once, over the resulting graph. Each operation writes
 // one event.
 //
+// The actor is whatever the transport resolved, never anything the patch
+// carries. A patch with no actor, or with a transition missing its reason,
+// is rejected before it claims its request id or touches the graph.
+//
 // A request id seen before with the same content returns the stored
 // [Result] with Replayed set and writes nothing. The same id with
 // different content is a [*RequestConflictError]. Two applications of one
@@ -207,9 +285,16 @@ func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Pat
 	if len(p.Ops) == 0 {
 		return nil, ErrNoOperations
 	}
+	if err := actor.validate(); err != nil {
+		return nil, err
+	}
 	for i, op := range p.Ops {
-		if op.Name() == "" {
-			return nil, &OpError{Index: i, Op: "empty", Err: errors.New("no operation set")}
+		if err := op.validate(); err != nil {
+			name := op.Name()
+			if name == "" {
+				name = "empty"
+			}
+			return nil, &OpError{Index: i, Op: name, Err: err}
 		}
 	}
 	hash, err := requestHash(p)
@@ -446,6 +531,10 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 		return a.createNode(ctx, op.CreateNode)
 	case op.UpdateNode != nil:
 		return a.updateNode(ctx, op.UpdateNode)
+	case op.DropNode != nil:
+		return a.dropNode(ctx, op.DropNode)
+	case op.ReopenNode != nil:
+		return a.reopenNode(ctx, op.ReopenNode)
 	case op.AddEdge != nil:
 		return a.addEdge(ctx, op.AddEdge)
 	case op.RemoveEdge != nil:
@@ -503,7 +592,7 @@ func (a *applier) createNode(ctx context.Context, op *CreateNode) error {
 		a.aliases[op.Alias] = NodeRef{Project: a.project.Slug, Number: node.Number}.String()
 	}
 	a.record(node)
-	if err := a.event(ctx, OpCreateNode, node.ID, node.ProjectID, nil, node); err != nil {
+	if err := a.event(ctx, OpCreateNode, node.ID, node.ProjectID, nil, nil, node); err != nil {
 		return err
 	}
 	for _, b := range blockers {
@@ -568,7 +657,48 @@ func (a *applier) updateNode(ctx context.Context, op *UpdateNode) error {
 		return fmt.Errorf("update node %s: %w", op.Node, err)
 	}
 	a.record(after)
-	return a.event(ctx, OpUpdateNode, after.ID, after.ProjectID, before, after)
+	return a.event(ctx, OpUpdateNode, after.ID, after.ProjectID, nil, before, after)
+}
+
+func (a *applier) dropNode(ctx context.Context, op *DropNode) error {
+	reason := op.eventReason()
+	return a.transition(ctx, OpDropNode, op.Node, &reason, func(n store.Node) error {
+		if n.Status == "dropped" {
+			return fmt.Errorf("node %s is already dropped", op.Node)
+		}
+		return nil
+	}, "dropped")
+}
+
+func (a *applier) reopenNode(ctx context.Context, op *ReopenNode) error {
+	return a.transition(ctx, OpReopenNode, op.Node, &op.Reason, func(n store.Node) error {
+		if n.Status == "open" {
+			return fmt.Errorf("node %s is open", op.Node)
+		}
+		return nil
+	}, "open")
+}
+
+// transition moves one node to a new status once check accepts its current
+// state, and records the move with its reason.
+func (a *applier) transition(ctx context.Context, op, ref string, reason *string, check func(store.Node) error, status string) error {
+	resolved, err := a.resolver.Resolve(ctx, ref)
+	if err != nil {
+		return err
+	}
+	before, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: resolved.ID})
+	if err != nil {
+		return fmt.Errorf("read node %s: %w", ref, err)
+	}
+	if err := check(before); err != nil {
+		return err
+	}
+	after, err := a.tx.SetNodeStatus(ctx, store.SetNodeStatusParams{OrgID: a.orgID, ID: before.ID, Status: status})
+	if err != nil {
+		return fmt.Errorf("%s %s: %w", op, ref, err)
+	}
+	a.record(after)
+	return a.event(ctx, op, after.ID, after.ProjectID, reason, before, after)
 }
 
 func (a *applier) addEdge(ctx context.Context, op *AddEdge) error {
@@ -589,7 +719,7 @@ func (a *applier) link(ctx context.Context, fromID, toID, kind string) error {
 	if err := a.touch(ctx, toID); err != nil {
 		return err
 	}
-	return a.event(ctx, OpAddEdge, toID, a.projectOf(toID), nil, edge)
+	return a.event(ctx, OpAddEdge, toID, a.projectOf(toID), nil, nil, edge)
 }
 
 func (a *applier) removeEdge(ctx context.Context, op *RemoveEdge) error {
@@ -608,7 +738,7 @@ func (a *applier) removeEdge(ctx context.Context, op *RemoveEdge) error {
 	if err := a.touch(ctx, to.ID); err != nil {
 		return err
 	}
-	return a.event(ctx, OpRemoveEdge, to.ID, a.projectOf(to.ID), edge, nil)
+	return a.event(ctx, OpRemoveEdge, to.ID, a.projectOf(to.ID), nil, edge, nil)
 }
 
 func (a *applier) endpoints(ctx context.Context, fromRef, toRef, kind string) (from, to Resolved, k string, err error) {
@@ -652,41 +782,6 @@ func (a *applier) record(node store.Node) {
 // projectOf is the project of a node the patch already holds.
 func (a *applier) projectOf(id string) string {
 	return a.nodes[a.index[id]].ProjectID
-}
-
-// event writes the record of one operation. before and after are encoded
-// as JSON; nil leaves the column null.
-func (a *applier) event(ctx context.Context, op, nodeID, projectID string, before, after any) error {
-	beforeJSON, err := encodeChange(before)
-	if err != nil {
-		return err
-	}
-	afterJSON, err := encodeChange(after)
-	if err != nil {
-		return err
-	}
-	ev, err := a.tx.CreateEvent(ctx, store.CreateEventParams{
-		ID: newULID(), OrgID: a.orgID, ProjectID: &projectID, NodeID: &nodeID,
-		PrincipalID: a.actor.PrincipalID, PrincipalKind: a.actor.PrincipalKind,
-		IdentityScheme: a.actor.IdentityScheme, RequestID: &a.request,
-		Op: op, Before: beforeJSON, After: afterJSON,
-	})
-	if err != nil {
-		return fmt.Errorf("record %s event: %w", op, err)
-	}
-	a.events = append(a.events, ev)
-	return nil
-}
-
-func encodeChange(v any) ([]byte, error) {
-	if v == nil {
-		return nil, nil
-	}
-	encoded, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("encode event change: %w", err)
-	}
-	return encoded, nil
 }
 
 func (a *applier) result() *Result {
