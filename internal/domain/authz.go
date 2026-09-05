@@ -177,10 +177,38 @@ func (r *recorder) policyInput(ctx context.Context, op, nodeID string, before, a
 		if op == OpHeartbeatLease || op == OpReleaseLease {
 			in.Lease = leaseInfo(lease)
 		}
+	case OpAddComment, OpEditComment, OpResolveComment:
+		comment, err := as[store.Comment](after)
+		if err != nil {
+			return in, err
+		}
+		node, err := r.tx.GetNode(ctx, store.GetNodeParams{OrgID: r.orgID, ID: comment.NodeID})
+		if err != nil {
+			return in, fmt.Errorf("read node %s: %w", comment.NodeID, err)
+		}
+		info, err := r.nodeInfo(ctx, node)
+		if err != nil {
+			return in, err
+		}
+		// A comment changes nothing about its node, so the node stands
+		// the same before and after; the comment is what changes.
+		in.Resource.Node = info
+		in.After = &policy.Resource{Node: info, Comment: commentInfo(comment)}
+		if op != OpAddComment {
+			prior, err := as[store.Comment](before)
+			if err != nil {
+				return in, err
+			}
+			in.Resource.Comment = commentInfo(prior)
+		}
 	default:
 		return in, fmt.Errorf("operation %q has no policy shape", op)
 	}
 	return in, nil
+}
+
+func commentInfo(c store.Comment) *policy.Comment {
+	return &policy.Comment{ID: c.ID, NodeID: c.NodeID, Author: c.Author, InReplyTo: c.InReplyTo, Resolved: c.ResolvedAt != nil}
 }
 
 // transitioned is the node a transition's after carries. A completion

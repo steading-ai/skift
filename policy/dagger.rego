@@ -7,16 +7,18 @@
 #
 #   principal  {id, kind}                      kind is user, agent, or service
 #   action     one of the action names below
-#   resource   {node, edge, lease}             what the action is applied to,
+#   resource   {node, edge, lease, comment}    what the action is applied to,
 #                                              as it stands before
-#   after      {node, edge}                    the proposed post-state; absent
+#   after      {node, edge, comment}           the proposed post-state; absent
 #                                              for actions that remove
 #   lease      {id, node_id, holder}           the lease the request carries
 #
 # A node carries id, project_id, parent_id, kind, status, assignee_kind,
 # assignee, created_by, and lineage: the node itself followed by each
 # ancestor up to the root, each as {id, created_by}. An edge carries from,
-# to, and kind, where from blocks to.
+# to, and kind, where from blocks to. A comment carries id, node_id,
+# author, in_reply_to, and resolved, and travels with the node it is on,
+# which a comment action leaves as it stands.
 #
 # The decision is `allow` with the `reasons` it was refused for. Nothing here
 # reads outside `input`, so evaluation is a pure function of the request.
@@ -45,6 +47,8 @@ node_actions := {"create_node", "update_node", "drop_node", "reopen_node", "comp
 
 edge_actions := {"add_edge", "remove_edge"}
 
+comment_actions := {"add_comment", "edit_comment", "resolve_comment"}
+
 # Users act for the organization: every action within its scope, except
 # what the vetoes below refuse everyone.
 
@@ -60,6 +64,11 @@ permitted if {
 
 permitted if {
 	input.principal.kind == "user"
+	input.action in comment_actions
+}
+
+permitted if {
+	input.principal.kind == "user"
 	input.action == "claim_node"
 }
 
@@ -69,6 +78,14 @@ permitted if {
 permitted if {
 	input.principal.kind == "agent"
 	input.action in node_actions
+	own(input.after.node)
+}
+
+# A lease holder may comment on its own node, and on what it created under
+# it, as it may mutate them.
+permitted if {
+	input.principal.kind == "agent"
+	input.action in comment_actions
 	own(input.after.node)
 }
 
@@ -152,6 +169,15 @@ vetoes contains msg if {
 	some end in {input.resource.edge.from, input.resource.edge.to}
 	filed_gate(end)
 	msg := sprintf("the principal that filed gate %s may not unlink it", [end.id])
+}
+
+# A comment has one author, and its revisions are that author's words.
+# Somebody else's edit would be attributed to the author, so nobody else
+# edits; they reply instead.
+vetoes contains msg if {
+	input.action == "edit_comment"
+	input.resource.comment.author != input.principal.id
+	msg := sprintf("only the author of comment %s may edit it", [input.resource.comment.id])
 }
 
 # A gate is a person's to complete, so it is not an agent's to take.

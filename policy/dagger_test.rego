@@ -208,6 +208,57 @@ test_service_principal_does_not_edit_the_graph if {
 	not authz.allow with input as patch(service, "claim_node", {"node": node8, "lease": {"id": "L8", "node_id": "n8", "holder": "S"}}, null, null)
 }
 
+# Comments. A comment travels with the node it is on, which stands the same
+# before and after.
+
+comment(id, node_id, author) := {
+	"id": id,
+	"node_id": node_id,
+	"author": author,
+	"in_reply_to": null,
+	"resolved": false,
+}
+
+comment_op(principal, action, n, before, after, lease) := patch(
+	principal,
+	action,
+	{"node": n, "comment": before},
+	{"node": n, "comment": after},
+	lease,
+)
+
+test_user_comments_anywhere if {
+	c := comment("c1", "n8", "U")
+	authz.allow with input as comment_op(user, "add_comment", node8, null, c, null)
+	authz.allow with input as comment_op(user, "edit_comment", node8, c, c, null)
+	authz.allow with input as comment_op(user, "resolve_comment", node8, c, object.union(c, {"resolved": true}), null)
+}
+
+test_holder_comments_on_its_own_node if {
+	c := comment("c7", "n7", "A")
+	authz.allow with input as comment_op(agent_a, "add_comment", node7, null, c, lease_a)
+	authz.allow with input as comment_op(agent_a, "edit_comment", node7, c, c, lease_a)
+	authz.allow with input as comment_op(agent_a, "resolve_comment", node7, c, object.union(c, {"resolved": true}), lease_a)
+	authz.allow with input as comment_op(agent_a, "add_comment", node9, null, comment("c9", "n9", "A"), lease_a)
+}
+
+test_holder_does_not_comment_elsewhere if {
+	not authz.allow with input as comment_op(agent_a, "add_comment", node8, null, comment("c8", "n8", "A"), lease_a)
+	not authz.allow with input as comment_op(agent_a, "add_comment", node10, null, comment("c10", "n10", "A"), lease_a)
+	not authz.allow with input as comment_op(agent_a, "add_comment", node7, null, comment("c7", "n7", "A"), null)
+	not authz.allow with input as comment_op(service, "add_comment", node7, null, comment("c7", "n7", "S"), null)
+}
+
+test_only_the_author_edits_a_comment if {
+	c := comment("c7", "n7", "B")
+	not authz.allow with input as comment_op(agent_a, "edit_comment", node7, c, c, lease_a)
+	not authz.allow with input as comment_op(user, "edit_comment", node7, c, c, null)
+	authz.allow with input as comment_op(user, "resolve_comment", node7, c, object.union(c, {"resolved": true}), null)
+	authz.allow with input as comment_op(agent_a, "resolve_comment", node7, c, object.union(c, {"resolved": true}), lease_a)
+	d := authz.decision with input as comment_op(user, "edit_comment", node7, c, c, null)
+	"only the author of comment c7 may edit it" in d.reasons
+}
+
 # The decision.
 
 test_unknown_action_is_denied if {

@@ -61,6 +61,10 @@ type Op struct {
 	ReopenNode   *ReopenNode   `json:"reopen_node,omitempty"`
 	AddEdge      *AddEdge      `json:"add_edge,omitempty"`
 	RemoveEdge   *RemoveEdge   `json:"remove_edge,omitempty"`
+
+	AddComment     *AddComment     `json:"add_comment,omitempty"`
+	EditComment    *EditComment    `json:"edit_comment,omitempty"`
+	ResolveComment *ResolveComment `json:"resolve_comment,omitempty"`
 }
 
 // Name is the operation's name as events record it, or empty when no
@@ -81,13 +85,19 @@ func (o Op) Name() string {
 		return OpAddEdge
 	case o.RemoveEdge != nil:
 		return OpRemoveEdge
+	case o.AddComment != nil:
+		return OpAddComment
+	case o.EditComment != nil:
+		return OpEditComment
+	case o.ResolveComment != nil:
+		return OpResolveComment
 	}
 	return ""
 }
 
 // validate rejects an operation that cannot be applied however the graph
-// stands: no operation set, a body over its ceiling, or a transition
-// missing the reason it must carry.
+// stands: no operation set, a body missing or over its ceiling, or a
+// transition missing the reason it must carry.
 func (o Op) validate(l Limits) error {
 	switch {
 	case o.Name() == "":
@@ -102,6 +112,10 @@ func (o Op) validate(l Limits) error {
 		return o.CompleteNode.validate(l)
 	case o.ReopenNode != nil && o.ReopenNode.Reason == "":
 		return ErrReasonRequired
+	case o.AddComment != nil:
+		return validateCommentBody(o.AddComment.Body, l)
+	case o.EditComment != nil:
+		return validateCommentBody(o.EditComment.Body, l)
 	}
 	return nil
 }
@@ -115,6 +129,7 @@ const (
 	OpReopenNode   = "reopen_node"
 	OpAddEdge      = "add_edge"
 	OpRemoveEdge   = "remove_edge"
+	// Comment operations are named in comment.go.
 )
 
 // CreateNode creates a node. The server assigns its id and number; later
@@ -247,6 +262,12 @@ type Result struct {
 	// Aliases maps each alias a create_node declared to the `slug#number`
 	// reference of the node it created.
 	Aliases map[string]string `json:"aliases"`
+	// Comments is every comment the patch added or changed, in
+	// first-touched order, as it stands after the patch.
+	Comments []store.Comment `json:"comments"`
+	// CommentAliases maps each alias an add_comment declared to the id of
+	// the comment it created.
+	CommentAliases map[string]string `json:"comment_aliases"`
 	// Events are the events the patch wrote, in operation order.
 	Events []store.Event `json:"events"`
 	// Replayed reports that this is the stored response of an earlier
@@ -531,6 +552,11 @@ type applier struct {
 	nodes   []store.Node
 	index   map[string]int
 	aliases map[string]string
+	// comments are the comments the patch added or changed, and
+	// commentAliases the names add_comment operations bound to theirs.
+	comments       []store.Comment
+	commentIndex   map[string]int
+	commentAliases map[string]string
 }
 
 func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, p Patch) (*applier, error) {
@@ -547,6 +573,7 @@ func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID stri
 		resolver: NewResolver(tx, orgID, project),
 		created:  map[string]bool{}, fenced: map[string]bool{},
 		index: map[string]int{}, aliases: map[string]string{},
+		commentIndex: map[string]int{}, commentAliases: map[string]string{},
 	}
 	if p.LeaseID != "" {
 		lease, err := heldLease(ctx, tx, orgID, actor, p.LeaseID)
@@ -680,6 +707,12 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 		return a.addEdge(ctx, op.AddEdge)
 	case op.RemoveEdge != nil:
 		return a.removeEdge(ctx, op.RemoveEdge)
+	case op.AddComment != nil:
+		return a.addComment(ctx, op.AddComment)
+	case op.EditComment != nil:
+		return a.editComment(ctx, op.EditComment)
+	case op.ResolveComment != nil:
+		return a.resolveComment(ctx, op.ResolveComment)
 	}
 	return errors.New("no operation set")
 }
@@ -998,9 +1031,12 @@ func (a *applier) projectOf(id string) string {
 }
 
 func (a *applier) result() *Result {
-	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Events: a.events}
+	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Comments: a.comments, CommentAliases: a.commentAliases, Events: a.events}
 	if r.Nodes == nil {
 		r.Nodes = []store.Node{}
+	}
+	if r.Comments == nil {
+		r.Comments = []store.Comment{}
 	}
 	if r.Events == nil {
 		r.Events = []store.Event{}

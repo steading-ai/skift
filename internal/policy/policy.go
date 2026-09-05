@@ -102,12 +102,25 @@ type Lease struct {
 	Holder string `json:"holder"`
 }
 
+// Comment is a comment as policy sees it.
+type Comment struct {
+	ID     string `json:"id"`
+	NodeID string `json:"node_id"`
+	// Author is the principal that wrote it. Editing does not change it:
+	// the schema keeps one author per comment, so only the author edits.
+	Author    string  `json:"author"`
+	InReplyTo *string `json:"in_reply_to"`
+	Resolved  bool    `json:"resolved"`
+}
+
 // Resource is what an action applies to. One of Node and Edge is set;
-// Lease accompanies Node for lease actions.
+// Lease accompanies Node for lease actions, and Comment accompanies Node
+// for comment actions.
 type Resource struct {
-	Node  *Node  `json:"node,omitempty"`
-	Edge  *Edge  `json:"edge,omitempty"`
-	Lease *Lease `json:"lease,omitempty"`
+	Node    *Node    `json:"node,omitempty"`
+	Edge    *Edge    `json:"edge,omitempty"`
+	Lease   *Lease   `json:"lease,omitempty"`
+	Comment *Comment `json:"comment,omitempty"`
 }
 
 // Input is one authorization question. Action is the operation name as
