@@ -29,6 +29,16 @@ linters:
           deny:
             - pkg: github.com/ivy/dagger/internal/store
               desc: only the domain layer may import the store
+        # Interceptors authenticate and check methods. Resource-level
+        # authorization needs the resolved write set, which exists only
+        # inside the domain's transaction. See the Authorization section of
+        # docs/architecture.md.
+        no-policy-in-interceptors:
+          files:
+            - "**/internal/server/interceptor/**"
+          deny:
+            - pkg: github.com/ivy/dagger/internal/policy
+              desc: interceptors authenticate and check methods; resource authorization is the domain's, inside the transaction
     # Specs are Ginkgo. The testing package appears only in the suite
     # bootstrap file that hands control to Ginkgo.
     forbidigo:

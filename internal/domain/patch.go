@@ -161,6 +161,10 @@ type DropNode struct {
 	// Detail is free text expanding on the reason. Required when Reason
 	// is [DropOther], since the classification then says nothing.
 	Detail string `json:"detail,omitempty"`
+	// Cascade asserts the functionality is gone: every node this one
+	// transitively blocks is dropped in the same patch, each as its own
+	// operation, authorized and recorded like one the client wrote.
+	Cascade bool `json:"cascade,omitempty"`
 }
 
 // Drop reasons, as a drop_node classifies itself.
@@ -271,9 +275,12 @@ func (e *OpError) Unwrap() error { return e.Err }
 // one event.
 //
 // Every operation is authorized by pol once resolved, against the state it
-// produced, inside the transaction. A denial is a [*policy.DeniedError]
-// wrapped in the [*OpError] naming the operation, and rolls the patch back.
-// The events carry the version of the bundle that allowed them.
+// produced, inside the transaction: the operations the client wrote, and
+// the ones a cascade expanded them into. A denial is a [*Denial] wrapped in
+// the [*OpError] naming the client's operation, and rolls the patch back;
+// it is then recorded in policy_denials with the version of the bundle
+// that refused it. The events carry the version of the bundle that allowed
+// them.
 //
 // The actor is whatever the transport resolved, never anything the patch
 // carries. A patch with no actor, or with a transition missing its reason,
@@ -332,7 +339,7 @@ func Apply(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, auditDenial(ctx, s, orgID, actor, &p.RequestID, err)
 		}
 		return result, nil
 	}
@@ -780,12 +787,58 @@ func (a *applier) updateNode(ctx context.Context, op *UpdateNode) error {
 
 func (a *applier) dropNode(ctx context.Context, op *DropNode) error {
 	reason := op.eventReason()
-	return a.transition(ctx, OpDropNode, op.Node, &reason, func(n store.Node) error {
-		if n.Status == "dropped" {
-			return fmt.Errorf("node %s is already dropped", op.Node)
+	notDropped := func(ref string) func(store.Node) error {
+		return func(n store.Node) error {
+			if n.Status == "dropped" {
+				return fmt.Errorf("node %s is already dropped", ref)
+			}
+			return nil
 		}
+	}
+	resolved, err := a.resolver.Resolve(ctx, op.Node)
+	if err != nil {
+		return err
+	}
+	if err := a.transitionNode(ctx, OpDropNode, resolved.ID, op.Node, &reason, notDropped(op.Node), "dropped"); err != nil {
+		return err
+	}
+	if !op.Cascade {
 		return nil
-	}, "dropped")
+	}
+	// The subtree this node blocks, walked breadth-first over blocks
+	// edges. Each node it reaches is dropped as an operation of its own,
+	// so it is fenced, authorized, and recorded like one the client
+	// wrote; a node already dropped is passed over but still walked
+	// through, since what it blocks is still this node's subtree.
+	seen := map[string]bool{resolved.ID: true}
+	queue := []string{resolved.ID}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		edges, err := a.tx.ListEdgesOutOf(ctx, store.ListEdgesOutOfParams{OrgID: a.orgID, FromNode: id})
+		if err != nil {
+			return fmt.Errorf("read edges out of node %s: %w", id, err)
+		}
+		for _, e := range edges {
+			if e.Kind != "blocks" || seen[e.ToNode] {
+				continue
+			}
+			seen[e.ToNode] = true
+			queue = append(queue, e.ToNode)
+			node, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: e.ToNode})
+			if err != nil {
+				return fmt.Errorf("read node %s: %w", e.ToNode, err)
+			}
+			if node.Status == "dropped" {
+				continue
+			}
+			display := fmt.Sprintf("%s (blocked by %s)", e.ToNode, op.Node)
+			if err := a.transitionNode(ctx, OpDropNode, e.ToNode, display, &reason, notDropped(display), "dropped"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (a *applier) reopenNode(ctx context.Context, op *ReopenNode) error {
@@ -797,17 +850,23 @@ func (a *applier) reopenNode(ctx context.Context, op *ReopenNode) error {
 	}, "open")
 }
 
-// transition moves one node to a new status once check accepts its current
-// state, and records the move with its reason.
+// transition moves the node ref names to a new status once check accepts
+// its current state, and records the move with its reason.
 func (a *applier) transition(ctx context.Context, op, ref string, reason *string, check func(store.Node) error, status string) error {
 	resolved, err := a.resolver.Resolve(ctx, ref)
 	if err != nil {
 		return err
 	}
-	if err := a.fence(ctx, resolved.ID); err != nil {
+	return a.transitionNode(ctx, op, resolved.ID, ref, reason, check, status)
+}
+
+// transitionNode is transition on a resolved node. ref is how errors name
+// it.
+func (a *applier) transitionNode(ctx context.Context, op, id, ref string, reason *string, check func(store.Node) error, status string) error {
+	if err := a.fence(ctx, id); err != nil {
 		return err
 	}
-	before, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: resolved.ID})
+	before, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: id})
 	if err != nil {
 		return fmt.Errorf("read node %s: %w", ref, err)
 	}

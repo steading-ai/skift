@@ -8,6 +8,12 @@
 // which transport the request arrived over. Adding a transport is adding a
 // Resolver, and no handler changes. See the Principal section of
 // docs/domain-model.md and docs/adrs/002-connect-rpc-is-the-only-door.md.
+//
+// Interceptors authenticate and check what a principal may call, and
+// nothing finer. Which resources a request touches is unknown here: a
+// patch's aliases resolve and its cascades expand only when the domain
+// applies it, so resource-level authorization is the domain's, inside the
+// writing transaction. See the request path in docs/architecture.md.
 package interceptor
 
 import (

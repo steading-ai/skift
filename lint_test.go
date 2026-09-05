@@ -67,6 +67,23 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 		))
 	})
 
+	It("The interceptor no longer attempts resource-level authorization", func() {
+		By(`given an interceptor importing "internal/policy"`)
+		dir := checkout()
+		writeFile(dir, "internal/server/interceptor/authz.go",
+			"package interceptor\n\nimport \"github.com/ivy/dagger/internal/policy\"\n\n// Authorize decides on resources before the domain has resolved them.\nfunc Authorize() { _ = policy.LoadDefault }\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then the build fails naming the depguard rule")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(SatisfyAll(
+			ContainSubstring("internal/server/interceptor/authz.go"),
+			ContainSubstring("(depguard)"),
+		))
+	})
+
 	It("Generated code is current", func() {
 		By("given a modified proto file")
 		dir := checkout()

@@ -136,6 +136,21 @@ type Organization struct {
 	CreatedAt time.Time
 }
 
+type PolicyDenial struct {
+	ID             string
+	OrgID          string
+	ProjectID      *string
+	NodeID         *string
+	PrincipalID    string
+	PrincipalKind  string
+	IdentityScheme string
+	RequestID      *string
+	Op             string
+	Reasons        []string
+	PolicyVersion  string
+	OccurredAt     time.Time
+}
+
 type Principal struct {
 	ID        string
 	OrgID     string

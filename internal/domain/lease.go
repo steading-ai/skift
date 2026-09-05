@@ -210,7 +210,7 @@ func Claim(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string
 		case errors.Is(err, errClaimLost), isKeyConflict(err), isLiveLeaseConflict(err):
 			continue
 		case err != nil:
-			return nil, err
+			return nil, auditDenial(ctx, s, orgID, actor, &req.RequestID, err)
 		}
 		return claimed, nil
 	}
@@ -457,7 +457,7 @@ func leaseOp(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID stri
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, auditDenial(ctx, s, orgID, actor, &requestID, err)
 		}
 		return change, nil
 	}
@@ -510,7 +510,7 @@ func ExpireLeases(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, auditDenial(ctx, s, orgID, actor, nil, err)
 	}
 	return expired, nil
 }

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ivy/dagger/internal/policy"
@@ -10,23 +11,84 @@ import (
 
 // Every mutation is authorized by policy before its event is written, on
 // the resolved operation and against the state it produced, inside the
-// writing transaction. One denial rolls the whole patch back. The event
-// then carries the version of the bundle that allowed it. See the
-// Authorization section of docs/architecture.md.
+// writing transaction. One denial rolls the whole patch back, and is then
+// recorded in policy_denials with the version of the bundle that refused
+// it. The event an allowed mutation writes carries the version of the
+// bundle that allowed it. See the Authorization section of
+// docs/architecture.md.
+
+// Denial is the error a refused operation ends its transaction with. It
+// carries what the audit records once the transaction has rolled back,
+// and unwraps to the [*policy.DeniedError] the policy gave.
+type Denial struct {
+	// Op is the operation refused, as events name operations. It may be
+	// one the client never wrote, such as a drop a cascade produced.
+	Op string
+	// NodeID and ProjectID are the resolved target. The node may exist
+	// only in the transaction that rolled back.
+	NodeID    string
+	ProjectID string
+	// PolicyVersion is the bundle that refused it; empty when none was
+	// loaded.
+	PolicyVersion string
+	Err           *policy.DeniedError
+}
+
+func (d *Denial) Error() string { return d.Err.Error() }
+
+func (d *Denial) Unwrap() error { return d.Err }
+
+// reasons is what the audit records as why: the policy's reasons, or the
+// evaluation failure that stood in for a decision.
+func (d *Denial) reasons() []string {
+	if d.Err.Err != nil {
+		return []string{d.Err.Err.Error()}
+	}
+	return d.Err.Reasons
+}
 
 // authorize asks the policy whether the actor may perform op on the node,
 // given the change from before to after, and returns the version of the
 // bundle that allowed it. Anything the input cannot be built from is a
 // denial: an operation without a policy shape is not one that runs.
-func (r *recorder) authorize(ctx context.Context, op, nodeID string, before, after any) (string, error) {
+func (r *recorder) authorize(ctx context.Context, op, nodeID, projectID string, before, after any) (string, error) {
+	denial := &Denial{Op: op, NodeID: nodeID, ProjectID: projectID, PolicyVersion: r.policy.Version()}
 	in, err := r.policyInput(ctx, op, nodeID, before, after)
 	if err != nil {
-		return "", &policy.DeniedError{Action: op, Err: err}
+		denial.Err = &policy.DeniedError{Action: op, Err: err}
+		return "", denial
 	}
 	if err := r.policy.Authorize(ctx, in); err != nil {
-		return "", err
+		if !errors.As(err, &denial.Err) {
+			denial.Err = &policy.DeniedError{Action: op, Err: err}
+		}
+		return "", denial
 	}
 	return r.policy.Version(), nil
+}
+
+// auditDenial records the denial err carries, if it carries one, in a
+// transaction of its own: the one it ended has rolled back, and a record
+// inside it would have gone with it. Any other error passes through. A
+// denial whose record could not be written is still a denial, reported
+// with the audit failure joined on.
+func auditDenial(ctx context.Context, s *store.Store, orgID string, actor Actor, requestID *string, err error) error {
+	var d *Denial
+	if !errors.As(err, &d) {
+		return err
+	}
+	audit := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+		_, err := tx.CreatePolicyDenial(ctx, store.CreatePolicyDenialParams{
+			ID: newULID(), OrgID: orgID, ProjectID: optional(d.ProjectID), NodeID: optional(d.NodeID),
+			PrincipalID: actor.PrincipalID, PrincipalKind: actor.PrincipalKind, IdentityScheme: actor.IdentityScheme,
+			RequestID: requestID, Op: d.Op, Reasons: d.reasons(), PolicyVersion: d.PolicyVersion,
+		})
+		return err
+	})
+	if audit != nil {
+		return errors.Join(err, fmt.Errorf("audit denial of %s: %w", d.Op, audit))
+	}
+	return err
 }
 
 // policyInput builds the policy's view of one operation from the typed

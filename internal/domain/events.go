@@ -75,7 +75,7 @@ func (r *recorder) event(ctx context.Context, op, nodeID, projectID string, reas
 	if requiresReason(op) && (reason == nil || *reason == "") {
 		return fmt.Errorf("%s: %w", op, ErrReasonRequired)
 	}
-	version, err := r.authorize(ctx, op, nodeID, before, after)
+	version, err := r.authorize(ctx, op, nodeID, projectID, before, after)
 	if err != nil {
 		return err
 	}
