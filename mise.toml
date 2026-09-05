@@ -1,0 +1,11 @@
+# Tool versions for dagger.
+#
+# The harness that builds this project runs on Python. The project itself is Go;
+# the Go toolchain is added by backlog node 2 and this file is extended, not
+# replaced.
+
+[tools]
+python = "3.14.7"
+
+[env]
+_.python.venv = { path = "harness/.venv", create = true }

@@ -1,0 +1,14 @@
+# Harness runtime
+harness/.venv/
+harness/logs/
+harness/STOP
+
+# Local research checkouts
+research/
+
+# Build output
+/dg
+/dist
+
+# Local environment
+.env

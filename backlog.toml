@@ -1,0 +1,1914 @@
+# Dagger's backlog, expressed in dagger's own domain model.
+#
+# Each node is a work order for an agent starting with an empty context window.
+# It states what to build, what "done" means, and the scenarios the test suite
+# must encode. Read the referenced docs before starting a node.
+#
+#   scripts/ready.py            what can be worked now
+#   scripts/ready.py --all      what cannot, and why
+#   scripts/ready.py --show 14  the full work order for one node
+#
+# Conventions for an agent working this backlog:
+#   - `parent` is containment, `blocked_by` is dependency
+#   - a node with open children is not ready; it is a grouping node
+#   - never claim a node with assignee_kind = "user"; that is a human's
+#   - specs are Ginkgo/Gomega; the Scenarios below are the required coverage
+#   - every node ends green: `make lint && make test`
+
+[project]
+slug = "dagger"
+title = "Dagger"
+priority = "p1"
+
+# ============================================================== foundations
+
+[[nodes]]
+number = 1
+title = "Foundations"
+body = "Repository, toolchain, database, and the test harness every other node assumes."
+
+[[nodes]]
+number = 2
+parent = 1
+priority = "p0"
+title = "Go module, tool versions, and Makefile"
+body = '''
+## Context
+
+Greenfield Go repository. See docs/adrs/007-core-tech-stack.md for the chosen
+stack and why. This node establishes the build so every later node has a
+`make test` to run.
+
+## Deliverables
+
+- `go.mod` — module `github.com/ivy/dagger`, Go 1.25
+- `mise.toml` — pin go, buf, sqlc, goose, golangci-lint, hk
+- `Makefile` — `build`, `test`, `test-unit`, `test-db`, `lint`, `generate`
+- `.gitignore`, `.editorconfig`
+- `cmd/dg/main.go` — cobra root command that prints version and exits 0
+- `internal/version/version.go` — version injected via ldflags
+
+## Acceptance criteria
+
+- [ ] `mise install` bootstraps every tool with no system packages beyond podman
+- [ ] `make build` produces `./dg`
+- [ ] `./dg --version` prints a semver-shaped string
+- [ ] `make test` passes with zero specs
+- [ ] `make test-unit` and `make test-db` exist and differ by Ginkgo label filter
+
+## Scenarios
+
+```gherkin
+Scenario: The binary reports its version
+  Given a build produced by "make build"
+  When I run "dg --version"
+  Then the output contains a semantic version
+  And the exit code is 0
+
+Scenario: The binary is a single entry point
+  When I run "dg --help"
+  Then the output lists subcommands
+  And no subcommand is implemented yet beyond version
+```
+
+## Notes
+
+One binary, three faces: `dg` the CLI, `dg mcp` the stdio MCP server, `dg serve`
+the service. See docs/architecture.md. Wire the cobra tree now so later nodes
+attach commands rather than restructuring.
+'''
+
+[[nodes]]
+number = 3
+parent = 1
+blocked_by = [2]
+priority = "p0"
+title = "PostgreSQL via podman compose"
+body = '''
+## Context
+
+Dagger stores everything in PostgreSQL. See docs/adrs/001-relational-tables-over-graph-database.md.
+Development runs against a real database, never a fake, because the interesting
+behaviour is row locking and recursive queries.
+
+## Deliverables
+
+- `compose.yaml` — one PostgreSQL 18 service, named volume, exposed on 5432
+- `.env.example` — connection string and credentials for local development
+- `Makefile` targets `db-up`, `db-down`, `db-reset`
+- `docs/how-to/develop.md` — how to bring the database up and run the suite
+
+## Acceptance criteria
+
+- [ ] `podman compose up -d` starts PostgreSQL and it accepts connections
+- [ ] `make db-reset` drops and recreates the development database
+- [ ] The compose file pins an image digest, not a floating tag
+- [ ] No credential is committed; `.env` is gitignored and `.env.example` is not
+
+## Scenarios
+
+```gherkin
+Scenario: The development database starts from nothing
+  Given no running containers
+  When I run "make db-up"
+  Then PostgreSQL accepts a connection on the configured port within 30 seconds
+
+Scenario: Reset returns the database to empty
+  Given a database containing rows
+  When I run "make db-reset"
+  Then the database exists and contains no application tables
+```
+
+## Notes
+
+Rootless podman. Tests use testcontainers rather than this compose stack; this
+is for interactive development and for running the service locally.
+'''
+
+[[nodes]]
+number = 4
+parent = 1
+blocked_by = [2]
+title = "Lint, package boundaries, and pre-commit hooks"
+body = '''
+## Context
+
+Two lint rules carry architectural decisions rather than style. See
+docs/adrs/007-core-tech-stack.md and docs/architecture.md.
+
+## Deliverables
+
+- `.golangci.yml` with, at minimum, govet, staticcheck, errcheck, revive,
+  depguard, forbidigo
+- `hk.pkl` running lint and unit tests pre-commit
+- `Makefile` target `lint`
+
+## Acceptance criteria
+
+- [ ] depguard denies any import of `internal/store` from outside `internal/domain`
+- [ ] forbidigo denies importing `testing` outside files matching `*_suite_test.go`
+- [ ] `make lint` passes on the current tree
+- [ ] A deliberate violation of each rule fails the build
+
+## Scenarios
+
+```gherkin
+Scenario: Handlers may not reach the store directly
+  Given a file under "internal/server" importing "internal/store"
+  When I run "make lint"
+  Then the build fails naming the depguard rule
+
+Scenario: Specs stay in Ginkgo
+  Given a test file that is not a suite bootstrap importing "testing"
+  When I run "make lint"
+  Then the build fails naming the forbidigo rule
+```
+
+## Notes
+
+The depguard rule is what keeps a second storage backend possible. Handlers hold
+no graph logic and reach the database through the domain layer or not at all.
+'''
+
+[[nodes]]
+number = 5
+parent = 1
+blocked_by = [3]
+priority = "p0"
+title = "Ginkgo suites and a testcontainers PostgreSQL harness"
+body = '''
+## Context
+
+Every meaningful test in this project touches PostgreSQL: readiness anti-joins,
+cycle detection, and claims under concurrency cannot be tested against a fake.
+This node builds the harness the rest of the backlog depends on.
+
+## Deliverables
+
+- `internal/testsupport/postgres.go` — starts one PostgreSQL container per test
+  run, applies migrations, and hands each spec an isolated database
+- Suite bootstrap files for the packages that exist so far
+- Ginkgo label `db` on specs requiring the container
+
+## Acceptance criteria
+
+- [ ] The container starts once per `go test` invocation, not once per spec
+- [ ] Each spec receives a database with no rows left by another spec
+- [ ] `make test-unit` runs with the label filter excluding `db` and needs no container
+- [ ] `make test-db` runs only the labelled specs
+- [ ] Specs run in parallel without interfering
+
+## Scenarios
+
+```gherkin
+Scenario: Specs are isolated from one another
+  Given two specs that both insert a project with the same slug
+  When the suite runs them in parallel
+  Then both succeed
+
+Scenario: Unit tests need no container
+  Given podman is not running
+  When I run "make test-unit"
+  Then the suite passes
+```
+
+## Notes
+
+Isolation by database-per-spec or schema-per-spec, whichever is faster in
+practice. Migrations run once against a template and are cloned per spec if that
+proves quicker than re-running them.
+'''
+
+# ================================================================= contract
+
+[[nodes]]
+number = 6
+title = "Contract"
+body = "The dagger.v1 proto package. It is the domain model, so everything downstream is generated from it."
+
+[[nodes]]
+number = 7
+parent = 6
+blocked_by = [2]
+priority = "p0"
+title = "Proto: domain messages"
+body = '''
+## Context
+
+The proto package is the domain model, not a serialization detail. See
+docs/adrs/002-connect-rpc-is-the-only-door.md and docs/domain-model.md, which is
+the authority for every field below.
+
+## Deliverables
+
+`proto/dagger/v1/dagger.proto` containing at least:
+
+- `Project` — id, org_id, slug, title, priority, node_counter is server-only,
+  archived_at, created_at
+- `Node` — id, number, org_id, project_id, parent_id, kind, title, body, status,
+  priority, assignee_kind, assignee, labels, context_id, created_at;
+  plus derived read-only fields: blocked, ready, claimed, human_touched
+- `Edge` — from, to, kind
+- `Lease` — id, node_id, holder, on_behalf_of, harness, agent_ref, session_ref,
+  expires_at, release_reason
+- `Principal` — id, org_id, kind
+- `Result` — body, artifacts
+- `Artifact` — name, description, parts, metadata
+- `Part` — oneof: text, blob, reference; each carrying digest, media_type, size
+- `Comment` — id, node_id, author, body, in_reply_to, resolved_at, resolved_by, revisions
+- `Usage` — node_id, lease_id, principal, model, token counts, kind, basis, created_at
+- `Event` — id, org_id, project_id, node_id, principal, principal_kind,
+  on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at
+- Enums: `Status`, `Priority`, `AssigneeKind`, `PrincipalKind`, `EdgeKind`,
+  `ReleaseReason`, `DropReason`
+
+## Acceptance criteria
+
+- [ ] `buf lint` passes with the default plus comments rules
+- [ ] Every message and field carries a comment stating its meaning
+- [ ] Enums have an `_UNSPECIFIED = 0` member
+- [ ] Server-assigned fields are commented as output-only
+- [ ] No field allows a client to assert provenance: principal fields are output-only
+
+## Scenarios
+
+```gherkin
+Scenario: Provenance cannot be asserted by a client
+  Given the generated request messages
+  When I inspect every field a client may set
+  Then no field sets principal, principal_kind, on_behalf_of, or identity_scheme
+```
+
+## Notes
+
+`on_behalf_of` is defined but not honored in this release; see the Delegation
+section of docs/domain-model.md. Define it so shapes do not change later.
+'''
+
+[[nodes]]
+number = 8
+parent = 6
+blocked_by = [7]
+priority = "p0"
+title = "Proto: service definitions"
+body = '''
+## Context
+
+Three services over one contract. See docs/domain-model.md for semantics and
+docs/architecture.md for where each is served.
+
+## Deliverables
+
+Add to `proto/dagger/v1/`:
+
+`GraphService`
+- `ApplyPatch(ApplyPatchRequest) returns (ApplyPatchResponse)`
+- `GetNode`, `ListNodes`, `Explain`, `Search`
+- `CreateProject`, `GetProject`, `ListProjects`, `ArchiveProject`
+
+`WorkService`
+- `Ready(ReadyRequest) returns (ReadyResponse)`
+- `ClaimNext(ClaimNextRequest) returns (ClaimNextResponse)` — waits up to a deadline
+- `Heartbeat`, `Release`
+
+`EventService`
+- `WatchEvents(WatchEventsRequest) returns (stream Event)`
+
+`ApplyPatchRequest` carries `request_id`, `project`, `lease_id` when the caller
+holds one, and a repeated `PatchOp`. `PatchOp` is a oneof over `create_node`,
+`update_node`, `drop_node`, `complete_node`, `reopen_node`, `add_edge`,
+`remove_edge`, `attach_artifact`, `add_comment`, `edit_comment`, `resolve_comment`.
+`create_node` carries `alias`, `parent`, and `blocked_by`.
+
+## Acceptance criteria
+
+- [ ] `buf lint` and `buf breaking` against an empty baseline both pass
+- [ ] A node reference is a single string type accepting `#7`, `slug#7`, `org/slug#7`, or an alias
+- [ ] `ClaimNextRequest` carries filters: project, kind, assignee_kind, labels, min priority, wait duration
+- [ ] `ClaimNextResponse` returns the node and its lease, including the lease id
+- [ ] `ExplainResponse` returns structured reasons, not prose
+- [ ] Every mutating RPC carries an idempotency key
+
+## Scenarios
+
+```gherkin
+Scenario: A decomposition is expressible in one call
+  Given a patch that creates two nodes and links them
+  When I inspect the request message
+  Then the second node references the first by alias
+  And no node id from the server is required
+
+Scenario: Claiming returns a fencing token
+  When ClaimNext returns work
+  Then the response includes a lease id
+  And that lease id is required by ApplyPatch for that node
+```
+
+## Notes
+
+Deliberately one call for all graph mutation. Claim, heartbeat, and release are
+lease operations rather than graph operations, so they are separate.
+'''
+
+[[nodes]]
+number = 9
+parent = 6
+blocked_by = [4, 8]
+title = "buf codegen and generated client wiring"
+body = '''
+## Context
+
+Generated code is checked in so a consumer of this repository needs no proto
+toolchain. See docs/adrs/007-core-tech-stack.md.
+
+## Deliverables
+
+- `buf.yaml`, `buf.gen.yaml`, `buf.lock`
+- `gen/dagger/v1/...` — messages and Connect handlers and clients
+- `Makefile` target `generate`, and a `make lint` check that generated code is current
+
+## Acceptance criteria
+
+- [ ] `make generate` is deterministic; running twice leaves the tree unchanged
+- [ ] CI fails if generated code is stale relative to the proto
+- [ ] The generated Connect client compiles against a unix socket transport
+
+## Scenarios
+
+```gherkin
+Scenario: Generated code is current
+  Given a modified proto file
+  When I run "make lint"
+  Then the build fails saying generated code is stale
+```
+'''
+
+# =============================================================== data layer
+
+[[nodes]]
+number = 10
+title = "Data layer"
+body = "Schema and generated queries. Tenancy and the readiness anti-join are decided here."
+
+[[nodes]]
+number = 11
+parent = 10
+blocked_by = [3]
+priority = "p0"
+title = "Migrations: organizations, projects, principals, identities"
+body = '''
+## Context
+
+See the Project and Principal sections of docs/domain-model.md. Identity is
+separate from principal so one person reaching dagger over a unix socket and
+over the tailnet is one principal, and adding a transport inserts a row rather
+than migrating.
+
+## Deliverables
+
+goose migrations under `internal/store/migrations/`:
+
+- `organizations` — id, name, created_at
+- `projects` — id, org_id, slug, title, priority, node_counter, archived_at,
+  created_at; unique on (org_id, slug); unique on (org_id, id) so child tables
+  can carry a composite foreign key
+- `project_slug_aliases` — retired slugs that still resolve, unique per org
+- `principals` — id, org_id, kind, created_at
+- `principal_identities` — principal_id, scheme, value; unique on (scheme, value)
+
+## Acceptance criteria
+
+- [ ] Slugs are bounded at 100 characters and stored lowercase
+- [ ] `node_counter` is a column, never a PostgreSQL sequence; per-project DDL
+      would make projects expensive and projects must be free
+- [ ] A retired slug resolves to the project that used to hold it
+- [ ] Every migration has a tested `down`
+
+## Scenarios
+
+```gherkin
+Scenario: One principal, several transport identities
+  Given a principal with a unix identity and a tailscale identity
+  When either identity is resolved
+  Then the same principal id is returned
+
+Scenario: Renaming a project keeps old references working
+  Given a project with slug "oauth-spike" holding node 7
+  When the project is renamed to "oauth-migration"
+  Then "oauth-spike#7" still resolves to that node
+  And "oauth-migration#7" resolves to the same node
+
+Scenario: Slugs are unique within an organization only
+  Given two organizations
+  When each creates a project with slug "platform"
+  Then both succeed
+```
+'''
+
+[[nodes]]
+number = 12
+parent = 10
+blocked_by = [11]
+priority = "p0"
+title = "Migrations: nodes, edges, leases"
+body = '''
+## Context
+
+The core graph. Read the Node, Edge, Keys, and Lease sections of
+docs/domain-model.md first. Tenancy columns and the readiness indexes are the
+two things that are painful to change later.
+
+## Deliverables
+
+- `nodes` — id, number, org_id, project_id, parent_id, kind, title, body,
+  status, priority, assignee_kind, assignee, labels, context_id, created_at;
+  unique on (project_id, number); composite foreign key (org_id, project_id)
+  referencing projects (org_id, id)
+- `edges` — org_id, from_node, to_node, kind, created_at; primary key on
+  (from_node, to_node, kind)
+- `leases` — id, org_id, node_id, holder, on_behalf_of, harness, agent_ref,
+  session_ref, claimed_at, expires_at, released_at, release_reason
+- Indexes supporting: the readiness anti-join on edges by target, open children
+  by parent_id, and the live-lease lookup by node
+
+## Acceptance criteria
+
+- [ ] Inserting a node whose org_id does not match its project's org_id fails
+      at the database, not in application code
+- [ ] Many leases per node over time; at most one without `released_at` and
+      with `expires_at` in the future
+- [ ] `EXPLAIN` on the readiness query shows index usage, not a sequential scan,
+      with 10000 nodes in a project
+- [ ] Every migration has a tested `down`
+
+## Scenarios
+
+```gherkin
+Scenario: Tenancy mismatch is impossible
+  Given a project belonging to organization A
+  When a node is inserted claiming organization B and that project
+  Then the database rejects the insert
+
+Scenario: Lease history is retained
+  Given a node that has been claimed and released three times
+  When I read its leases
+  Then three rows exist
+  And at most one is live
+```
+
+## Notes
+
+Do not add `blocked` or `ready` columns. Both are derived; see principle 1 in
+docs/core-principles.md.
+'''
+
+[[nodes]]
+number = 13
+parent = 10
+blocked_by = [12]
+title = "Migrations: events, usage, comments, artifacts"
+body = '''
+## Context
+
+See the Event, Usage, Comment, and Artifact sections of docs/domain-model.md.
+Events are time-partitioned from the first migration because retrofitting
+partitioning to a large table is painful.
+
+## Deliverables
+
+- `events` — id, org_id, project_id, node_id, principal_id, principal_kind,
+  on_behalf_of, identity_scheme, request_id, op, reason, before, after,
+  occurred_at; partitioned by occurred_at
+- A partition management routine and at least the current and next partition
+- `usage` — node_id, lease_id, principal, model, four token counts, kind, basis, created_at
+- `comments` — id, node_id, author, body, in_reply_to, resolved_at, resolved_by, created_at
+- `comment_revisions` — comment_id, body, author, created_at
+- `artifacts` and `artifact_parts` — name, description, metadata; parts carry
+  kind, inline text or blob digest or reference URI, media_type, size
+- `blobs` — digest, media_type, size, backend, created_at
+- `idempotency_keys` — org_id, request_id, request_hash, response, created_at
+
+## Acceptance criteria
+
+- [ ] Events are append-only: an update or delete trigger raises
+- [ ] A partition exists for the current period and is created ahead of need
+- [ ] Full-text index on node title, node body, comment body, and result body
+- [ ] Digests are SHA-256, stored canonically
+- [ ] Replaying a request id with a different request hash is distinguishable
+      from replaying an identical one
+
+## Scenarios
+
+```gherkin
+Scenario: The audit record cannot be rewritten
+  Given an existing event row
+  When any statement updates or deletes it
+  Then the database raises an error
+
+Scenario: An estimate and an actual coexist for one node
+  Given a node estimated before work and reporting usage after
+  When I read its usage rows
+  Then both rows exist with different kinds
+  And the most recent estimate is identifiable
+```
+'''
+
+[[nodes]]
+number = 14
+parent = 10
+blocked_by = [4, 13]
+priority = "p0"
+title = "sqlc wiring and generated queries"
+body = '''
+## Context
+
+sqlc reads the goose migrations directly, so schema and queries have one source
+of truth. See docs/adrs/007-core-tech-stack.md.
+
+## Deliverables
+
+- `sqlc.yaml` pointing at the migrations directory and `internal/store/queries/`
+- `internal/store/` — generated code plus a hand-written `Store` type wrapping a
+  pgx pool and exposing transactions
+- `Makefile` target `generate` extended to run sqlc
+
+## Acceptance criteria
+
+- [ ] `make generate` is deterministic
+- [ ] CI fails when generated query code is stale
+- [ ] The store exposes a `WithTx` helper; every domain operation runs in one transaction
+- [ ] Every query is organization-scoped in static SQL, with no
+      caller-supplied predicate able to widen it
+
+## Scenarios
+
+```gherkin
+Scenario: Organization scoping is not optional
+  Given the generated query set
+  When I inspect every query returning nodes, edges, events, or comments
+  Then each contains an org_id predicate in its static SQL
+```
+
+## Notes
+
+The org predicate being static and unconditional is the isolation boundary from
+docs/adrs/006-provenance-not-authority.md. Policy narrows further; it never widens.
+'''
+
+# =================================================================== domain
+
+[[nodes]]
+number = 15
+title = "Domain"
+body = "Every rule that makes the graph a graph. Testable without a server, and where the invariants live."
+
+[[nodes]]
+number = 16
+parent = 15
+blocked_by = [14]
+title = "Node numbering and reference resolution"
+body = '''
+## Context
+
+See the Keys section of docs/domain-model.md. Numbers are per-project and start
+at 1 so a short-lived project stays legible.
+
+## Deliverables
+
+- `internal/domain/refs.go` — parse and resolve `#7`, `slug#7`, `org/slug#7`, and patch aliases
+- Block allocation of node numbers from `projects.node_counter` in one statement per patch
+
+## Acceptance criteria
+
+- [ ] A patch creating 40 nodes takes one counter update, not 40
+- [ ] Concurrent patches in one project never assign the same number
+- [ ] Resolution returns the node title so a caller can detect a wrong reference
+- [ ] An unresolvable reference is a typed error naming what was not found
+- [ ] Numbers are never reused, including after a drop
+
+## Scenarios
+
+```gherkin
+Scenario: Numbers are unique under concurrency
+  Given an empty project
+  When 20 patches each creating 5 nodes are applied concurrently
+  Then 100 nodes exist with numbers 1 through 100 and no duplicates
+
+Scenario: A fabricated reference fails loudly across projects
+  Given project "platform" has node 7 and project "spike" has none
+  When I resolve "spike#7"
+  Then resolution fails with a not-found error
+```
+
+## Notes
+
+Numbers are dense within a project, so a mistyped number can resolve to a real
+node. Returning the title on resolution is the mitigation; see the Keys section.
+'''
+
+[[nodes]]
+number = 17
+parent = 15
+blocked_by = [14]
+priority = "p0"
+title = "Cycle detection over the combined wait relation"
+body = '''
+## Context
+
+See the Acyclicity section of docs/domain-model.md. This is the invariant the
+whole system rests on, and checking the edge table alone is not enough.
+
+## Deliverables
+
+- `internal/domain/cycles.go` — recursive CTE over the union of `blocks` edges
+  and the implicit parent-waits-for-child relation
+- Parent acyclicity enforced in its own right
+
+## Acceptance criteria
+
+- [ ] Detection runs over the resulting graph of a whole patch, not per operation
+- [ ] The error names the cycle path in node references
+- [ ] A parent chain that loops is rejected
+- [ ] Detection is bounded by the connected component, not the project
+
+## Scenarios
+
+```gherkin
+Scenario: A direct cycle is rejected
+  Given node 1 blocks node 2
+  When a patch adds an edge from node 2 to node 1
+  Then the patch is rejected naming the cycle
+
+Scenario: A cycle formed only within a patch is rejected
+  Given an empty project
+  When one patch creates nodes A, B and C and edges A to B, B to C, C to A
+  Then the whole patch is rejected and no node is created
+
+Scenario: A parent cannot become its own ancestor
+  Given node 1 is the parent of node 2
+  When a patch sets node 1's parent to node 2
+  Then the patch is rejected
+
+Scenario: Containment and dependency deadlock is rejected
+  Given node 2 has parent node 1
+  When a patch adds an edge from node 1 to node 2
+  Then the patch is rejected
+  Because node 1 waits for its open child and node 2 waits for node 1
+```
+'''
+
+[[nodes]]
+number = 18
+parent = 15
+blocked_by = [16, 17]
+priority = "p0"
+title = "Patch application with forward references and concurrency control"
+body = '''
+## Context
+
+The central write path. Read the Patch section of docs/domain-model.md in full,
+including Concurrency and Forward references. Every graph mutation goes through
+here.
+
+## Deliverables
+
+- `internal/domain/patch.go` — apply a list of operations in one transaction
+- Alias resolution: `create_node` takes an alias usable by any later operation
+- Idempotency by `request_id`, with the stored response replayed on repeat
+- Transaction-scoped advisory lock keyed on the organization, taken only by
+  patches that mutate edges or parents
+
+## Acceptance criteria
+
+- [ ] A patch that creates and links nodes needs one call and one transaction
+- [ ] A failing operation rolls back every operation in the patch
+- [ ] The same request id with the same content returns the original response
+      and emits no second set of events
+- [ ] The same request id with different content is rejected as a conflict
+- [ ] Patches touching only node fields take no advisory lock
+
+## Scenarios
+
+```gherkin
+Scenario: Forward references resolve within one patch
+  Given an empty project
+  When a patch creates node A, creates node B blocked_by A, and adds an edge from B to A's parent
+  Then all operations commit together
+  And B is blocked by A
+
+Scenario: Two concurrent patches cannot form a cycle between them
+  Given nodes A and B with no edges
+  When one patch adds an edge from A to B and another adds an edge from B to A concurrently
+  Then exactly one commits
+  And the other is rejected
+  And the graph is acyclic
+
+Scenario: A crash mid-patch leaves no half graph
+  Given a patch creating five nodes where the fourth violates a constraint
+  When the patch is applied
+  Then no node from that patch exists
+
+Scenario: A retried patch does not duplicate work
+  Given a patch that committed but whose response was lost
+  When the client retries with the same request id and body
+  Then the original response is returned
+  And no additional nodes or events exist
+```
+
+## Notes
+
+The advisory lock is chosen over SERIALIZABLE with retries because it is
+trivially correct and needs no retry path. If it contends, narrow it later; that
+is measurable.
+'''
+
+[[nodes]]
+number = 19
+parent = 15
+blocked_by = [18]
+priority = "p0"
+title = "Event emission on every mutation"
+body = '''
+## Context
+
+See the Event section of docs/domain-model.md and
+docs/adrs/006-provenance-not-authority.md. Provenance is transport-resolved and
+never client-assertable; this node is where that becomes true in code.
+
+## Deliverables
+
+- `internal/domain/events.go` — one event per operation, written in the same
+  transaction as the mutation it records
+- Principal, principal kind, identity scheme, request id, op, reason, before and after
+- Derivation of `human_touched` on a node from its events
+
+## Acceptance criteria
+
+- [ ] Every patch operation produces exactly one event
+- [ ] Principal fields come from the request context, never from the request body
+- [ ] Events carry the patch's request id so one atomic patch is reconstructable
+- [ ] A transition without a reason where one is required is rejected
+
+## Scenarios
+
+```gherkin
+Scenario: A patch is reconstructable from its events
+  Given a patch of six operations
+  When I read the events for that request id
+  Then six events exist in operation order
+
+Scenario: A client cannot forge an author
+  Given a request whose body sets a principal field
+  When the patch is applied
+  Then the event records the transport-resolved principal
+  And the body's value is ignored
+
+Scenario: Dropping requires a reason
+  When a patch drops a node with no reason
+  Then the patch is rejected
+```
+'''
+
+[[nodes]]
+number = 20
+parent = 15
+blocked_by = [14]
+priority = "p0"
+title = "Readiness and Explain"
+body = '''
+## Context
+
+See the Readiness section of docs/domain-model.md. Readiness is derived and
+never stored. Explain is the same anti-join un-negated, and exists because of
+node limbo.
+
+## Deliverables
+
+- `internal/domain/ready.go` — the ready query and the explain query
+- Filters: project, kind, assignee kind, labels, minimum priority
+- Ordering by priority then age, within one project only
+
+## Acceptance criteria
+
+- [ ] A node is ready when open, unblocked, unleased, and has no open children
+- [ ] A `done` or `dropped` predecessor satisfies a blocking edge, except a gate
+- [ ] Unset assignee_kind is agent-eligible, never excluded from the ready set
+- [ ] An ordered query requires exactly one project
+- [ ] Explain returns structured reasons: blocking nodes, live lease with expiry,
+      waiting on a user
+- [ ] A node with no possible path to readiness is identifiable
+
+## Scenarios
+
+```gherkin
+Scenario: A grouping node is not work
+  Given node 1 with two open children
+  When I query the ready set
+  Then node 1 is not ready
+  And Explain says it has open children
+
+Scenario: A grouping node becomes claimable when its children close
+  Given node 1 whose children are all done
+  Then node 1 is ready
+
+Scenario: A dropped prerequisite unblocks its dependents
+  Given node 2 is blocked by node 1
+  When node 1 is dropped without cascade
+  Then node 2 is ready
+
+Scenario: A dropped gate does not unblock
+  Given node 2 is blocked by gate node 1
+  When node 1 is dropped
+  Then node 2 is not ready
+  And Explain still names node 1
+
+Scenario: An unassigned node is agent work
+  Given an open node with no assignee_kind
+  When an agent queries the ready set with no filters
+  Then the node is returned
+
+Scenario: Explain answers why not
+  Given a node blocked by two open nodes and one user-assigned node
+  When I call Explain
+  Then three structured reasons are returned
+```
+'''
+
+[[nodes]]
+number = 21
+parent = 15
+blocked_by = [19, 20]
+priority = "p0"
+title = "Leases with fencing, ClaimNext, heartbeat, release"
+body = '''
+## Context
+
+Read the Lease section of docs/domain-model.md in full, including Fencing. The
+fencing token prevents a silent wrong result and must exist from the first
+implementation, not be added later.
+
+## Deliverables
+
+- `internal/domain/lease.go`
+- Claim via `SELECT ... FOR UPDATE SKIP LOCKED` over the ready set
+- Lease id returned by claim and required on every subsequent write to that node
+- Server-bounded TTL, renewal on any write by the holder, explicit heartbeat
+- Release with a reason; expiry as an event
+- `ClaimNext` waits up to a caller-supplied deadline
+
+## Acceptance criteria
+
+- [ ] A write carrying no lease id, a stale lease id, or an expired lease is rejected
+- [ ] A requested TTL above the server ceiling is clamped, not rejected
+- [ ] Expiry returns the node to the ready set and writes an event
+- [ ] A waiting `ClaimNext` holds no open transaction, row lock, or dedicated connection
+- [ ] Concurrent claims never produce two live leases on one node
+
+## Scenarios
+
+```gherkin
+Scenario: A stale worker cannot complete reclaimed work
+  Given agent A holds a lease on node 7
+  And that lease expires and agent B claims node 7
+  When agent A completes node 7 with its old lease id
+  Then the write is rejected
+  And node 7 remains open and held by agent B
+
+Scenario: Exactly one claimant wins
+  Given one ready node
+  When 100 concurrent ClaimNext calls run
+  Then exactly one returns the node
+  And exactly one live lease exists
+
+Scenario: A lost claim response does not consume two nodes
+  Given two ready nodes
+  When a claim commits but its response is lost and the client retries with the same idempotency key
+  Then the same node and lease are returned
+  And the second node is still ready
+
+Scenario: Work in progress keeps its lease
+  Given a lease with a 60 second TTL
+  When the holder applies a patch to its node at 50 seconds
+  Then the lease expiry moves forward
+
+Scenario: Waiting does not exhaust the connection pool
+  Given a pool of 10 connections
+  When 50 clients call ClaimNext with a 30 second wait and no work exists
+  Then other queries continue to succeed
+```
+'''
+
+[[nodes]]
+number = 22
+parent = 15
+blocked_by = [19]
+title = "Completion, results, drop, and reopen"
+body = '''
+## Context
+
+See State changes, Completion and results, and Drop semantics in
+docs/domain-model.md. Results are what downstream agents read, so this is where
+graph resume becomes possible.
+
+## Deliverables
+
+- Completion carrying a markdown result body under the size cap plus artifacts
+- Drop carrying a reason and a cascade flag
+- Reopen carrying a reason, non-retroactive
+- A query returning the results and artifacts of a node's blocking predecessors
+
+## Acceptance criteria
+
+- [ ] Completing requires a live lease matching the fencing token
+- [ ] Cascading drop drops the blocked subtree in the same transaction
+- [ ] Non-cascading drop leaves dependents open and unblocked
+- [ ] Reopen does not alter descendants
+- [ ] Predecessor results are retrievable as the inputs to a node
+
+## Scenarios
+
+```gherkin
+Scenario: Downstream context comes from the graph
+  Given node 3 blocked by nodes 1 and 2, both done with results
+  When I fetch the inputs for node 3
+  Then both results and their artifacts are returned with their authors
+
+Scenario: Axing functionality takes the subtree
+  Given node 1 blocks nodes 2 and 3, and node 3 blocks node 4
+  When node 1 is dropped with cascade
+  Then nodes 1 through 4 are dropped in one transaction
+
+Scenario: Reopening does not un-complete descendants
+  Given node 1 is done and node 2, which it blocked, is also done
+  When node 1 is reopened
+  Then node 2 remains done
+```
+'''
+
+[[nodes]]
+number = 23
+parent = 15
+blocked_by = [18]
+title = "Fixed structural ceilings"
+body = '''
+## Context
+
+See the Limits section of docs/domain-model.md. These are not rate limits. They
+stop one request consuming the service and need no workload data.
+
+## Deliverables
+
+- `internal/domain/limits.go` with configurable ceilings and sane defaults
+- A PostgreSQL `statement_timeout` applied per transaction
+
+## Acceptance criteria
+
+- [ ] Operations per patch, nodes and edges per patch, body and result and
+      comment size, inline part size, blob size, lease TTL, and page size all bounded
+- [ ] Exceeding a ceiling fails cheaply before doing work, with a typed error
+      naming the limit and the value
+- [ ] A pathological recursive query is cut off by the statement timeout rather
+      than stalling the service
+
+## Scenarios
+
+```gherkin
+Scenario: An oversized patch fails cheaply
+  Given a patch with one more operation than the ceiling allows
+  When it is applied
+  Then it is rejected before any row is written
+  And the error names the limit
+
+Scenario: Limits are not rate limits
+  Given a principal applying many small patches in quick succession
+  Then none is rejected for frequency
+```
+'''
+
+[[nodes]]
+number = 24
+parent = 15
+blocked_by = [18]
+title = "Comments with revision history"
+body = '''
+## Context
+
+See the Comment section of docs/domain-model.md. Comments are content and their
+own entity, not a kind of event, because people edit, thread, and resolve them.
+
+## Deliverables
+
+- Add, edit, and resolve comment operations in the patch
+- Revisions retained on edit
+
+## Acceptance criteria
+
+- [ ] Editing preserves the prior body with its author and timestamp
+- [ ] Resolving records who resolved and when
+- [ ] Comment bodies are indexed for search
+- [ ] Every comment operation emits an event
+- [ ] Comment size is bounded by the ceiling
+
+## Scenarios
+
+```gherkin
+Scenario: An edited comment keeps its history
+  Given a comment edited twice
+  When I read it
+  Then the current body and two prior revisions are returned in order
+
+Scenario: A review thread reads in order
+  Given a comment and two replies
+  When I read the node
+  Then the thread is reconstructable from in_reply_to
+```
+'''
+
+[[nodes]]
+number = 25
+parent = 15
+blocked_by = [22, 23]
+title = "Artifacts: managed blobs and external references"
+body = '''
+## Context
+
+See the Artifact section of docs/domain-model.md and
+docs/adrs/003-artifacts-are-content-addressed.md. Dagger is the manifest, not
+the pipe.
+
+## Deliverables
+
+- `internal/domain/artifact.go` and `internal/store/blob/` with a `Backend` interface
+- A filesystem backend; object storage later behind the same interface
+- Parts: inline text, managed blob, external reference
+- Upload, finalize, and attach; orphan cleanup for unfinalized blobs
+
+## Acceptance criteria
+
+- [ ] Blobs are content-addressed by SHA-256 and immutable
+- [ ] Upload and attach are atomic: a partial upload never attaches
+- [ ] Identical bytes uploaded twice store once
+- [ ] A `git` reference records the resolved commit, not just the branch
+- [ ] Dagger never fetches a reference URI
+- [ ] Reference URIs are stored verbatim and returned marked as untrusted input
+
+## Scenarios
+
+```gherkin
+Scenario: A design agent hands work to a coding agent
+  Given an agent completes a node attaching an OCI reference with a digest
+  When a downstream agent fetches its inputs
+  Then the reference and digest are returned
+  And the caller can verify the bytes it pulls
+
+Scenario: Deduplication by content
+  Given two nodes attaching identical bytes
+  Then one blob row exists with a reference count of two
+
+Scenario: An interrupted upload attaches nothing
+  Given an upload that fails before finalize
+  Then no artifact references it
+  And the partial blob is reclaimable
+```
+
+## Notes
+
+Treat an agent-supplied URI as untrusted. Dagger does not fetch, so the SSRF
+surface belongs to consumers, but do not hand them a URI without saying so.
+'''
+
+[[nodes]]
+number = 26
+parent = 15
+blocked_by = [21]
+title = "Usage records and cost rollups"
+body = '''
+## Context
+
+See the Usage section of docs/domain-model.md. Counts, never currency.
+Estimates and actuals share a shape and both carry an author.
+
+## Deliverables
+
+- Report usage against a node and lease
+- Record an estimate with a principal and a basis
+- Subtree rollups of actual and estimate as recursive CTEs
+
+## Acceptance criteria
+
+- [ ] Usage attributes to the lease as well as the node, so a retry does not
+      collapse into the original attempt
+- [ ] Re-estimating retains the prior estimate; the current one is the most recent
+- [ ] Rollups are computed, never stored
+- [ ] No currency is stored anywhere
+
+## Scenarios
+
+```gherkin
+Scenario: Planning from actuals
+  Given three sibling nodes completed with recorded usage
+  When an agent estimates the remaining work
+  Then it can read actual usage grouped by model for the completed siblings
+
+Scenario: A retry is visible as a separate attempt
+  Given a node claimed twice, each attempt reporting usage
+  When I read its usage
+  Then two rows exist with different lease ids
+```
+'''
+
+[[nodes]]
+number = 27
+parent = 15
+blocked_by = [22, 24]
+title = "Lexical search"
+body = '''
+## Context
+
+See the Search section of docs/domain-model.md. Free projects trade a curation
+problem for a discovery problem, so search is not optional.
+
+## Deliverables
+
+- PostgreSQL full-text over node title, node body, result body, and comment body
+- Organization-scoped, policy-filtered, project-filterable
+
+## Acceptance criteria
+
+- [ ] Results never cross an organization
+- [ ] Archived projects are excluded by default and includable by flag
+- [ ] Ranking is stable and results carry a snippet
+- [ ] A search over 100000 nodes returns within a reasonable bound using the GIN index
+
+## Scenarios
+
+```gherkin
+Scenario: Finding an abandoned spike
+  Given a project archived six months ago containing a node about token stores
+  When I search for "token store" with archived projects included
+  Then the node is returned with a snippet
+
+Scenario: Search respects tenancy
+  Given two organizations each with a node titled "provision redis"
+  When a principal of one searches
+  Then only its own organization's node is returned
+```
+'''
+
+# =================================================================== policy
+
+[[nodes]]
+number = 28
+title = "Policy"
+body = "Who may do what. See docs/adrs/004-embedded-opa-authorization.md."
+
+[[nodes]]
+number = 29
+parent = 28
+blocked_by = [18]
+priority = "p0"
+title = "Embedded OPA and the default policy bundle"
+body = '''
+## Context
+
+Authorization is Rego evaluated in process, not a sidecar. See
+docs/adrs/004-embedded-opa-authorization.md and the Default policy section of
+docs/domain-model.md.
+
+## Deliverables
+
+- `internal/policy/` wrapping the Rego Go package, loading a bundle at startup
+- `policy/dagger.rego` implementing the default policy
+- `policy/dagger_test.rego` run by `opa test` in `make test`
+- Input shape: principal, action, resource, and proposed post-state
+
+## Acceptance criteria
+
+- [ ] A lease holder may mutate its own node and the children it creates, not
+      arbitrary descendants
+- [ ] A lease holder may add blocking edges into its own node
+- [ ] Edges out of a node require link permission on the target
+- [ ] Cross-project edges require write on the source and link on the target
+- [ ] Only a `user` principal may complete a gate
+- [ ] The principal that filed a gate may not drop, complete, reassign,
+      reclassify, or unlink it
+- [ ] Policy evaluation failure denies; it never falls open
+- [ ] The bundle version is recorded on every event resulting from an
+      authorized mutation
+
+## Scenarios
+
+```gherkin
+Scenario: An agent cannot edit a sibling
+  Given agent A holds a lease on node 7
+  And node 8 shares node 7's parent
+  When agent A patches node 8
+  Then the patch is denied
+
+Scenario: An agent can block itself
+  Given agent A holds a lease on node 7
+  When it creates a node and adds an edge from it into node 7
+  Then the patch is allowed
+
+Scenario: An agent cannot bypass its own gate
+  Given agent A filed gate node 9 blocking node 7
+  When agent A drops node 9
+  Then the operation is denied
+  And when agent A completes node 9
+  Then the operation is denied
+
+Scenario: A dropped gate is not approval
+  Given a user drops gate node 9 with reason "no longer relevant"
+  Then node 7 remains blocked
+
+Scenario: Policy failure is closed
+  Given a policy bundle that fails to compile
+  When any authorization is evaluated
+  Then it is denied
+```
+'''
+
+[[nodes]]
+number = 30
+parent = 28
+blocked_by = [29]
+priority = "p0"
+title = "Authorize the resolved patch inside its transaction"
+body = '''
+## Context
+
+Read the Authorization subsection of the Patch section in docs/domain-model.md
+and the request path in docs/architecture.md. This is a security invariant, not
+a layering preference.
+
+An interceptor cannot authorize a patch. Aliases are unresolved and cascades
+unexpanded until the domain applies it, so the effective write set is unknown
+until then. A patch could otherwise reach a node the caller may not touch.
+
+## Deliverables
+
+- Authorization of every effective operation after alias resolution and cascade
+  expansion, against the same transaction snapshot being written
+- Interceptor reduced to authentication and coarse method-level checks
+
+## Acceptance criteria
+
+- [ ] Every resolved operation is authorized, including operations produced by
+      a cascade rather than written by the client
+- [ ] One denial rolls back the entire patch
+- [ ] Denials are audited with the policy bundle version
+- [ ] The interceptor no longer attempts resource-level authorization
+
+## Scenarios
+
+```gherkin
+Scenario: A cascade cannot reach unauthorized work
+  Given node 1 blocks node 2, and the caller may not write node 2
+  When the caller drops node 1 with cascade
+  Then the whole patch is denied
+  And node 1 is not dropped
+
+Scenario: An alias cannot smuggle a write
+  Given a patch whose later operation targets a node the caller may not touch
+  When the patch is applied
+  Then nothing in the patch commits
+
+Scenario: Authorization sees the proposed state
+  Given a patch that would move a node into a project the caller cannot write
+  Then the patch is denied
+```
+'''
+
+# ================================================================== service
+
+[[nodes]]
+number = 31
+title = "Service"
+body = "Connect over unix and tailnet transports, with identity resolved by transport."
+
+[[nodes]]
+number = 32
+parent = 31
+blocked_by = [9]
+priority = "p0"
+title = "Connect server over a unix socket"
+body = '''
+## Context
+
+See docs/adrs/002-connect-rpc-is-the-only-door.md and docs/architecture.md.
+`dg serve` is the third face of the binary.
+
+## Deliverables
+
+- `internal/server/` — Connect handlers mounted on an HTTP server
+- Unix socket listener with configurable path and permissions
+- `dg serve` command, structured logging via `log/slog` to journald
+- Graceful shutdown draining in-flight requests and waiting claims
+
+## Acceptance criteria
+
+- [ ] The generated Connect client reaches the server over the socket
+- [ ] Socket file permissions restrict access to the intended group
+- [ ] Shutdown drains rather than dropping waiting `ClaimNext` calls
+- [ ] Health check endpoint reports database reachability
+
+## Scenarios
+
+```gherkin
+Scenario: A client on the same host connects
+  Given "dg serve" is running on a unix socket
+  When a client calls GetProject over that socket
+  Then a response is returned
+
+Scenario: Shutdown does not lose in-flight work
+  Given a client waiting in ClaimNext
+  When the server receives SIGTERM
+  Then the call returns cleanly rather than erroring
+  And no lease is left in an inconsistent state
+```
+'''
+
+[[nodes]]
+number = 33
+parent = 31
+blocked_by = [32]
+priority = "p0"
+title = "Principal resolution interceptor"
+body = '''
+## Context
+
+See the Principal section of docs/domain-model.md. One `Principal` type,
+resolvers per transport, handlers never see the transport.
+
+## Deliverables
+
+- `internal/server/interceptor/principal.go`
+- A `unix` resolver using `SO_PEERCRED` to map a uid to a principal identity
+- Typed error when no identity maps to a principal
+- Principal and identity scheme placed in the request context
+
+## Acceptance criteria
+
+- [ ] Handlers obtain the principal from context and never from the request body
+- [ ] An unmapped uid is rejected with an unauthenticated error
+- [ ] The identity scheme used is recorded and reaches the event
+- [ ] Adding a resolver requires no handler change
+
+## Scenarios
+
+```gherkin
+Scenario: Identity comes from the socket
+  Given a unix identity mapping uid 1001 to a principal
+  When a process running as uid 1001 calls the service
+  Then the request is attributed to that principal
+
+Scenario: An unknown caller is rejected
+  Given a process whose uid maps to no identity
+  When it calls any method
+  Then the call fails as unauthenticated
+```
+
+## Notes
+
+`SO_PEERCRED` distinguishes unix users, not agent instances. Several agents
+under one unix user share a principal, which matches how agent identity is
+already modelled as a host and unix user pair. Document this, do not fight it.
+'''
+
+[[nodes]]
+number = 34
+parent = 31
+blocked_by = [33]
+title = "Tailnet transport with tsnet"
+body = '''
+## Context
+
+Agents run on other machines, including a laptop. See
+docs/adrs/002-connect-rpc-is-the-only-door.md. This adds a second transport
+behind the same principal abstraction.
+
+## Deliverables
+
+- `internal/server/transport/tsnet.go` serving the same handlers over a tailnet
+- A `tailscale` identity resolver using `WhoIs`
+- Configuration for auth key, hostname, and tags
+- `dg` client transport selection: socket path or tailnet address
+
+## Acceptance criteria
+
+- [ ] The same handler set is served over both transports with no branching in handlers
+- [ ] A tailnet caller resolves to a principal via its tailscale identity
+- [ ] One principal may hold both a unix and a tailscale identity and be the same principal
+- [ ] The identity scheme recorded on events distinguishes the two
+
+## Scenarios
+
+```gherkin
+Scenario: The same person from two machines is one principal
+  Given a principal with a unix identity and a tailscale identity
+  When it calls over the socket and then over the tailnet
+  Then both calls attribute to the same principal
+  And the events record different identity schemes
+
+Scenario: A tailnet caller with no mapped identity is rejected
+  When an unmapped tailnet node calls the service
+  Then the call fails as unauthenticated
+```
+'''
+
+[[nodes]]
+number = 35
+parent = 31
+blocked_by = [20, 21, 22, 25, 26, 27, 30, 32]
+priority = "p0"
+title = "Handlers and wire mapping"
+body = '''
+## Context
+
+Handlers translate proto messages to domain types and back. They hold no graph
+logic; see docs/architecture.md and the depguard rule from node 4.
+
+## Deliverables
+
+- `internal/server/graph.go`, `work.go` implementing GraphService and WorkService
+- Mapping between wire and domain types in one place
+- Connect error codes mapped from typed domain errors
+
+## Acceptance criteria
+
+- [ ] No handler imports `internal/store`
+- [ ] Domain errors map to appropriate Connect codes: not found, permission
+      denied, failed precondition, aborted, resource exhausted
+- [ ] Output-only fields set by a client are ignored, never honored
+- [ ] Every RPC in the proto has a handler and a spec
+
+## Scenarios
+
+```gherkin
+Scenario: A rejected patch reports why
+  Given a patch forming a cycle
+  When it is applied over the wire
+  Then the response is a failed precondition naming the cycle path
+
+Scenario: A stale lease is reported distinctly
+  Given a write with an expired lease id
+  Then the response code distinguishes it from a permission denial
+```
+'''
+
+[[nodes]]
+number = 36
+parent = 31
+blocked_by = [19, 35]
+title = "WatchEvents change stream"
+body = '''
+## Context
+
+See the Change stream section of docs/domain-model.md. Consumers are the
+notifier, retrieval, and moderation. Orchestrators do not use this; they call
+`ClaimNext`.
+
+## Deliverables
+
+- `EventService.WatchEvents` server stream with an opaque resumable cursor
+- `LISTEN`/`NOTIFY` as a wake signal, with the events table as the transport
+- Policy filtering per consumer principal
+
+## Acceptance criteria
+
+- [ ] The cursor is opaque and carries a commit-ordered position, not a bare
+      event id; a transaction that takes a low id and commits late must not be skipped
+- [ ] A consumer that disconnects resumes without loss or duplication beyond
+      at-least-once
+- [ ] A cursor older than the retained partition window is rejected so the
+      consumer resynchronizes rather than silently skipping
+- [ ] Startup establishes the listener, then reads durable state, then waits;
+      a notification arriving during setup is not required for correctness
+- [ ] A policy-filtered interval still advances the cursor
+
+## Scenarios
+
+```gherkin
+Scenario: A late commit is not skipped
+  Given transaction A allocates an event id and pauses
+  And transaction B allocates a higher id and commits
+  And a consumer reads through B's position
+  When A commits
+  Then the consumer receives A's event
+
+Scenario: A consumer resumes after a restart
+  Given a consumer that processed 100 events and stopped
+  When it reconnects with its stored cursor
+  Then it receives event 101 onward and no earlier event
+
+Scenario: Missing a notification does not lose an event
+  Given a consumer connecting exactly as a transaction commits
+  Then a durable re-query after listening still returns the event
+```
+
+## Notes
+
+This is the finding recorded in docs/domain-model.md about ULIDs not being
+commit-ordered. Do not implement the naive last-id cursor.
+'''
+
+[[nodes]]
+number = 37
+parent = 31
+blocked_by = [21, 35]
+title = "systemd units and the lease reaper"
+body = '''
+## Context
+
+See docs/architecture.md. Lease expiry is the only background work in this
+release, and it is a timer rather than a queue.
+
+## Deliverables
+
+- `contrib/systemd/dagger.service` — socket-activated or simple, journald
+  logging, sd_notify readiness
+- `contrib/systemd/dagger.socket` if socket activation is used
+- `contrib/systemd/dagger-reap.service` and `.timer`
+- `dg reap` command expiring stale leases
+- `make install-units`
+
+## Acceptance criteria
+
+- [ ] `dg reap` is idempotent and safe to run concurrently with itself
+- [ ] Expiring a lease writes an event and returns the node to the ready set
+- [ ] The service reports readiness only after the database is reachable
+- [ ] Units are user units, matching the zone model where the service runs as
+      one unix account
+
+## Scenarios
+
+```gherkin
+Scenario: An abandoned lease is reclaimed
+  Given a lease whose expiry passed 10 minutes ago
+  When the reaper runs
+  Then the lease is released with reason "expired"
+  And the node is ready again
+
+Scenario: Two reapers do not double-release
+  When two reapers run concurrently against the same expired lease
+  Then exactly one release event is written
+```
+'''
+
+# ================================================================== clients
+
+[[nodes]]
+number = 38
+title = "Clients"
+body = "The CLI and the MCP server. Both are the same Connect client with different framing."
+
+[[nodes]]
+number = 39
+parent = 38
+blocked_by = [35]
+priority = "p0"
+title = "dg CLI"
+body = '''
+## Context
+
+The CLI is how a human and a shell-driven agent reach dagger. See
+docs/architecture.md: one binary, three faces, and the CLI and MCP server share
+a client.
+
+## Deliverables
+
+- `internal/client/` — a Connect client with transport selection
+- Commands: `project create|list|show|archive`, `node show`, `patch apply`,
+  `create`, `link`, `ready`, `explain`, `claim`, `heartbeat`, `release`,
+  `complete`, `comment`, `search`, `events`
+- `--output json` on every command, and JSON as the default when stdout is not a TTY
+- Config file and environment for socket path or tailnet address
+
+## Acceptance criteria
+
+- [ ] Every command emits machine-readable JSON so an agent can parse it
+- [ ] `dg patch apply -` reads a patch from stdin, which is how an agent writes a graph
+- [ ] Node references accept `#7`, `slug#7`, and `org/slug#7`
+- [ ] Errors exit non-zero with a structured JSON error on stderr
+- [ ] `dg ready --wait` blocks, implemented over `ClaimNext` semantics
+
+## Scenarios
+
+```gherkin
+Scenario: An agent decomposes work from a shell
+  Given a JSON patch on stdin creating two nodes and linking them
+  When I run "dg patch apply -"
+  Then the response lists both created nodes with their numbers
+  And the exit code is 0
+
+Scenario: Output is parseable when piped
+  When I run "dg ready" with stdout redirected to a file
+  Then the file contains valid JSON
+
+Scenario: A failed command is machine-readable
+  When I complete a node with an expired lease
+  Then stderr contains a JSON object with a code and message
+  And the exit code is non-zero
+```
+'''
+
+[[nodes]]
+number = 40
+parent = 38
+blocked_by = [39]
+priority = "p0"
+title = "dg mcp stdio server"
+body = '''
+## Context
+
+`dg mcp` is the same Connect client wrapped for a harness, so a Claude Code
+session is a first-class dagger client. See docs/architecture.md.
+
+## Deliverables
+
+- `dg mcp` speaking MCP over stdio
+- Tools covering: search, show node, explain, apply patch, ready, claim,
+  heartbeat, release, complete, comment
+- Tool descriptions written for a model: when to use each, and the reference syntax
+- Lease lifetime tied to the process: claim on demand, heartbeat in the
+  background, release on stdin EOF or SIGTERM
+
+## Acceptance criteria
+
+- [ ] The server starts, advertises its tools, and shuts down cleanly on EOF
+- [ ] A held lease is released on clean shutdown; expiry covers a hard kill
+- [ ] Tool inputs use the same reference syntax as the CLI
+- [ ] Errors return as tool errors with actionable text, not stack traces
+- [ ] Transport is configurable so a laptop session reaches the tailnet address
+
+## Scenarios
+
+```gherkin
+Scenario: A session claims and releases
+  Given the MCP server started with a configured transport
+  When the client claims a node and then closes stdin
+  Then the lease is released with a reason
+
+Scenario: A hard kill does not strand work
+  Given a claimed node
+  When the MCP process is killed without cleanup
+  Then the lease expires and the node returns to the ready set
+
+Scenario: Tool descriptions carry the reference syntax
+  When the client lists tools
+  Then the patch tool description shows an example using an alias
+```
+
+## Notes
+
+The MCP server never learns the harness session id, so the lease holder mints
+the context id. See the Placement and resume section of docs/domain-model.md.
+'''
+
+# ============================================================= verification
+
+[[nodes]]
+number = 41
+title = "Verification"
+body = "The suites that encode product requirements rather than implementation details."
+
+[[nodes]]
+number = 42
+parent = 41
+blocked_by = [18, 20]
+priority = "p0"
+title = "Property test: acyclicity and readiness equivalence"
+body = '''
+## Context
+
+The invariant the whole system rests on, stated as a property rather than as
+examples. See docs/adrs/007-core-tech-stack.md for why `rapid` is in the stack.
+
+## Deliverables
+
+- `internal/domain/properties_test.go` using `pgregory.net/rapid`
+- A generator producing random valid patches: creates, links, drops, completes,
+  reopens, reparents
+
+## Acceptance criteria
+
+- [ ] After any accepted sequence of patches the graph is acyclic over the
+      combined wait relation
+- [ ] After any accepted sequence, the ready view equals a from-scratch
+      recomputation from nodes, edges, parents, and leases
+- [ ] Rejected patches leave the graph byte-identical to before
+- [ ] A shrunk counterexample is reported as a readable patch sequence
+
+## Scenarios
+
+```gherkin
+Scenario: Randomized graphs stay acyclic
+  Given 1000 random patch sequences
+  Then no accepted sequence produces a cycle
+
+Scenario: Derived state never drifts
+  Given 1000 random patch sequences
+  Then the ready query result matches an independent recomputation every time
+```
+'''
+
+[[nodes]]
+number = 43
+parent = 41
+blocked_by = [21, 30]
+priority = "p0"
+title = "Concurrency and failure suite"
+body = '''
+## Context
+
+These are product invariants, not implementation tests. Each corresponds to a
+failure that is silent if unhandled. Run against real PostgreSQL.
+
+## Acceptance criteria
+
+Every scenario below passes reliably, not flakily, under `make test-db`.
+
+## Scenarios
+
+```gherkin
+Scenario: Opposite edges cannot both commit
+  When two concurrent patches add an edge from A to B and from B to A
+  Then exactly one commits and the graph is acyclic
+
+Scenario: One winner among many claimants
+  Given exactly one ready node
+  When 100 clients call ClaimNext concurrently
+  Then exactly one lease exists and 99 callers see no work
+
+Scenario: A fenced write rejects a stale attempt
+  Given attempt 1 expired and attempt 2 claimed the node
+  When attempt 1 heartbeats, patches, or completes
+  Then every such call is rejected and the node is unchanged
+
+Scenario: Claiming races a new blocker
+  Given a node about to be claimed
+  When a patch adds a blocker concurrently
+  Then either the claim wins and the patch is rejected, or the patch wins and
+  the claim returns no work
+  And no lease exists on a node that is not ready
+
+Scenario: Idempotent retry after a lost response
+  Given a patch and a claim whose responses were lost
+  When each is retried with the same idempotency key
+  Then the original results are returned and no duplicate rows or events exist
+
+Scenario: Restart leaves no torn state
+  When the service is killed during claim, patch, complete, and reap
+  Then each operation is observably either fully applied or not applied
+
+Scenario: Tenancy holds under every read path
+  Given two organizations with similar data
+  Then node references, search, explain, events, and blob digests from one
+  reveal neither content nor existence to the other
+```
+'''
+
+[[nodes]]
+number = 44
+parent = 41
+blocked_by = [36, 37, 40, 42, 43]
+priority = "p0"
+title = "End-to-end acceptance suite"
+body = '''
+## Context
+
+The product requirements as executable scenarios, run against a real service
+over a real transport. This is what proves the system is usable end to end
+without a frontend.
+
+## Deliverables
+
+- `tests/acceptance/` — Ginkgo suite starting `dg serve` against a
+  testcontainers database and driving it through the CLI and the MCP server
+
+## Acceptance criteria
+
+- [ ] The suite runs from a clean database with one command
+- [ ] It exercises both transports
+- [ ] It uses only public interfaces: no direct database access
+
+## Scenarios
+
+```gherkin
+Scenario: A project from nothing to a completed chain
+  Given an empty database
+  When I create a project and apply a patch creating a spike and two dependent tasks
+  Then only the spike is ready
+  When an agent claims the spike, completes it with a result and an artifact
+  Then both tasks become ready
+  When both are claimed and completed
+  Then the parent node becomes ready for synthesis
+
+Scenario: An agent discovers a prerequisite mid-task
+  Given an agent holding a lease on a node
+  When it applies a patch creating a prerequisite and blocking itself on it
+  Then its node is no longer ready
+  And the prerequisite is ready
+
+Scenario: An agent needs a human
+  Given an agent holding a lease
+  When it files a user-assigned gate and releases in one operation
+  Then the lease is released with reason "gate"
+  And the gate appears in the ready set filtered to user work
+  And the agent's node is blocked
+  When the gate is completed by a user principal
+  Then the agent's node is ready again
+
+Scenario: A gate cannot be bypassed
+  Given an agent blocked by a gate it filed
+  When it attempts to drop, complete, reassign or unlink that gate
+  Then every attempt is denied and its node stays blocked
+
+Scenario: Work resumes on the same agent when possible
+  Given a node whose previous lease recorded an agent_ref
+  When it is claimed again
+  Then the previous agent_ref is readable so an orchestrator can prefer it
+
+Scenario: A retrieval consumer follows the graph
+  Given a consumer watching events from a cursor
+  When nodes, comments and results are written
+  Then it receives every event once, resumes after a restart, and can rebuild
+  the current state from what it received
+
+Scenario: A laptop session works over the tailnet
+  Given the MCP server configured against the tailnet address
+  When a session claims, comments, and completes a node
+  Then the events record the tailscale identity scheme
+
+Scenario: Search finds work across projects
+  Given nodes in three projects including one archived
+  When I search a term appearing in all three
+  Then results from the two active projects are returned by default
+```
+'''
+
+[[nodes]]
+number = 45
+parent = 41
+blocked_by = [44]
+assignee_kind = "user"
+priority = "p0"
+title = "Human review and acceptance of the release"
+body = '''
+## Context
+
+Terminal node. A gate exists here to demonstrate the mechanism and to give the
+release a human decision point. It blocks nothing, so a loop can finish the
+backlog without it.
+
+## Acceptance criteria
+
+- [ ] The full suite is green
+- [ ] The service runs under systemd and survives a restart
+- [ ] An MCP session, the CLI, and a scripted orchestrator all drive the same graph
+- [ ] docs/roadmap.md M0 and M1 are honestly assessable as done or not
+
+## Notes
+
+An agent loop must never claim this node. Filter on assignee_kind.
+'''
