@@ -86,8 +86,8 @@ criterion restates its title. Fold it into its neighbour.
 
 From the first full run: 43 nodes, 93.2M tokens, $221.53 at list prices, about
 8.5 hours at concurrency one, zero review failures. Per node: $5.15 and 2.2M
-tokens on average; implementers took a median of 25 tool calls and 8.4 minutes.
-Roughly 91% of tokens were cache reads.
+tokens on average, with a median of 28 implementer turns. Roughly 92% of tokens
+were cache reads. All of it is reproducible from `harness/state.json`.
 
 | Node | Turns | Cost |
 |---|---|---|

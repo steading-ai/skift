@@ -64,4 +64,4 @@ A blocked node keeps its last reviewer feedback in `harness/state.json`, and `ha
 
 ## After a run
 
-A green suite is not proof. Drive the system by hand as the principal your vision describes. The first run here passed 596 specs while agents could not file work at all, because the acceptance suite filed as a user and only ever claimed as the agent. Ten minutes of dogfooding found what 43 reviewed nodes did not.
+A green suite is not proof. Drive the system by hand as the principal your vision describes. The first run here passed its entire suite while agents could not file work at all, because the acceptance suite filed as a user and only ever claimed as the agent. Ten minutes of dogfooding found what 43 reviewed nodes did not.
