@@ -17,7 +17,10 @@ import (
 	"os"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
+	"github.com/ivy/dagger/internal/server/interceptor"
 )
 
 // Defaults for the fields of Config that may be left zero.
@@ -48,6 +51,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	// Logger receives the server's structured log. Nil means slog.Default.
 	Logger *slog.Logger
+	// Interceptors wrap every Connect handler, in order. Principal
+	// resolution is the first of them; see [interceptor.NewPrincipal].
+	// The health check is outside the Connect namespace and not wrapped.
+	Interceptors []connect.Interceptor
 }
 
 // Services are the implementations mounted on the server.
@@ -105,9 +112,10 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 		mux:      http.NewServeMux(),
 		draining: make(chan struct{}),
 	}
-	s.mux.Handle(daggerv1connect.NewGraphServiceHandler(svc.Graph))
-	s.mux.Handle(daggerv1connect.NewWorkServiceHandler(svc.Work))
-	s.mux.Handle(daggerv1connect.NewEventServiceHandler(svc.Events))
+	opts := []connect.HandlerOption{connect.WithInterceptors(cfg.Interceptors...)}
+	s.mux.Handle(daggerv1connect.NewGraphServiceHandler(svc.Graph, opts...))
+	s.mux.Handle(daggerv1connect.NewWorkServiceHandler(svc.Work, opts...))
+	s.mux.Handle(daggerv1connect.NewEventServiceHandler(svc.Events, opts...))
 	s.mux.HandleFunc("GET "+HealthPath, s.health)
 
 	s.http = &http.Server{
@@ -117,6 +125,9 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 		BaseContext: func(net.Listener) context.Context {
 			return withDraining(context.Background(), s.draining)
 		},
+		// Every connection carries its peer's unix credentials, which is
+		// what the unix identity resolver reads.
+		ConnContext: interceptor.UnixConnContext,
 	}
 	return s
 }
