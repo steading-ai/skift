@@ -137,6 +137,23 @@ def save_state(state):
     STATE.write_text(json.dumps(state, indent=2) + "\n")
 
 
+def record(state, num, attempt, role, usage, turns, verdict):
+    """One usage record per node, attempt and role. Same shape dagger stores."""
+    state["history"].append({
+        "at": now(), "node": num, "attempt": attempt, "role": role,
+        "verdict": verdict, "turns": turns, "usage": usage,
+    })
+
+
+def entry_cost(entry):
+    # Entries written before per-model usage was recorded carry only a total.
+    return sum(u["cost_usd"] for u in entry.get("usage", [])) or entry.get("cost_usd", 0.0)
+
+
+def total_cost(state):
+    return sum(entry_cost(e) for e in state["history"])
+
+
 def node_state(state, num):
     return state["nodes"].setdefault(str(num), {"status": "open", "attempts": 0})
 
@@ -194,10 +211,17 @@ def working_tree_dirty():
     return False
 
 
-def touched_protected():
+def tree_snapshot():
+    """Paths already modified before an agent runs. Not the agent's doing."""
+    return {line[3:].strip().strip('"') for line in git("status", "--porcelain").splitlines()}
+
+
+def touched_protected(baseline=frozenset()):
     changed = git("status", "--porcelain").splitlines()
     hits = []
     for line in changed:
+        if line[3:].strip().strip('"') in baseline:
+            continue
         path = line[3:].strip().strip('"')
         if any(path.startswith(p) for p in HARNESS_RUNTIME):
             continue
@@ -232,7 +256,7 @@ async def run_agent(kind, system_prompt, prompt, log_path, args):
         # A reviewer that can edit is a reviewer that fixes what it should fail.
         options.disallowed_tools = ["Write", "Edit", "NotebookEdit"]
 
-    texts, cost, turns = [], 0.0, 0
+    texts, cost, turns, usage = [], 0.0, 0, []
     with open(log_path, "a") as log:
         log.write(f"\n===== {kind} @ {now()} =====\n")
         async for message in query(prompt=prompt, options=options):
@@ -247,11 +271,22 @@ async def run_agent(kind, system_prompt, prompt, log_path, args):
             elif isinstance(message, ResultMessage):
                 cost = message.total_cost_usd or 0.0
                 turns = message.num_turns or 0
+                # Recorded in the shape of dagger's own Usage entity: counts per
+                # model, never currency. Cost is derived from a rate table.
+                for model_name, mu in (message.model_usage or {}).items():
+                    usage.append({
+                        "model": model_name,
+                        "input_tokens": mu.get("inputTokens", 0),
+                        "output_tokens": mu.get("outputTokens", 0),
+                        "cache_read_tokens": mu.get("cacheReadInputTokens", 0),
+                        "cache_write_tokens": mu.get("cacheCreationInputTokens", 0),
+                        "cost_usd": round(mu.get("costUSD", 0.0), 4),
+                    })
                 if message.is_error:
                     log.write(f"  ERROR: {message.result}\n")
         final = texts[-1].strip() if texts else ""
         log.write(f"--- final ---\n{final}\n")
-    return final, cost, turns
+    return final, cost, turns, usage
 
 
 def summarize_tool(block):
@@ -293,10 +328,7 @@ async def do_node(num, nodes, slug, state, args):
     if is_grouping(node, kids):
         print(f"\n  {slug}#{num}  {node['title']}  (grouping; children complete)", flush=True)
         ns["status"] = "done"
-        state["history"].append({
-            "at": now(), "node": num, "attempt": 0,
-            "verdict": "grouping", "cost_usd": 0.0, "turns": 0,
-        })
+        record(state, num, 0, "harness", [], 0, "grouping")
         save_state(state)
         return True
 
@@ -321,20 +353,21 @@ async def do_node(num, nodes, slug, state, args):
                 "Fix them. Do not start over; build on what is already there.\n\n"
                 f"{feedback}\n"
             )
-        before = head()
+        before, baseline = head(), tree_snapshot()
         try:
-            _, cost_i, turns_i = await asyncio.wait_for(
+            _, cost_i, turns_i, usage_i = await asyncio.wait_for(
                 run_agent("implementer", IMPLEMENTER_PROMPT, prompt, log_path, args),
                 timeout=args.timeout,
             )
         except asyncio.TimeoutError:
             print(f"  !! implementer exceeded {args.timeout}s", flush=True)
             undo_agent_commits(before)
+            record(state, num, attempt, "implementer", [], 0, "timeout")
             feedback = f"- The previous attempt ran past {args.timeout}s and was stopped. Work in smaller steps."
             continue
         undo_agent_commits(before)
 
-        protected = touched_protected()
+        protected = touched_protected(baseline)
         if protected:
             feedback = "- The implementation modified protected paths: " + ", ".join(
                 protected
@@ -357,27 +390,21 @@ async def do_node(num, nodes, slug, state, args):
             "Inspect the working tree, run the suite, and judge the contract."
         )
         try:
-            verdict_text, cost_r, turns_r = await asyncio.wait_for(
+            verdict_text, cost_r, turns_r, usage_r = await asyncio.wait_for(
                 run_agent("reviewer", REVIEWER_PROMPT, review_prompt, log_path, args),
                 timeout=args.timeout,
             )
         except asyncio.TimeoutError:
             print(f"  !! reviewer exceeded {args.timeout}s; treating as fail", flush=True)
-            verdict_text, cost_r, turns_r = "VERDICT: FAIL", 0.0, 0
+            verdict_text, cost_r, turns_r, usage_r = "VERDICT: FAIL", 0.0, 0, []
         passed, feedback = parse_verdict(verdict_text)
 
-        entry = {
-            "at": now(),
-            "node": num,
-            "attempt": attempt,
-            "verdict": "pass" if passed else "fail",
-            "cost_usd": round(cost_i + cost_r, 4),
-            "turns": turns_i + turns_r,
-        }
-        state["history"].append(entry)
+        record(state, num, attempt, "implementer", usage_i, turns_i, "n/a")
+        record(state, num, attempt, "reviewer", usage_r, turns_r,
+               "pass" if passed else "fail")
 
         if passed:
-            print(f"  == PASS  (${entry['cost_usd']}, {entry['turns']} turns)", flush=True)
+            print(f"  == PASS  (${cost_i + cost_r:.2f}, {turns_i + turns_r} turns)", flush=True)
             ns["status"] = "done"
             save_state(state)
             commit_and_push(num, node, slug, args)
@@ -411,6 +438,52 @@ def commit_and_push(num, node, slug, args):
               flush=True)
 
 
+def report(state, project, nodes):
+    """Per-node token and cost tally. Calibration data for future estimates."""
+    slug = project.get("slug", "backlog")
+    per = {}
+    for e in state["history"]:
+        a = per.setdefault(e["node"], {"in": 0, "out": 0, "cr": 0, "cw": 0,
+                                       "cost": 0.0, "turns": 0, "attempts": 0})
+        if not e.get("usage"):
+            a["cost"] += e.get("cost_usd", 0.0)
+        for u in e.get("usage", []):
+            a["in"] += u["input_tokens"]
+            a["out"] += u["output_tokens"]
+            a["cr"] += u["cache_read_tokens"]
+            a["cw"] += u["cache_write_tokens"]
+            a["cost"] += u["cost_usd"]
+        a["turns"] += e.get("turns", 0)
+        a["attempts"] = max(a["attempts"], e.get("attempt", 0))
+
+    print(f"\n{'=' * 96}\n  {slug}: per-node usage\n{'=' * 96}")
+    print(f"{'node':<10} {'status':<8} {'try':>3} {'turns':>5} {'input':>9} {'output':>8} "
+          f"{'cache rd':>10} {'cache wr':>9} {'cost':>8}  title")
+    print("-" * 96)
+    tot = {"in": 0, "out": 0, "cr": 0, "cw": 0, "cost": 0.0, "turns": 0}
+    for num in sorted(per):
+        a = per[num]
+        for k in tot:
+            tot[k] += a[k]
+        st = state["nodes"].get(str(num), {}).get("status", "?")
+        title = nodes[num]["title"][:30] if num in nodes else ""
+        print(f"{slug + '#' + str(num):<10} {st:<8} {a['attempts']:>3} {a['turns']:>5} "
+              f"{a['in']:>9,} {a['out']:>8,} {a['cr']:>10,} {a['cw']:>9,} "
+              f"${a['cost']:>7.2f}  {title}")
+    print("-" * 96)
+    print(f"{'TOTAL':<10} {'':<8} {'':>3} {tot['turns']:>5} {tot['in']:>9,} {tot['out']:>8,} "
+          f"{tot['cr']:>10,} {tot['cw']:>9,} ${tot['cost']:>7.2f}")
+
+    billable = tot["in"] + tot["out"] + tot["cr"] + tot["cw"]
+    done = sum(1 for v in state["nodes"].values() if v["status"] == "done")
+    blocked = sorted(n for n, v in state["nodes"].items() if v["status"] == "blocked")
+    print(f"\n  {done} nodes done" + (f", blocked: {', '.join(blocked)}" if blocked else ""))
+    print(f"  {billable:,} tokens across every agent and role")
+    print(f"  ${tot['cost']:.2f} at list prices; included in a subscription")
+    if done:
+        print(f"  ${tot['cost'] / done:.2f} and {billable // done:,} tokens per completed node")
+
+
 async def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--max", type=int, default=100, help="max nodes this run")
@@ -425,6 +498,7 @@ async def main():
     p.add_argument("--timeout", type=int, default=3600,
                    help="seconds before one agent is abandoned (default: 3600)")
     p.add_argument("--dry-run", action="store_true", help="show the plan and exit")
+    p.add_argument("--report", action="store_true", help="print per-node usage and exit")
     p.add_argument("--no-push", action="store_true", help="commit but do not push")
     args = p.parse_args()
 
@@ -433,6 +507,11 @@ async def main():
     state = load_state()
     project, _ = backlog.load(BACKLOG)
     slug = project.get("slug", "backlog")
+
+    if args.report:
+        _, all_nodes = backlog.load(BACKLOG)
+        report(state, project, all_nodes)
+        return 0
 
     if args.dry_run:
         order, nodes = ready_nodes(state)
@@ -452,18 +531,21 @@ async def main():
             if remaining:
                 STOP.write_text(f"BLOCKED: nodes {sorted(remaining)} exhausted their attempts\n")
                 print(f"\nBLOCKED: {sorted(remaining)}")
+                report(state, project, nodes)
                 return 2
             STOP.write_text("DONE: no agent-claimable nodes remain\n")
             print("\nDONE: backlog drained")
+            report(state, project, nodes)
             return 0
 
         ok = await do_node(order[0], nodes, slug, state, args)
-        total = sum(h["cost_usd"] for h in state["history"])
+        total = total_cost(state)
         done = sum(1 for v in state["nodes"].values() if v["status"] == "done")
         print(f"\n  {done}/{len(nodes)} done, ${total:.2f} spent", flush=True)
         if args.budget and total >= args.budget:
             STOP.write_text(f"BLOCKED: budget ${args.budget} reached at ${total:.2f}\n")
             print(f"\nStopping: budget ${args.budget:.2f} reached")
+            report(state, project, nodes)
             return 2
         if not ok:
             print(f"  {slug}#{order[0]} blocked after {args.attempts} attempts; moving on",
@@ -471,6 +553,7 @@ async def main():
         time.sleep(2)
 
     print(f"\nReached --max ({args.max}). Total: ${total:.2f}")
+    report(state, project, nodes)
     return 1
 
 
