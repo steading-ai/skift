@@ -71,14 +71,3 @@ func newMCPCommand() *cobra.Command {
 		},
 	}
 }
-
-func newServeCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "serve",
-		Short: "Run the dagger service",
-		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("dg serve: %w", ErrNotImplemented)
-		},
-	}
-}

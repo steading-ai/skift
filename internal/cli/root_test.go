@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -46,8 +47,28 @@ var _ = Describe("root command", Label("unit"), func() {
 			Expect(execute(face)).To(MatchError(cli.ErrNotImplemented))
 		},
 		Entry("mcp", "mcp"),
-		Entry("serve", "serve"),
 	)
+
+	Describe("serve", func() {
+		It("requires a database URL", func() {
+			GinkgoT().Setenv("DATABASE_URL", "")
+			err := execute("serve", "--socket", filepath.Join(GinkgoT().TempDir(), "dg.sock"))
+			Expect(err).To(MatchError(ContainSubstring("database URL is required")))
+		})
+
+		It("rejects a socket mode that is not octal permissions", func() {
+			err := execute("serve",
+				"--socket", filepath.Join(GinkgoT().TempDir(), "dg.sock"),
+				"--database-url", "postgres://127.0.0.1:1/dagger",
+				"--socket-mode", "rw-rw----")
+			Expect(err).To(MatchError(ContainSubstring("--socket-mode")))
+		})
+
+		It("rejects an unknown log level", func() {
+			err := execute("serve", "--database-url", "postgres://127.0.0.1:1/dagger", "--log-level", "loud")
+			Expect(err).To(MatchError(ContainSubstring("--log-level")))
+		})
+	})
 
 	It("rejects unknown subcommands", func() {
 		Expect(execute("bogus")).To(HaveOccurred())

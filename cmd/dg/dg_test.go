@@ -49,12 +49,10 @@ var _ = Describe("dg", Label("unit"), func() {
 		Expect(help).To(ContainSubstring("serve"))
 		Expect(help).To(ContainSubstring("version"))
 
-		By("version is the only subcommand that does anything")
+		By("the mcp face is wired but not yet implemented")
 		Expect(run(binary, "version")).To(gexec.Exit(0))
-		for _, face := range []string{"mcp", "serve"} {
-			session := run(binary, face)
-			Expect(session).NotTo(gexec.Exit(0), face)
-			Expect(string(session.Err.Contents())).To(ContainSubstring("not implemented"), face)
-		}
+		session = run(binary, "mcp")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Err.Contents())).To(ContainSubstring("not implemented"))
 	})
 })
