@@ -165,8 +165,9 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		},
 		Transports: transports,
 	}, server.Services{
-		Graph: server.NewGraphService(svc),
-		Work:  server.NewWorkService(svc),
+		Graph:  server.NewGraphService(svc),
+		Work:   server.NewWorkService(svc),
+		Events: server.NewEventService(svc),
 	}, pool)
 
 	log.Info("dg serve starting", "version", version.String(), "policy_version", bundle.Version())

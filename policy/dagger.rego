@@ -108,6 +108,13 @@ permitted if {
 	input.action == "search"
 }
 
+# The change stream is a read as well, and open to the organization for
+# the same reason. An event about a node carries the node as it stands;
+# one above that scope, such as a project's creation, carries no resource.
+permitted if {
+	input.action == "watch"
+}
+
 # A lease holder may mutate its own node and the children it created under
 # it, and nothing else. A descendant somebody else created is not its own.
 

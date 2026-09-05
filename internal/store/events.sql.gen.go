@@ -7,12 +7,13 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 const createEvent = `-- name: CreateEvent :one
 INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, policy_version)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version
+RETURNING id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version, tx_id
 `
 
 type CreateEventParams struct {
@@ -66,12 +67,54 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 		&i.After,
 		&i.OccurredAt,
 		&i.PolicyVersion,
+		&i.TxID,
 	)
 	return i, err
 }
 
+const listEventPositionsFrom = `-- name: ListEventPositionsFrom :many
+SELECT tx_id, id FROM events
+WHERE org_id = $1
+  AND tx_id >= $2
+  AND occurred_at >= $3
+ORDER BY tx_id, id
+`
+
+type ListEventPositionsFromParams struct {
+	OrgID         string
+	MinTxID       int64
+	RetainedSince time.Time
+}
+
+type ListEventPositionsFromRow struct {
+	TxID int64
+	ID   string
+}
+
+// The positions of every event of an organization from a transaction
+// boundary: what a stream opened at "now" has to count as already seen.
+func (q *Queries) ListEventPositionsFrom(ctx context.Context, arg ListEventPositionsFromParams) ([]ListEventPositionsFromRow, error) {
+	rows, err := q.db.Query(ctx, listEventPositionsFrom, arg.OrgID, arg.MinTxID, arg.RetainedSince)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEventPositionsFromRow{}
+	for rows.Next() {
+		var i ListEventPositionsFromRow
+		if err := rows.Scan(&i.TxID, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEventsAfter = `-- name: ListEventsAfter :many
-SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version FROM events
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version, tx_id FROM events
 WHERE org_id = $1 AND id > $2
 ORDER BY id
 LIMIT $3
@@ -109,6 +152,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.After,
 			&i.OccurredAt,
 			&i.PolicyVersion,
+			&i.TxID,
 		); err != nil {
 			return nil, err
 		}
@@ -121,7 +165,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 }
 
 const listEventsForNode = `-- name: ListEventsForNode :many
-SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version FROM events
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version, tx_id FROM events
 WHERE org_id = $1 AND node_id = $2
 ORDER BY id
 LIMIT $4 OFFSET $3
@@ -165,6 +209,7 @@ func (q *Queries) ListEventsForNode(ctx context.Context, arg ListEventsForNodePa
 			&i.After,
 			&i.OccurredAt,
 			&i.PolicyVersion,
+			&i.TxID,
 		); err != nil {
 			return nil, err
 		}
@@ -177,7 +222,7 @@ func (q *Queries) ListEventsForNode(ctx context.Context, arg ListEventsForNodePa
 }
 
 const listEventsForRequest = `-- name: ListEventsForRequest :many
-SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version FROM events
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version, tx_id FROM events
 WHERE org_id = $1 AND request_id = $2
 ORDER BY id
 `
@@ -214,6 +259,80 @@ func (q *Queries) ListEventsForRequest(ctx context.Context, arg ListEventsForReq
 			&i.After,
 			&i.OccurredAt,
 			&i.PolicyVersion,
+			&i.TxID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventsFromPosition = `-- name: ListEventsFromPosition :many
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version, tx_id FROM events
+WHERE org_id = $1
+  AND tx_id >= $2
+  AND occurred_at >= $3
+  AND NOT (id = ANY($4::text[]))
+  AND ($5::text IS NULL OR project_id = $5)
+  AND (cardinality($6::text[]) = 0 OR op = ANY($6::text[]))
+ORDER BY tx_id, id
+LIMIT $7
+`
+
+type ListEventsFromPositionParams struct {
+	OrgID         string
+	MinTxID       int64
+	RetainedSince time.Time
+	Seen          []string
+	ProjectID     *string
+	Ops           []string
+	PageSize      int32
+}
+
+// The change stream: events of an organization from a transaction
+// boundary, in transaction and then id order, leaving out the ids a
+// consumer has already been handed. A project and a set of operations
+// narrow it; an empty set of operations is every operation. Events before
+// the replay window are not offered, so the partitions holding them are
+// pruned from the scan.
+func (q *Queries) ListEventsFromPosition(ctx context.Context, arg ListEventsFromPositionParams) ([]Event, error) {
+	rows, err := q.db.Query(ctx, listEventsFromPosition,
+		arg.OrgID,
+		arg.MinTxID,
+		arg.RetainedSince,
+		arg.Seen,
+		arg.ProjectID,
+		arg.Ops,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Event{}
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.NodeID,
+			&i.PrincipalID,
+			&i.PrincipalKind,
+			&i.OnBehalfOf,
+			&i.IdentityScheme,
+			&i.RequestID,
+			&i.Op,
+			&i.Reason,
+			&i.Before,
+			&i.After,
+			&i.OccurredAt,
+			&i.PolicyVersion,
+			&i.TxID,
 		); err != nil {
 			return nil, err
 		}

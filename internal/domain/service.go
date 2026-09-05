@@ -54,11 +54,22 @@ func Migrate(ctx context.Context, databaseURL string) error {
 type Service struct {
 	s   *store.Store
 	pol *policy.Bundle
+	// wake is the change stream's ear on the database, shared by every
+	// open stream. Its connection is opened outside the pool on the same
+	// configuration, so a stream never holds a pooled connection idle.
+	wake *listener
 }
 
 // NewService wraps pool and pol. The caller owns the pool and closes it.
 func NewService(pool *pgxpool.Pool, pol *policy.Bundle) *Service {
-	return &Service{s: store.FromPool(pool), pol: pol}
+	connConfig := pool.Config().ConnConfig
+	return &Service{
+		s:   store.FromPool(pool),
+		pol: pol,
+		wake: newListener(func(ctx context.Context) (*pgx.Conn, error) {
+			return pgx.ConnectConfig(ctx, connConfig)
+		}),
+	}
 }
 
 // PrincipalByIdentity returns the principal holding the identity a

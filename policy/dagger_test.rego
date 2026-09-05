@@ -325,6 +325,16 @@ test_everyone_searches_the_organization if {
 	authz.allow with input as search_op(service, other_project)
 }
 
+watch_op(principal, node) := {"principal": principal, "action": "watch", "resource": {"node": node}}
+
+test_everyone_watches_the_organization if {
+	authz.allow with input as watch_op(user, node8)
+	authz.allow with input as watch_op(agent_a, node8)
+	authz.allow with input as watch_op(agent_b, node10)
+	authz.allow with input as watch_op(service, other_project)
+	authz.allow with input as {"principal": agent_a, "action": "watch"}
+}
+
 # Projects
 
 test_user_creates_and_archives_projects if {

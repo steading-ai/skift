@@ -87,6 +87,7 @@ type Event struct {
 	After          []byte
 	OccurredAt     time.Time
 	PolicyVersion  string
+	TxID           int64
 }
 
 type IdempotencyKey struct {

@@ -137,6 +137,10 @@ func (r *running) work() daggerv1connect.WorkServiceClient {
 	return daggerv1connect.NewWorkServiceClient(r.httpClient(), baseURL)
 }
 
+func (r *running) events() daggerv1connect.EventServiceClient {
+	return daggerv1connect.NewEventServiceClient(r.httpClient(), baseURL)
+}
+
 // specLogger routes the server's log to the spec's writer, shown only on
 // failure or under -v.
 func specLogger() *slog.Logger {

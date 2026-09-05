@@ -94,8 +94,9 @@ func newFixture(ctx context.Context) *fixture {
 	f.run = start(server.Config{
 		Interceptors: []connect.Interceptor{interceptor.NewPrincipal(f.lookup, interceptor.UnixResolver{})},
 	}, server.Services{
-		Graph: server.NewGraphService(svc),
-		Work:  server.NewWorkService(svc),
+		Graph:  server.NewGraphService(svc),
+		Work:   server.NewWorkService(svc),
+		Events: server.NewEventService(svc),
 	}, pool)
 	return f
 }
@@ -103,8 +104,9 @@ func newFixture(ctx context.Context) *fixture {
 // as switches which principal the spec's calls are attributed to.
 func (f *fixture) as(p interceptor.Principal) { f.lookup.set(p) }
 
-func (f *fixture) graph() daggerv1connect.GraphServiceClient { return f.run.graph() }
-func (f *fixture) work() daggerv1connect.WorkServiceClient   { return f.run.work() }
+func (f *fixture) graph() daggerv1connect.GraphServiceClient  { return f.run.graph() }
+func (f *fixture) work() daggerv1connect.WorkServiceClient    { return f.run.work() }
+func (f *fixture) events() daggerv1connect.EventServiceClient { return f.run.events() }
 
 // project creates a project over the wire and returns it.
 func (f *fixture) project(ctx context.Context, title string) *daggerv1.Project {

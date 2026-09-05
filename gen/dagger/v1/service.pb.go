@@ -3362,10 +3362,13 @@ func (x *WatchEventsRequest) GetOps() []string {
 
 // WatchEventsResponse is one event and the cursor to resume after it. The
 // cursor is a commit-ordered position, not the event id, so a stalled
-// transaction that commits late is never skipped.
+// transaction that commits late is never skipped. A response without an
+// event carries a position alone: the opening position of a stream started
+// from now, the position after an interval the policy filtered entirely,
+// or a refresh of a quiet stream, so a stored cursor keeps up.
 type WatchEventsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The event.
+	// The event. Absent when the response carries a position alone.
 	Event *Event `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
 	// Output only. Opaque position after this event, to pass as the next
 	// request's cursor.

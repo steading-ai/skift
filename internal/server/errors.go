@@ -89,8 +89,14 @@ func codeOf(err error) connect.Code {
 	case errors.As(err, &conflict):
 		return connect.CodeAlreadyExists
 
+	// The cursor points before the replay window; the consumer
+	// resynchronizes rather than resuming.
+	case errors.Is(err, domain.ErrCursorExpired):
+		return connect.CodeOutOfRange
+
 	// The request itself is malformed.
 	case errors.As(err, &parse),
+		errors.Is(err, domain.ErrCursorInvalid),
 		errors.Is(err, domain.ErrNoRequestID),
 		errors.Is(err, domain.ErrNoOperations),
 		errors.Is(err, domain.ErrReasonRequired),

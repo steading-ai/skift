@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // WaitReachSQL is the recursive walk CheckAcyclic runs, for specs that
 // measure how far it reaches.
 const WaitReachSQL = waitReach
@@ -22,3 +24,17 @@ var (
 	Slugify       = slugify
 	NormalizeSlug = normalizeSlug
 )
+
+// AgeCursor re-issues cursor as if it had been taken at `at`, for specs
+// that check the replay window without waiting for it.
+func AgeCursor(cursor string, at time.Time) string {
+	p, err := decodeCursor(cursor)
+	if err != nil {
+		panic(err)
+	}
+	p.At = at
+	return encodeCursor(p)
+}
+
+// ReplayWindowStart is the earliest moment a cursor may point at.
+var ReplayWindowStart = replayWindowStart
