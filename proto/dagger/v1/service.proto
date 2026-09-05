@@ -1,0 +1,656 @@
+// The dagger.v1 services: three faces over one contract. GraphService reads
+// and mutates the graph, WorkService hands out and manages leases, and
+// EventService serves the change stream. docs/domain-model.md is the
+// rationale; docs/architecture.md says where each is served.
+//
+// Node references. Wherever a request names a node it does so with a single
+// string in one of four forms: "#7" for a node in the request's project,
+// "slug#7" for a node in another project of the same organization,
+// "org/slug#7" fully qualified, or an alias declared by a create_node
+// operation earlier in the same patch. The server never asks a client for a
+// node id, and resolution returns the node's title so a caller can check
+// that a dense number resolved to the node it meant.
+//
+// Idempotency. Every RPC that writes carries a client-supplied request_id.
+// A repeated request_id returns the original result; the same id with
+// different content is an error rather than a silent replay.
+//
+// Provenance is never client-assertable. Requests carry no principal; the
+// server resolves the actor from the transport. See
+// docs/adrs/006-provenance-not-authority.md.
+
+syntax = "proto3";
+
+package dagger.v1;
+
+import "dagger/v1/dagger.proto";
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/ivy/dagger/gen/dagger/v1;daggerv1";
+
+// GraphService reads and mutates the graph. ApplyPatch is the one door for
+// every mutation of nodes, edges, artifacts, and comments; the remaining
+// RPCs read, or manage the projects that scope the graph.
+service GraphService {
+  // ApplyPatch applies a flat list of operations in one transaction. Cycle
+  // detection runs over the resulting graph, aliases resolve across the
+  // whole patch, and one rejected operation rolls back every other.
+  rpc ApplyPatch(ApplyPatchRequest) returns (ApplyPatchResponse);
+  // GetNode returns one node with the relations and content attached to it.
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  // ListNodes pages through the nodes of one project, filtered.
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  // Explain says why a node is not ready, as structured reasons. A node
+  // with no reasons is ready.
+  rpc Explain(ExplainRequest) returns (ExplainResponse);
+  // Search runs a lexical query over titles, bodies, results, and comments
+  // in the caller's organization, filtered by policy.
+  rpc Search(SearchRequest) returns (SearchResponse);
+  // CreateProject creates a project. No provisioning, no name adjudication:
+  // the slug is derived from the title and disambiguated on collision.
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  // GetProject returns one project by slug or id. Retired slugs resolve.
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  // ListProjects pages through the caller's projects, most recently active
+  // first. Archived projects are excluded unless asked for.
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  // ArchiveProject makes a project read-only. Keys stay valid forever and
+  // existing edges keep their meaning.
+  rpc ArchiveProject(ArchiveProjectRequest) returns (ArchiveProjectResponse);
+}
+
+// WorkService is the lease side of the contract: what is ready, claiming it
+// under a fencing token, keeping the claim alive, and giving it back. These
+// are lease operations rather than graph operations, so they are not patch
+// operations.
+service WorkService {
+  // Ready returns the ready set of one project, ordered by priority then
+  // age, without claiming anything.
+  rpc Ready(ReadyRequest) returns (ReadyResponse);
+  // ClaimNext performs Ready and Claim in one round trip. When nothing
+  // matches it waits up to the request's wait duration for work to appear,
+  // and returns the node already claimed under a lease.
+  rpc ClaimNext(ClaimNextRequest) returns (ClaimNextResponse);
+  // Heartbeat renews a live lease. Any write to the node by the holder
+  // renews it implicitly; this is the explicit form.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // Release ends a lease with a reason, returning the node to the ready set
+  // if nothing else holds it back.
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+}
+
+// EventService serves the change stream every reactive consumer reads:
+// notifiers, indexers, moderation, auditors. Orchestrators do not use it;
+// they call ClaimNext with a wait.
+service EventService {
+  // WatchEvents streams events after a cursor, filtered by project and
+  // operation, scoped to the caller's organization, and policy-filtered.
+  // Delivery is at least once; consumers deduplicate by event id.
+  rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse);
+}
+
+// ApplyPatchRequest is one atomic mutation of the graph.
+message ApplyPatchRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project the patch applies to, by slug, org/slug, or id. Operations
+  // do not repeat it; a node reference without a project half resolves
+  // here.
+  string project = 2;
+  // The fencing token of the lease the caller holds. Required for any
+  // operation that touches a leased node: the server checks in the same
+  // statement that the lease is the node's current one and has not
+  // expired. Empty when the caller holds no lease.
+  string lease_id = 3;
+  // The operations, applied in order within one transaction.
+  repeated PatchOp ops = 4;
+}
+
+// ApplyPatchResponse is the state of everything the patch touched, after
+// it was applied.
+message ApplyPatchResponse {
+  // Every node the patch created or changed, as it stands after the patch.
+  repeated Node nodes = 1;
+  // Each alias declared by a create_node operation, mapped to the
+  // slug#number reference of the node it created.
+  map<string, string> aliases = 2;
+  // The events the patch produced, in application order.
+  repeated Event events = 3;
+}
+
+// PatchOp is one operation in a patch. Exactly one of its forms is set.
+message PatchOp {
+  // The operation.
+  oneof op {
+    // Create a node, optionally aliased for later operations in the patch.
+    CreateNodeOp create_node = 1;
+    // Change the mutable fields of an existing node.
+    UpdateNodeOp update_node = 2;
+    // Abandon a node with a reason, optionally cascading to what it blocks.
+    DropNodeOp drop_node = 3;
+    // Finish a node with a result.
+    CompleteNodeOp complete_node = 4;
+    // Move a done node back to open.
+    ReopenNodeOp reopen_node = 5;
+    // Add a directed edge between two nodes.
+    AddEdgeOp add_edge = 6;
+    // Remove an edge. Removal is an event.
+    RemoveEdgeOp remove_edge = 7;
+    // Attach a named artifact to a node.
+    AttachArtifactOp attach_artifact = 8;
+    // Add a comment to a node.
+    AddCommentOp add_comment = 9;
+    // Replace the body of a comment, retaining the prior revision.
+    EditCommentOp edit_comment = 10;
+    // Mark a comment resolved.
+    ResolveCommentOp resolve_comment = 11;
+  }
+}
+
+// CreateNodeOp creates a node. The server assigns its id and number; a
+// patch refers to the new node by alias.
+message CreateNodeOp {
+  // Client-chosen name for the new node, usable as a node reference by any
+  // later operation in the same patch. Scoped to the patch; never stored.
+  string alias = 1;
+  // Node reference of the parent, answering "what is this part of". Empty
+  // for a root node. Containment, not dependency.
+  string parent = 2;
+  // Node references that must finish before this one is ready. Shorthand
+  // for one add_edge of kind BLOCKS from each into the new node.
+  repeated string blocked_by = 3;
+  // Single-valued label such as task, bug, spike, or chore. Defaults to
+  // task. Dagger never interprets it.
+  string kind = 4;
+  // Short human-readable summary.
+  string title = 5;
+  // Markdown. The prompt an agent receives.
+  string body = 6;
+  // Advisory priority. Defaults to P2.
+  Priority priority = 7;
+  // Which kind of principal may complete the node. Unset means
+  // agent-eligible; USER makes the node a gate.
+  AssigneeKind assignee_kind = 8;
+  // Id of a specific principal to assign the node to, if any.
+  string assignee = 9;
+  // Free strings for projection and filtering.
+  repeated string labels = 10;
+}
+
+// UpdateNodeOp changes the mutable fields of a node. A field left unset is
+// left alone; status is not here because it changes only through the
+// complete, drop, and reopen operations.
+message UpdateNodeOp {
+  // Node reference of the node to change.
+  string node = 1;
+  // New parent, as a node reference. Set to the empty string to make the
+  // node a root. Reparenting stays within the node's project.
+  optional string parent = 2;
+  // New kind.
+  optional string kind = 3;
+  // New title.
+  optional string title = 4;
+  // New body.
+  optional string body = 5;
+  // New priority.
+  optional Priority priority = 6;
+  // New assignee kind.
+  optional AssigneeKind assignee_kind = 7;
+  // New assignee. Set to the empty string to unassign.
+  optional string assignee = 8;
+  // Replacement label set. Present with no values clears every label.
+  Labels labels = 9;
+}
+
+// Labels is a label set, wrapped so that a request can distinguish
+// "replace with nothing" from "leave alone".
+message Labels {
+  // The labels.
+  repeated string values = 1;
+}
+
+// DropNodeOp abandons a node. Without cascade it asserts downstream work no
+// longer needs this node; with cascade it asserts the functionality is gone
+// and drops the subtree it blocks in the same patch. A dropped gate never
+// satisfies anything.
+message DropNodeOp {
+  // Node reference of the node to drop.
+  string node = 1;
+  // Classification of why.
+  DropReason reason = 2;
+  // Free text expanding on the reason. Recorded on the event.
+  string detail = 3;
+  // Also drop every node this one transitively blocks.
+  bool cascade = 4;
+}
+
+// CompleteNodeOp finishes a node. Results of all blocking predecessors are
+// the inputs a downstream agent assembles context from.
+message CompleteNodeOp {
+  // Node reference of the node to complete.
+  string node = 1;
+  // What the work produced.
+  Result result = 2;
+}
+
+// ReopenNodeOp moves a done node back to open. It is how review feedback
+// re-enters the graph, and it is not retroactive: descendants that consumed
+// the earlier result are reopened explicitly in the same patch.
+message ReopenNodeOp {
+  // Node reference of the node to reopen.
+  string node = 1;
+  // Why. Recorded on the event.
+  string reason = 2;
+}
+
+// AddEdgeOp adds a directed edge. Cycles over the union of BLOCKS edges and
+// the parent relation are rejected for the patch as a whole.
+message AddEdgeOp {
+  // Node reference of the source. For BLOCKS, the node that must finish
+  // first.
+  string from = 1;
+  // Node reference of the target. For BLOCKS, the node that waits.
+  string to = 2;
+  // The relation. Defaults to BLOCKS.
+  EdgeKind kind = 3;
+}
+
+// RemoveEdgeOp removes an edge.
+message RemoveEdgeOp {
+  // Node reference of the source.
+  string from = 1;
+  // Node reference of the target.
+  string to = 2;
+  // The relation. Defaults to BLOCKS.
+  EdgeKind kind = 3;
+}
+
+// AttachArtifactOp attaches a named artifact to a node.
+message AttachArtifactOp {
+  // Node reference of the node to attach to.
+  string node = 1;
+  // The artifact. Its name must be unique within the node.
+  Artifact artifact = 2;
+}
+
+// AddCommentOp adds a comment to a node. The author is resolved from the
+// transport.
+message AddCommentOp {
+  // Node reference of the node to comment on.
+  string node = 1;
+  // Markdown, under the configured size cap.
+  string body = 2;
+  // Id of the comment this one replies to, for threading. Empty for a
+  // top-level comment.
+  string in_reply_to = 3;
+}
+
+// EditCommentOp replaces the body of a comment. The prior body is retained
+// as a revision.
+message EditCommentOp {
+  // Id of the comment to edit.
+  string comment_id = 1;
+  // The new body. Markdown, under the configured size cap.
+  string body = 2;
+}
+
+// ResolveCommentOp marks a comment resolved. The resolver is recorded from
+// the transport.
+message ResolveCommentOp {
+  // Id of the comment to resolve.
+  string comment_id = 1;
+}
+
+// GetNodeRequest names one node.
+message GetNodeRequest {
+  // The project a bare "#7" reference resolves in, by slug, org/slug, or
+  // id. Optional when the node reference carries its own project.
+  string project = 1;
+  // Node reference.
+  string node = 2;
+}
+
+// GetNodeResponse is a node with everything attached to it.
+message GetNodeResponse {
+  // The node, with its derived state.
+  Node node = 1;
+  // Every edge into or out of the node.
+  repeated Edge edges = 2;
+  // The result, once the node is done.
+  Result result = 3;
+  // The live lease, if any.
+  Lease lease = 4;
+  // Artifacts attached to the node, in attachment order.
+  repeated Artifact artifacts = 5;
+  // Comments on the node, oldest first.
+  repeated Comment comments = 6;
+}
+
+// ListNodesRequest pages through one project's nodes.
+message ListNodesRequest {
+  // The project, by slug, org/slug, or id. Required.
+  string project = 1;
+  // Only nodes in this status. Unset means every status.
+  Status status = 2;
+  // Only nodes of this kind. Empty means every kind.
+  string kind = 3;
+  // Only nodes assignable to this kind of principal. Unset means any.
+  AssigneeKind assignee_kind = 4;
+  // Only nodes carrying every one of these labels.
+  repeated string labels = 5;
+  // Only children of this node, as a node reference. Empty means every
+  // node.
+  string parent = 6;
+  // Maximum nodes to return. The server bounds it.
+  int32 page_size = 7;
+  // The next_page_token of the previous response. Empty for the first
+  // page.
+  string page_token = 8;
+}
+
+// ListNodesResponse is one page of nodes.
+message ListNodesResponse {
+  // The nodes.
+  repeated Node nodes = 1;
+  // Token for the next page. Empty when this is the last.
+  string next_page_token = 2;
+}
+
+// ExplainRequest asks why one node is not ready.
+message ExplainRequest {
+  // The project a bare "#7" reference resolves in, by slug, org/slug, or
+  // id. Optional when the node reference carries its own project.
+  string project = 1;
+  // Node reference.
+  string node = 2;
+}
+
+// ExplainResponse is the structured answer. Each reason is one condition
+// of readiness that does not hold; an empty list means the node is ready.
+message ExplainResponse {
+  // The node, so a caller can confirm the reference resolved to the node it
+  // meant.
+  Node node = 1;
+  // Why the node is not ready. Empty when it is.
+  repeated Reason reasons = 2;
+}
+
+// Reason is one condition keeping a node out of the ready set.
+message Reason {
+  // The condition.
+  oneof reason {
+    // The node is not open.
+    NotOpenReason not_open = 1;
+    // An unfinished predecessor blocks the node.
+    BlockedReason blocked = 2;
+    // A live lease holds the node.
+    LeasedReason leased = 3;
+    // An open child keeps the node from being ready.
+    OpenChildReason open_child = 4;
+    // The node's project is archived and read-only.
+    ArchivedReason archived = 5;
+  }
+}
+
+// NotOpenReason says the node is done or dropped.
+message NotOpenReason {
+  // The node's stored status.
+  Status status = 1;
+}
+
+// BlockedReason names one predecessor that has not satisfied its BLOCKS
+// edge: an open node, or a gate that has not been completed.
+message BlockedReason {
+  // The blocking node.
+  Node blocker = 1;
+  // Whether the blocker is a gate, which only completion by a user
+  // principal satisfies. A dropped gate still blocks.
+  bool gate = 2;
+}
+
+// LeasedReason names the live lease on the node.
+message LeasedReason {
+  // The lease, including its holder and expiry.
+  Lease lease = 1;
+}
+
+// OpenChildReason names one open child.
+message OpenChildReason {
+  // The child.
+  Node child = 1;
+}
+
+// ArchivedReason names the archived project the node belongs to.
+message ArchivedReason {
+  // The project.
+  Project project = 1;
+}
+
+// SearchRequest is a lexical query over the caller's organization.
+message SearchRequest {
+  // The query, in PostgreSQL websearch syntax.
+  string query = 1;
+  // Restrict to one project, by slug, org/slug, or id. Empty searches every
+  // project the caller may read.
+  string project = 2;
+  // Include nodes of archived projects. Off by default.
+  bool include_archived = 3;
+  // Maximum hits to return. The server bounds it.
+  int32 page_size = 4;
+  // The next_page_token of the previous response. Empty for the first
+  // page.
+  string page_token = 5;
+}
+
+// SearchResponse is one page of hits, best match first.
+message SearchResponse {
+  // The hits.
+  repeated SearchHit hits = 1;
+  // Token for the next page. Empty when this is the last.
+  string next_page_token = 2;
+}
+
+// SearchHit is one matching node.
+message SearchHit {
+  // The node that matched, in its title, body, result, or a comment.
+  Node node = 1;
+  // Output only. A fragment of the matching text with the match marked.
+  string snippet = 2;
+}
+
+// CreateProjectRequest creates a project.
+message CreateProjectRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // Human-readable name. The slug is derived from it.
+  string title = 2;
+  // Requested slug. Empty derives one from the title. Normalized to
+  // lowercase and disambiguated on collision either way.
+  string slug = 3;
+  // Advisory priority of the project. Dagger never sorts by it.
+  Priority priority = 4;
+}
+
+// CreateProjectResponse is the created project.
+message CreateProjectResponse {
+  // The project, with its assigned id and slug.
+  Project project = 1;
+}
+
+// GetProjectRequest names one project.
+message GetProjectRequest {
+  // The project, by slug, org/slug, or id. Retired slugs resolve.
+  string project = 1;
+}
+
+// GetProjectResponse is one project.
+message GetProjectResponse {
+  // The project.
+  Project project = 1;
+}
+
+// ListProjectsRequest pages through the caller's projects.
+message ListProjectsRequest {
+  // Include archived projects. Off by default.
+  bool include_archived = 1;
+  // Maximum projects to return. The server bounds it.
+  int32 page_size = 2;
+  // The next_page_token of the previous response. Empty for the first
+  // page.
+  string page_token = 3;
+}
+
+// ListProjectsResponse is one page of projects, most recently active
+// first.
+message ListProjectsResponse {
+  // The projects.
+  repeated Project projects = 1;
+  // Token for the next page. Empty when this is the last.
+  string next_page_token = 2;
+}
+
+// ArchiveProjectRequest makes a project read-only.
+message ArchiveProjectRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project, by slug, org/slug, or id.
+  string project = 2;
+}
+
+// ArchiveProjectResponse is the archived project.
+message ArchiveProjectResponse {
+  // The project, with archived_at set.
+  Project project = 1;
+}
+
+// ReadyRequest asks for the ready set of one project. Ordering is by
+// priority then age, and priority is project-scoped, so a project is
+// required.
+message ReadyRequest {
+  // The project, by slug, org/slug, or id. Required.
+  string project = 1;
+  // Only nodes of this kind. Empty means every kind.
+  string kind = 2;
+  // Only nodes completable by this kind of principal. Unset means any.
+  AssigneeKind assignee_kind = 3;
+  // Only nodes carrying every one of these labels.
+  repeated string labels = 4;
+  // Only nodes at this priority or more urgent. Unset means any.
+  Priority min_priority = 5;
+  // Maximum nodes to return. The server bounds it.
+  int32 page_size = 6;
+  // The next_page_token of the previous response. Empty for the first
+  // page.
+  string page_token = 7;
+}
+
+// ReadyResponse is one page of the ready set.
+message ReadyResponse {
+  // Ready nodes, most urgent and then oldest first.
+  repeated Node nodes = 1;
+  // Token for the next page. Empty when this is the last.
+  string next_page_token = 2;
+}
+
+// ClaimNextRequest asks for the next ready node matching the filters,
+// claimed. Selecting across projects is the orchestrator's: it may call
+// several and choose.
+message ClaimNextRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project to claim from, by slug, org/slug, or id. Required.
+  string project = 2;
+  // Only nodes of this kind. Empty means every kind.
+  string kind = 3;
+  // Only nodes completable by this kind of principal. Unset means any.
+  AssigneeKind assignee_kind = 4;
+  // Only nodes carrying every one of these labels.
+  repeated string labels = 5;
+  // Only nodes at this priority or more urgent. Unset means any.
+  Priority min_priority = 6;
+  // How long to wait for matching work before returning empty. Zero
+  // returns immediately. The server bounds it.
+  google.protobuf.Duration wait = 7;
+  // Requested lease TTL. The server bounds it and applies its default when
+  // unset.
+  google.protobuf.Duration ttl = 8;
+  // Free string naming the executing harness, such as claude-code or hive.
+  string harness = 9;
+  // Where this attempt will run: an A2A agent card URL, or whatever the
+  // harness identifies itself as. Recorded for placement affinity.
+  string agent_ref = 10;
+  // Optional harness session identifier, for a session that works several
+  // nodes.
+  string session_ref = 11;
+}
+
+// ClaimNextResponse is the claimed node and the lease fencing it. Both are
+// unset when the wait elapsed with nothing to claim.
+message ClaimNextResponse {
+  // The claimed node.
+  Node node = 1;
+  // The lease. Its id is the fencing token every later write to the node
+  // must carry.
+  Lease lease = 2;
+}
+
+// HeartbeatRequest renews a lease.
+message HeartbeatRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The fencing token of the lease to renew.
+  string lease_id = 2;
+  // Requested TTL from now. The server bounds it and applies its default
+  // when unset.
+  google.protobuf.Duration ttl = 3;
+}
+
+// HeartbeatResponse is the renewed lease.
+message HeartbeatResponse {
+  // The lease, with its new expiry.
+  Lease lease = 1;
+}
+
+// ReleaseRequest ends a lease. Completing a node releases its lease as part
+// of the patch; this is for every other way an attempt ends.
+message ReleaseRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The fencing token of the lease to release.
+  string lease_id = 2;
+  // Why the attempt ended.
+  ReleaseReason reason = 3;
+  // Free text expanding on the reason. Recorded on the event.
+  string detail = 4;
+}
+
+// ReleaseResponse is the released lease.
+message ReleaseResponse {
+  // The lease, with its release reason set.
+  Lease lease = 1;
+}
+
+// WatchEventsRequest opens the change stream from a position.
+message WatchEventsRequest {
+  // Opaque cursor from a previous response. Empty starts from now. A cursor
+  // older than the replay window is rejected so the consumer resynchronizes
+  // rather than silently skipping.
+  string cursor = 1;
+  // Only events in this project, by slug, org/slug, or id. Empty means every
+  // project the caller may read.
+  string project = 2;
+  // Only events for these operations, such as create_node or add_edge.
+  // Empty means every operation.
+  repeated string ops = 3;
+}
+
+// WatchEventsResponse is one event and the cursor to resume after it. The
+// cursor is a commit-ordered position, not the event id, so a stalled
+// transaction that commits late is never skipped.
+message WatchEventsResponse {
+  // The event.
+  Event event = 1;
+  // Output only. Opaque position after this event, to pass as the next
+  // request's cursor.
+  string cursor = 2;
+}

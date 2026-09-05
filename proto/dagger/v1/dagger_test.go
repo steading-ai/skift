@@ -3,8 +3,10 @@ package daggerv1
 import (
 	"bufio"
 	"bytes"
+	"maps"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -17,9 +19,21 @@ const outputOnly = "Output only."
 
 // field is one field declaration and the comment above it.
 type field struct {
-	message string
-	name    string
-	comment string
+	message  string
+	name     string
+	typ      string // the declared type, such as string, Node, or map<string, string>
+	repeated bool
+	comment  string
+}
+
+// rpc is one method of a service.
+type rpc struct {
+	service  string
+	name     string
+	request  string
+	response string
+	stream   bool // the response is server-streamed
+	comment  string
 }
 
 // enumValue is one enumerator and its number.
@@ -34,6 +48,39 @@ type contract struct {
 	messages map[string]string // message name to its leading comment
 	fields   []field
 	enums    map[string][]enumValue
+	services map[string][]rpc // service name to its methods
+}
+
+// field returns the named field of a message, failing the spec if the
+// message does not declare it.
+func (c contract) field(message, name string) field {
+	for _, f := range c.fields {
+		if f.message == message && f.name == name {
+			return f
+		}
+	}
+	Fail(message + " has no field " + name)
+	return field{}
+}
+
+// fieldsOf returns every field a message declares, in order.
+func (c contract) fieldsOf(message string) []field {
+	var out []field
+	for _, f := range c.fields {
+		if f.message == message {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// rpcs returns every method of every service, in declaration order.
+func (c contract) rpcs() []rpc {
+	var out []rpc
+	for _, name := range slices.Sorted(maps.Keys(c.services)) {
+		out = append(out, c.services[name]...)
+	}
+	return out
 }
 
 // Match against a single trimmed line of the proto.
@@ -41,24 +88,31 @@ var (
 	messageRe   = regexp.MustCompile(`^message\s+(\w+)\s*\{`)
 	enumRe      = regexp.MustCompile(`^enum\s+(\w+)\s*\{`)
 	oneofRe     = regexp.MustCompile(`^oneof\s+\w+\s*\{`)
-	fieldRe     = regexp.MustCompile(`^(?:repeated\s+|optional\s+)?[\w.]+\s+(\w+)\s*=\s*\d+\s*;`)
+	serviceRe   = regexp.MustCompile(`^service\s+(\w+)\s*\{`)
+	rpcRe       = regexp.MustCompile(`^rpc\s+(\w+)\s*\(\s*(\w+)\s*\)\s+returns\s+\(\s*(stream\s+)?(\w+)\s*\)\s*;`)
+	fieldRe     = regexp.MustCompile(`^(repeated\s+|optional\s+)?(map<[^>]+>|[\w.]+)\s+(\w+)\s*=\s*\d+\s*;`)
 	enumValueRe = regexp.MustCompile(`^(\w+)\s*=\s*(\d+)\s*;`)
 )
 
 // parse reads a proto file with a scanner that understands exactly the
-// grammar dagger.proto uses: line comments, messages, enums, oneofs, and
-// one declaration per line. It does not need to be a full parser; buf lint
+// grammar the dagger.v1 files use: line comments, messages, enums, oneofs,
+// services, and one declaration per line. It does not need to be a full parser; buf lint
 // owns syntax, and this only pairs declarations with their comments.
 func parse(path string) contract {
 	src, err := os.ReadFile(path)
 	Expect(err).NotTo(HaveOccurred())
 
-	c := contract{messages: map[string]string{}, enums: map[string][]enumValue{}}
+	c := contract{
+		messages: map[string]string{},
+		enums:    map[string][]enumValue{},
+		services: map[string][]rpc{},
+	}
 	var (
 		comment []string
 		scope   []string // enclosing declarations, innermost last
 		message string   // innermost enclosing message
 		enum    string   // enclosing enum, if any
+		service string   // enclosing service, if any
 	)
 	take := func() string {
 		s := strings.Join(comment, " ")
@@ -85,6 +139,11 @@ func parse(path string) contract {
 		case oneofRe.MatchString(line):
 			take()
 			scope = append(scope, "oneof")
+		case serviceRe.MatchString(line):
+			service = serviceRe.FindStringSubmatch(line)[1]
+			c.services[service] = nil
+			take()
+			scope = append(scope, "service")
 		case line == "}":
 			Expect(scope).NotTo(BeEmpty(), "unbalanced brace")
 			switch scope[len(scope)-1] {
@@ -92,15 +151,26 @@ func parse(path string) contract {
 				message = ""
 			case "enum":
 				enum = ""
+			case "service":
+				service = ""
 			}
 			scope = scope[:len(scope)-1]
+		case service != "" && rpcRe.MatchString(line):
+			m := rpcRe.FindStringSubmatch(line)
+			c.services[service] = append(c.services[service], rpc{
+				service: service, name: m[1], request: m[2], response: m[4],
+				stream: m[3] != "", comment: take(),
+			})
 		case enum != "" && enumValueRe.MatchString(line):
 			m := enumValueRe.FindStringSubmatch(line)
 			take()
 			c.enums[enum] = append(c.enums[enum], enumValue{enum: enum, name: m[1], number: m[2]})
 		case message != "" && fieldRe.MatchString(line):
-			name := fieldRe.FindStringSubmatch(line)[1]
-			c.fields = append(c.fields, field{message: message, name: name, comment: take()})
+			m := fieldRe.FindStringSubmatch(line)
+			c.fields = append(c.fields, field{
+				message: message, name: m[3], typ: m[2],
+				repeated: strings.TrimSpace(m[1]) == "repeated", comment: take(),
+			})
 		default:
 			comment = nil
 		}
