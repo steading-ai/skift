@@ -54,12 +54,13 @@ type Patch struct {
 
 // Op is one operation. Exactly one field is set.
 type Op struct {
-	CreateNode *CreateNode `json:"create_node,omitempty"`
-	UpdateNode *UpdateNode `json:"update_node,omitempty"`
-	DropNode   *DropNode   `json:"drop_node,omitempty"`
-	ReopenNode *ReopenNode `json:"reopen_node,omitempty"`
-	AddEdge    *AddEdge    `json:"add_edge,omitempty"`
-	RemoveEdge *RemoveEdge `json:"remove_edge,omitempty"`
+	CreateNode   *CreateNode   `json:"create_node,omitempty"`
+	UpdateNode   *UpdateNode   `json:"update_node,omitempty"`
+	DropNode     *DropNode     `json:"drop_node,omitempty"`
+	CompleteNode *CompleteNode `json:"complete_node,omitempty"`
+	ReopenNode   *ReopenNode   `json:"reopen_node,omitempty"`
+	AddEdge      *AddEdge      `json:"add_edge,omitempty"`
+	RemoveEdge   *RemoveEdge   `json:"remove_edge,omitempty"`
 }
 
 // Name is the operation's name as events record it, or empty when no
@@ -72,6 +73,8 @@ func (o Op) Name() string {
 		return OpUpdateNode
 	case o.DropNode != nil:
 		return OpDropNode
+	case o.CompleteNode != nil:
+		return OpCompleteNode
 	case o.ReopenNode != nil:
 		return OpReopenNode
 	case o.AddEdge != nil:
@@ -91,6 +94,8 @@ func (o Op) validate() error {
 		return errors.New("no operation set")
 	case o.DropNode != nil:
 		return o.DropNode.validate()
+	case o.CompleteNode != nil:
+		return o.CompleteNode.validate()
 	case o.ReopenNode != nil && o.ReopenNode.Reason == "":
 		return ErrReasonRequired
 	}
@@ -99,12 +104,13 @@ func (o Op) validate() error {
 
 // Operation names, as written to events.op.
 const (
-	OpCreateNode = "create_node"
-	OpUpdateNode = "update_node"
-	OpDropNode   = "drop_node"
-	OpReopenNode = "reopen_node"
-	OpAddEdge    = "add_edge"
-	OpRemoveEdge = "remove_edge"
+	OpCreateNode   = "create_node"
+	OpUpdateNode   = "update_node"
+	OpDropNode     = "drop_node"
+	OpCompleteNode = "complete_node"
+	OpReopenNode   = "reopen_node"
+	OpAddEdge      = "add_edge"
+	OpRemoveEdge   = "remove_edge"
 )
 
 // CreateNode creates a node. The server assigns its id and number; later
@@ -655,6 +661,8 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 		return a.updateNode(ctx, op.UpdateNode)
 	case op.DropNode != nil:
 		return a.dropNode(ctx, op.DropNode)
+	case op.CompleteNode != nil:
+		return a.completeNode(ctx, op.CompleteNode)
 	case op.ReopenNode != nil:
 		return a.reopenNode(ctx, op.ReopenNode)
 	case op.AddEdge != nil:
