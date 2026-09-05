@@ -31,3 +31,7 @@ RETURNING *;
 SELECT * FROM artifact_parts
 WHERE org_id = $1 AND artifact_id = $2
 ORDER BY position;
+
+-- name: CountBlobReferences :one
+SELECT count(*) FROM artifact_parts
+WHERE org_id = $1 AND blob_digest = $2;

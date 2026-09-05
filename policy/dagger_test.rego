@@ -80,6 +80,13 @@ test_holder_updates_grandchild_it_created if {
 	authz.allow with input as node_op(agent_a, "update_node", grandchild, grandchild, lease_a)
 }
 
+test_holder_attaches_to_own_node_only if {
+	authz.allow with input as node_op(agent_a, "attach_artifact", node7, node7, lease_a)
+	authz.allow with input as node_op(user, "attach_artifact", node8, node8, null)
+	not authz.allow with input as node_op(agent_a, "attach_artifact", node8, node8, lease_a)
+	not authz.allow with input as node_op(agent_a, "attach_artifact", node7, node7, null)
+}
+
 test_holder_cannot_edit_sibling if {
 	not authz.allow with input as node_op(agent_a, "update_node", node8, node8, lease_a)
 }

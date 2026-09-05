@@ -43,7 +43,9 @@ reasons contains msg if {
 	some msg in vetoes
 }
 
-node_actions := {"create_node", "update_node", "drop_node", "reopen_node", "complete_node"}
+# Attaching an artifact writes to the node it goes on, so it is permitted
+# as a node action; the node itself stands the same before and after.
+node_actions := {"create_node", "update_node", "drop_node", "reopen_node", "complete_node", "attach_artifact"}
 
 edge_actions := {"add_edge", "remove_edge"}
 

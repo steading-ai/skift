@@ -84,7 +84,7 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			_, err = g.applyWithLease(ctx, bob, "done-2", second.Lease.ID,
 				complete("#2", "# Two\n\nOpened the PR.", domain.Artifact{
 					Name: "pr", Description: "the change", Metadata: map[string]any{"repo": "acme/platform"},
-					Parts: []domain.Part{{Reference: &domain.ReferencePart{URI: "git+https://example.com/acme/platform/pull/7", Digest: specDigest, MediaType: "text/x-diff", Size: 1234}}},
+					Parts: []domain.Part{{Reference: &domain.ReferencePart{URI: "git+https://example.com/acme/platform/pull/7?rev=4b825dc642cb6eb9a060e54bf8d69288fbee4904", Digest: specDigest, MediaType: "text/x-diff", Size: 1234}}},
 				}))
 			Expect(err).NotTo(HaveOccurred())
 
@@ -116,7 +116,7 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			Expect(in[1].Artifacts[0].Metadata).To(MatchJSON(`{"repo": "acme/platform"}`))
 			part := in[1].Artifacts[0].Parts[0]
 			Expect(part.Kind).To(Equal(domain.PartReference))
-			Expect(part.ReferenceUri).To(HaveValue(Equal("git+https://example.com/acme/platform/pull/7")))
+			Expect(part.ReferenceUri).To(HaveValue(Equal("git+https://example.com/acme/platform/pull/7?rev=4b825dc642cb6eb9a060e54bf8d69288fbee4904")))
 			Expect(part.ReferenceDigest).To(HaveValue(Equal(specDigest)))
 			Expect(part.MediaType).To(HaveValue(Equal("text/x-diff")))
 			Expect(part.Size).To(HaveValue(Equal(int64(1234))))

@@ -54,16 +54,9 @@ func Inputs(ctx context.Context, tx store.Tx, orgID, nodeID string) ([]Input, er
 		if p.Status == "done" && len(results) > 0 {
 			in.Result = &results[0]
 		}
-		artifacts, err := tx.ListArtifactsForNode(ctx, store.ListArtifactsForNodeParams{OrgID: orgID, NodeID: p.ID})
+		in.Artifacts, err = readArtifacts(ctx, tx, orgID, p.ID)
 		if err != nil {
-			return nil, fmt.Errorf("read artifacts of node %s: %w", p.ID, err)
-		}
-		for _, a := range artifacts {
-			parts, err := tx.ListArtifactParts(ctx, store.ListArtifactPartsParams{OrgID: orgID, ArtifactID: a.ID})
-			if err != nil {
-				return nil, fmt.Errorf("read parts of artifact %s: %w", a.ID, err)
-			}
-			in.Artifacts = append(in.Artifacts, StoredArtifact{Artifact: a, Parts: parts})
+			return nil, err
 		}
 		inputs = append(inputs, in)
 	}

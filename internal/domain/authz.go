@@ -115,7 +115,7 @@ func (r *recorder) policyInput(ctx context.Context, op, nodeID string, before, a
 		info.CreatedBy = r.actor.PrincipalID
 		info.Lineage[0].CreatedBy = r.actor.PrincipalID
 		in.After = &policy.Resource{Node: info}
-	case OpUpdateNode, OpDropNode, OpReopenNode, OpCompleteNode:
+	case OpUpdateNode, OpDropNode, OpReopenNode, OpCompleteNode, OpAttachArtifact:
 		prior, err := as[store.Node](before)
 		if err != nil {
 			return in, err
@@ -212,14 +212,18 @@ func commentInfo(c store.Comment) *policy.Comment {
 }
 
 // transitioned is the node a transition's after carries. A completion
-// records the result beside the node; every other transition records the
-// node alone.
+// records the result beside the node and an attach records the artifact
+// beside it; every other transition records the node alone.
 func transitioned(op string, after any) (store.Node, error) {
-	if op != OpCompleteNode {
-		return as[store.Node](after)
+	switch op {
+	case OpCompleteNode:
+		done, err := as[Completed](after)
+		return done.Node, err
+	case OpAttachArtifact:
+		attached, err := as[Attached](after)
+		return attached.Node, err
 	}
-	done, err := as[Completed](after)
-	return done.Node, err
+	return as[store.Node](after)
 }
 
 // as is the typed value an event carries, or an error naming what it

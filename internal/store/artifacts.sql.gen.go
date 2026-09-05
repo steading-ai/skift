@@ -9,6 +9,23 @@ import (
 	"context"
 )
 
+const countBlobReferences = `-- name: CountBlobReferences :one
+SELECT count(*) FROM artifact_parts
+WHERE org_id = $1 AND blob_digest = $2
+`
+
+type CountBlobReferencesParams struct {
+	OrgID      string
+	BlobDigest *string
+}
+
+func (q *Queries) CountBlobReferences(ctx context.Context, arg CountBlobReferencesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countBlobReferences, arg.OrgID, arg.BlobDigest)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createArtifact = `-- name: CreateArtifact :one
 INSERT INTO artifacts (id, org_id, node_id, name, description, metadata, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

@@ -62,6 +62,8 @@ type Op struct {
 	AddEdge      *AddEdge      `json:"add_edge,omitempty"`
 	RemoveEdge   *RemoveEdge   `json:"remove_edge,omitempty"`
 
+	AttachArtifact *AttachArtifact `json:"attach_artifact,omitempty"`
+
 	AddComment     *AddComment     `json:"add_comment,omitempty"`
 	EditComment    *EditComment    `json:"edit_comment,omitempty"`
 	ResolveComment *ResolveComment `json:"resolve_comment,omitempty"`
@@ -85,6 +87,8 @@ func (o Op) Name() string {
 		return OpAddEdge
 	case o.RemoveEdge != nil:
 		return OpRemoveEdge
+	case o.AttachArtifact != nil:
+		return OpAttachArtifact
 	case o.AddComment != nil:
 		return OpAddComment
 	case o.EditComment != nil:
@@ -112,6 +116,8 @@ func (o Op) validate(l Limits) error {
 		return o.CompleteNode.validate(l)
 	case o.ReopenNode != nil && o.ReopenNode.Reason == "":
 		return ErrReasonRequired
+	case o.AttachArtifact != nil:
+		return o.AttachArtifact.validate(l)
 	case o.AddComment != nil:
 		return validateCommentBody(o.AddComment.Body, l)
 	case o.EditComment != nil:
@@ -129,7 +135,8 @@ const (
 	OpReopenNode   = "reopen_node"
 	OpAddEdge      = "add_edge"
 	OpRemoveEdge   = "remove_edge"
-	// Comment operations are named in comment.go.
+	// The attach_artifact operation is named in artifact.go, and comment
+	// operations in comment.go.
 )
 
 // CreateNode creates a node. The server assigns its id and number; later
@@ -707,6 +714,8 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 		return a.addEdge(ctx, op.AddEdge)
 	case op.RemoveEdge != nil:
 		return a.removeEdge(ctx, op.RemoveEdge)
+	case op.AttachArtifact != nil:
+		return a.attachArtifact(ctx, op.AttachArtifact)
 	case op.AddComment != nil:
 		return a.addComment(ctx, op.AddComment)
 	case op.EditComment != nil:
