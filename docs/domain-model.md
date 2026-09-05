@@ -362,9 +362,10 @@ Semantic retrieval, hybrid ranking, and synthesized answers are not dagger's. Th
 
 ## Default policy
 
-The default Rego policy for a lease holder:
+The default Rego policy for an agent:
 
-- May mutate **its own node and the children it creates under it**, and nothing else. Not arbitrary descendants
+- May **file work with no lease at all**: create a node at the root of a project, or under a lineage it created itself. It may also block what it filed on anything it can see in the project, and unblock it again. Filing is how an agent turns intent into a graph, and it is not mutation; changing a filed node afterwards needs its lease like any other write
+- As a lease holder, may mutate **its own node and the children it creates under it**, and nothing else. Not arbitrary descendants
 - May add `blocks` edges into its own node
 - May not add edges out of its node without link permission on the target
 - Cross-project edges require write on the source and link permission on the target

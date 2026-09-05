@@ -64,7 +64,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			})
 
 			By("and a write the policy refuses, for comparison")
-			_, denied := f.apply(ctx, "platform", createOp("", "An agent may not create a root node without a lease"))
+			_, denied := f.apply(ctx, "platform", createOpWith(&daggerv1.CreateNodeOp{
+				Alias: "x", Parent: "#1", Title: "An agent may not file under another principal's node without a lease",
+			}))
 
 			By("then the response code distinguishes it from a permission denial")
 			Expect(connect.CodeOf(stale)).To(Equal(connect.CodeFailedPrecondition))

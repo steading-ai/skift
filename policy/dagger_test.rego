@@ -104,8 +104,36 @@ test_holder_cannot_edit_below_descendant_created_by_another if {
 	not authz.allow with input as node_op(agent_a, "update_node", below, below, lease_a)
 }
 
-test_holder_cannot_create_root_node if {
-	not authz.allow with input as node_op(agent_a, "create_node", null, node("n11", null, "A", []), lease_a)
+# Filing is not mutation: an agent creates a root node, or a node under a
+# lineage it created itself, with no lease. Mutating what it filed needs one.
+
+test_agent_files_root_node_without_lease if {
+	authz.allow with input as node_op(agent_a, "create_node", null, node("n11", null, "A", []), null)
+}
+
+test_agent_files_under_lineage_it_created if {
+	root := node("n11", null, "A", [])
+	authz.allow with input as node_op(agent_a, "create_node", null, created("n12", root, "A"), null)
+}
+
+test_agent_cannot_file_under_another_principals_node if {
+	not authz.allow with input as node_op(agent_a, "create_node", null, created("n12", node7, "A"), null)
+}
+
+test_agent_blocks_filed_node_on_anything_without_lease if {
+	root := node("n11", null, "A", [])
+	authz.allow with input as add_edge(agent_a, edge(node8, root), null)
+	authz.allow with input as remove_edge(agent_a, edge(node8, root), null)
+}
+
+test_agent_cannot_block_another_principals_node_by_filing if {
+	root := node("n11", null, "A", [])
+	not authz.allow with input as add_edge(agent_a, edge(root, node7), null)
+}
+
+test_filing_grants_no_mutation if {
+	root := node("n11", null, "A", [])
+	not authz.allow with input as node_op(agent_a, "update_node", root, root, null)
 }
 
 test_agent_without_lease_cannot_mutate if {

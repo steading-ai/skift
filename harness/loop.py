@@ -45,8 +45,12 @@ STATE = ROOT / "harness" / "state.json"
 STOP = ROOT / "harness" / "STOP"
 LOGS = ROOT / "harness" / "logs"
 
-# The implementer must not grade its own homework or rewrite the spec.
-PROTECTED = ("backlog.toml", "harness/", "docs/", "scripts/ready.py")
+# The implementer must not grade its own homework or rewrite the spec. The
+# design docs are protected; operational docs under docs/how-to/ are the
+# implementer's to write, since a work order may name one as a deliverable.
+PROTECTED = ("backlog.toml", "harness/", "scripts/ready.py", "AGENTS.md", "CLAUDE.md",
+             "docs/vision.md", "docs/core-principles.md", "docs/domain-model.md",
+             "docs/architecture.md", "docs/roadmap.md", "docs/adrs/", "docs/research/")
 
 # The harness writes these itself while an agent is running, so they are never
 # evidence that the implementer went out of bounds.
@@ -235,10 +239,22 @@ def head():
 
 
 def undo_agent_commits(before):
-    """Keep the work, drop the commit. The harness owns the history."""
-    if head() != before:
-        git("reset", "--soft", before)
-        print("  .. agent committed; un-committed, harness owns history", flush=True)
+    """Keep the work, drop the commit. The harness owns the history.
+
+    Only commits that are not on the remote are the agent's to undo. A commit
+    that reached origin while the agent ran was made by someone else, and
+    resetting it once diverged local history and broke every later push.
+    """
+    if head() == before:
+        return
+    on_origin = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", "HEAD", "origin/main"], cwd=ROOT
+    ).returncode == 0
+    if on_origin:
+        print("  .. HEAD moved to a commit already on origin; leaving it", flush=True)
+        return
+    git("reset", "--soft", before)
+    print("  .. agent committed; un-committed, harness owns history", flush=True)
 
 
 async def run_agent(kind, system_prompt, prompt, log_path, args):

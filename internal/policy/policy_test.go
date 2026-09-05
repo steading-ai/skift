@@ -162,8 +162,16 @@ var _ = Describe("Policy", Label("unit"), func() {
 		It("may not mutate without a lease, or with someone else's", func(ctx SpecContext) {
 			Expect(bundle.Authorize(ctx, nodeOp(agentA, "update_node", &node7, &node7, nil))).To(BeDenied())
 			Expect(bundle.Authorize(ctx, nodeOp(agentB, "update_node", &node7, &node7, leaseA))).To(BeDenied())
+		})
+
+		It("may file work without a lease, but not mutate what it filed", func(ctx SpecContext) {
 			root := node("n9", nil, "A", nil)
-			Expect(bundle.Authorize(ctx, nodeOp(agentA, "create_node", nil, &root, leaseA))).To(BeDenied(), "a root node is nobody's child")
+			Expect(bundle.Authorize(ctx, nodeOp(agentA, "create_node", nil, &root, nil))).To(Succeed(), "a root node is filing, not mutation")
+			Expect(bundle.Authorize(ctx, nodeOp(agentA, "update_node", &root, &root, nil))).To(BeDenied(), "changing it afterwards needs a lease")
+			underTheirs := node("n10", &node1.ID, "A", node1.Lineage)
+			Expect(bundle.Authorize(ctx, nodeOp(agentA, "create_node", nil, &underTheirs, nil))).To(BeDenied(), "another principal's lineage is not filing")
+			Expect(bundle.Authorize(ctx, addEdge(agentA, node8, root, nil))).To(Succeed(), "filed work may wait on anything it can see")
+			Expect(bundle.Authorize(ctx, addEdge(agentA, root, node7, nil))).To(BeDenied(), "but may not make someone else's work wait")
 		})
 
 		It("may add blocking edges into its own node", func(ctx SpecContext) {

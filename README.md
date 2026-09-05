@@ -11,7 +11,7 @@ Dagger holds the plan. It does not run agents, schedule work, or define workflow
 
 ## Status
 
-Design phase. No code yet. Architecture decisions are recorded in [docs/adrs/](docs/adrs/).
+Working service, CLI, and MCP server, built from the backlog below by an autonomous agent loop. Architecture decisions are recorded in [docs/adrs/](docs/adrs/); milestones in [docs/roadmap.md](docs/roadmap.md).
 
 Dagger is built from its own backlog, in [backlog.toml](backlog.toml), expressed in dagger's domain model. Each node is a self-contained work order with acceptance criteria and the scenarios its specs must cover.
 

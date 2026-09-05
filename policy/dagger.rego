@@ -124,6 +124,23 @@ permitted if {
 	own(input.after.node)
 }
 
+# Filing is not mutation. An agent may create a node at the root of a
+# project, or under a lineage it created itself, holding no lease at all:
+# that is how an agent turns intent into a graph. Changing a filed node
+# afterwards is mutation, and needs its lease like any other write.
+permitted if {
+	input.principal.kind == "agent"
+	input.action == "create_node"
+	filed(input.after.node)
+}
+
+# Every node from the new one up to the root was created by this principal.
+filed(node) if {
+	every ancestor in node.lineage {
+		ancestor.created_by == input.principal.id
+	}
+}
+
 # A lease holder may comment on its own node, and on what it created under
 # it, as it may mutate them.
 permitted if {
@@ -170,6 +187,22 @@ permitted if {
 	input.principal.kind == "agent"
 	input.action == "remove_edge"
 	write(input.resource.edge.to)
+}
+
+# Filing extends to the dependencies among filed work. Holding no lease, an
+# agent may block a node it filed on anything it can see in the project, and
+# unblock it again: only work it filed itself waits differently as a result.
+permitted if {
+	input.principal.kind == "agent"
+	input.action == "add_edge"
+	same_project(input.after.edge)
+	filed(input.after.edge.to)
+}
+
+permitted if {
+	input.principal.kind == "agent"
+	input.action == "remove_edge"
+	filed(input.resource.edge.to)
 }
 
 permitted if {
