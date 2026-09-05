@@ -1,0 +1,40 @@
+# The dagger service, as a user unit: it runs as the one unix account the
+# zone gives it, and agents on the host reach it over the socket in that
+# account's runtime directory. Install with `make install-units`, then:
+#
+#   systemctl --user enable --now dagger.service
+#
+# DATABASE_URL and any other settings come from ~/.config/dagger/env, one
+# KEY=value per line. See .env.example in the repository for the shape.
+#
+# Readiness is sd_notify: the unit is active only once the service has
+# bound its socket and the database has answered, so anything ordered
+# After= it can rely on both.
+
+[Unit]
+Description=dagger: agent-first project management on a DAG
+Documentation=https://github.com/ivy/dagger
+After=network.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+EnvironmentFile=-%E/dagger/env
+RuntimeDirectory=dagger
+RuntimeDirectoryMode=0750
+ExecStart=%h/.local/bin/dg serve --socket %t/dagger/dg.sock
+# dg serve drains in-flight requests for up to its --shutdown-timeout
+# (30s by default) before exiting; give it that and a margin.
+TimeoutStopSec=45
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=2
+# Log records go to stderr with sd-daemon priority prefixes, which the
+# journal turns into the PRIORITY field.
+StandardOutput=journal
+StandardError=journal
+SyslogLevelPrefix=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

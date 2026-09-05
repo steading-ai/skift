@@ -9,3 +9,9 @@ RETURNING *;
 -- name: GetOrganization :one
 SELECT * FROM organizations
 WHERE id = $1;
+
+-- Every organization, for work the service does across the deployment
+-- rather than for one caller, such as the lease reaper.
+-- name: ListOrganizations :many
+SELECT * FROM organizations
+ORDER BY id;

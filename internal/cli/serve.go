@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"github.com/ivy/dagger/internal/domain"
 	"github.com/ivy/dagger/internal/logging"
 	"github.com/ivy/dagger/internal/policy"
+	"github.com/ivy/dagger/internal/sdnotify"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
 	"github.com/ivy/dagger/internal/server/transport"
@@ -64,8 +66,10 @@ on a tailnet as well. Both serve the same handlers; a caller over the socket
 is identified by its unix user, over the tailnet by its tailscale node.
 
 Logs go to stderr as structured records. Under systemd they carry journal
-priorities. SIGTERM and SIGINT drain in-flight requests, including waiting
-ClaimNext calls, before the process exits.`,
+priorities, and under a Type=notify unit the service reports itself ready
+once its socket is bound and the database has answered. SIGTERM and SIGINT
+drain in-flight requests, including waiting ClaimNext calls, before the
+process exits.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runServe(cmd, opts)
@@ -174,12 +178,53 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	if err := srv.Listen(); err != nil {
 		return fmt.Errorf("dg serve: %w", err)
 	}
+	go announceReady(ctx, pool, log)
 	go func() {
 		<-ctx.Done()
 		log.Info("shutdown signal received")
+		notify(log, sdnotify.Stopping)
 	}()
 	if err := srv.Serve(ctx); err != nil {
 		return fmt.Errorf("dg serve: %w", err)
 	}
 	return nil
+}
+
+// readyProbe bounds one database ping while waiting to report readiness,
+// and readyRetry is the pause between failed pings.
+const (
+	readyProbe = 2 * time.Second
+	readyRetry = time.Second
+)
+
+// announceReady reports the service ready to systemd once the database
+// answers, and not before: the socket is already bound, but a service
+// that cannot reach its database cannot take work, and a unit ordered
+// after this one should not start until it can. It keeps probing until
+// the database answers or the service is shutting down.
+func announceReady(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) {
+	for {
+		probeCtx, cancel := context.WithTimeout(ctx, readyProbe)
+		err := pool.Ping(probeCtx)
+		cancel()
+		if err == nil {
+			log.Info("database reachable; ready")
+			notify(log, sdnotify.Ready, sdnotify.Status("serving"))
+			return
+		}
+		log.Warn("database not reachable; not ready yet", "err", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(readyRetry):
+		}
+	}
+}
+
+// notify sends states to systemd, logging a failure to reach the
+// notification socket rather than failing the service over it.
+func notify(log *slog.Logger, states ...string) {
+	if _, err := sdnotify.Send(states...); err != nil {
+		log.Warn("notify systemd", "err", err)
+	}
 }

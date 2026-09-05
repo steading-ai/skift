@@ -1,0 +1,18 @@
+# Runs the lease reaper once a minute. A lease outlives its TTL by at most
+# this interval plus the timer's accuracy before its node is ready again;
+# a claim in the meantime expires it itself rather than waiting.
+#
+#   systemctl --user enable --now dagger-reap.timer
+
+[Unit]
+Description=dagger: expire stale leases every minute
+Documentation=https://github.com/ivy/dagger
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=dagger-reap.service
+
+[Install]
+WantedBy=timers.target

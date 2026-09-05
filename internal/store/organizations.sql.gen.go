@@ -41,3 +41,30 @@ func (q *Queries) GetOrganization(ctx context.Context, id string) (Organization,
 	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
 	return i, err
 }
+
+const listOrganizations = `-- name: ListOrganizations :many
+SELECT id, name, created_at FROM organizations
+ORDER BY id
+`
+
+// Every organization, for work the service does across the deployment
+// rather than for one caller, such as the lease reaper.
+func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error) {
+	rows, err := q.db.Query(ctx, listOrganizations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Organization{}
+	for rows.Next() {
+		var i Organization
+		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -137,6 +137,25 @@ It("reads its own database", Label("db"), func(ctx SpecContext) {
 The harness finds the rootless podman socket on its own. Set `DOCKER_HOST`
 to point it somewhere else.
 
+### Run it under systemd
+
+The service and its lease reaper ship as user units in `contrib/systemd/`,
+matching a deployment where dagger runs as one unix account:
+
+```sh
+make build && install -D dg ~/.local/bin/dg
+mkdir -p ~/.config/dagger && echo "DATABASE_URL=..." > ~/.config/dagger/env
+make install-units
+systemctl --user enable --now dagger.service dagger-reap.timer
+```
+
+`dagger.service` is `Type=notify` and becomes active only once the socket is
+bound and the database has answered. `dagger-reap.timer` runs `dg reap` every
+minute, releasing leases whose TTL has passed; the command is idempotent and
+safe to run by hand alongside the timer. Set `DG=/path/to/dg` on
+`make install-units` to run a binary from somewhere other than
+`~/.local/bin`.
+
 ## Documentation
 
 - [Vision](docs/vision.md)

@@ -49,6 +49,7 @@ func NewRootCommand(stdout, stderr io.Writer) *cobra.Command {
 Run without a subcommand it is the CLI, a Connect client with JSON output.
 "dg mcp" serves the same client over stdio as an MCP server.
 "dg serve" runs the service: Connect handlers over PostgreSQL.
+"dg reap" expires stale leases; dagger-reap.timer runs it.
 
 Node references are "#7" in the current project, "slug#7" in another
 project of the organization, or "org/slug#7" fully qualified. The current
@@ -82,6 +83,7 @@ Output is JSON whenever stdout is not a terminal, and on request with
 		newVersionCommand(),
 		a.mcpCommand(),
 		newServeCommand(),
+		newReapCommand(),
 		a.projectCommand(),
 		a.nodeCommand(),
 		a.patchCommand(),

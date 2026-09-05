@@ -1,0 +1,19 @@
+# One run of the lease reaper: releases every lease whose TTL has passed,
+# as expired, returning its node to the ready set. dagger-reap.timer starts
+# it; running it by hand is `systemctl --user start dagger-reap.service`.
+# The run is idempotent and safe alongside another, so an overlap with a
+# manual run or a claim that expires the same lease first does no harm.
+
+[Unit]
+Description=dagger: expire stale leases
+Documentation=https://github.com/ivy/dagger
+After=dagger.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%E/dagger/env
+ExecStart=%h/.local/bin/dg reap
+StandardOutput=journal
+StandardError=journal
+SyslogLevelPrefix=true
+NoNewPrivileges=true

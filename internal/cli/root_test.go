@@ -39,7 +39,7 @@ var _ = Describe("root command", Label("unit"), func() {
 		for _, c := range root.Commands() {
 			names = append(names, c.Name())
 		}
-		Expect(names).To(ConsistOf("version", "mcp", "serve",
+		Expect(names).To(ConsistOf("version", "mcp", "serve", "reap",
 			"project", "node", "patch", "create", "link", "ready", "explain",
 			"claim", "heartbeat", "release", "complete", "comment", "search", "events"))
 	})

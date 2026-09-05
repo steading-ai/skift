@@ -21,7 +21,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build test test-unit test-db test-policy lint check-generated generate clean db-up db-down db-reset db-migrate
+.PHONY: all build test test-unit test-db test-policy lint check-generated generate clean install-units db-up db-down db-reset db-migrate
 
 all: build
 
@@ -80,6 +80,24 @@ generate:
 clean:
 	rm -f $(BINARY)
 	rm -rf dist
+
+# systemd user units for the service and the lease reaper. They go under
+# the invoking user's unit directory, and are enabled by hand afterwards:
+#
+#   systemctl --user enable --now dagger.service dagger-reap.timer
+#
+# The units start the binary at $(DG), which defaults to ~/.local/bin/dg
+# spelled as systemd spells the home directory. Override it to run a binary
+# from somewhere else, such as DG=$(CURDIR)/dg for this checkout.
+UNIT_DIR ?= $(if $(XDG_CONFIG_HOME),$(XDG_CONFIG_HOME),$(HOME)/.config)/systemd/user
+DG       ?= %h/.local/bin/dg
+
+install-units:
+	install -d -m 0755 "$(UNIT_DIR)"
+	for unit in contrib/systemd/*; do \
+	  sed 's|%h/.local/bin/dg|$(DG)|' "$$unit" > "$(UNIT_DIR)/$$(basename "$$unit")"; \
+	done
+	systemctl --user daemon-reload
 
 # Development database. See compose.yaml and the "Developing" section of README.md.
 
