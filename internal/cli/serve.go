@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -19,12 +20,18 @@ import (
 	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/ivy/dagger/internal/server/transport"
 	"github.com/ivy/dagger/internal/version"
 )
 
 // databaseURLEnv is the variable the service reads its connection string
 // from when --database-url is not given. .env.example documents it.
 const databaseURLEnv = "DATABASE_URL"
+
+// tailnetAuthKeyEnv is the variable the tailnet auth key is read from when
+// --tailnet-auth-key is not given. It is the name tailscaled itself uses, so
+// one secret serves both.
+const tailnetAuthKeyEnv = "TS_AUTHKEY"
 
 // defaultSocketPath is the runtime directory of the invoking user when
 // there is one, and the system runtime directory otherwise, which is where
@@ -43,6 +50,7 @@ type serveOptions struct {
 	databaseURL     string
 	shutdownTimeout time.Duration
 	logLevel        string
+	tailnet         transport.TailnetConfig
 }
 
 func newServeCommand() *cobra.Command {
@@ -51,7 +59,9 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Run the dagger service",
 		Long: `Run the dagger service: the dagger.v1 Connect handlers over PostgreSQL,
-listening on a unix socket.
+listening on a unix socket and, when --tailnet-hostname is given, as a node
+on a tailnet as well. Both serve the same handlers; a caller over the socket
+is identified by its unix user, over the tailnet by its tailscale node.
 
 Logs go to stderr as structured records. Under systemd they carry journal
 priorities. SIGTERM and SIGINT drain in-flight requests, including waiting
@@ -68,7 +78,30 @@ ClaimNext calls, before the process exits.`,
 	f.StringVar(&opts.databaseURL, "database-url", os.Getenv(databaseURLEnv), "PostgreSQL connection URL (default: $"+databaseURLEnv+")")
 	f.DurationVar(&opts.shutdownTimeout, "shutdown-timeout", server.DefaultShutdownTimeout, "how long to wait for in-flight requests on shutdown")
 	f.StringVar(&opts.logLevel, "log-level", "info", "minimum log level: debug, info, warn, error")
+	f.StringVar(&opts.tailnet.Hostname, "tailnet-hostname", "", "also serve on the tailnet as a node with this name")
+	f.StringVar(&opts.tailnet.AuthKey, "tailnet-auth-key", os.Getenv(tailnetAuthKeyEnv), "auth key that enrols the tailnet node on first start (default: $"+tailnetAuthKeyEnv+")")
+	f.StringSliceVar(&opts.tailnet.Tags, "tailnet-tag", nil, "ACL tag the tailnet node advertises, as tag:name; repeatable")
+	f.StringVar(&opts.tailnet.StateDir, "tailnet-state-dir", "", "directory the tailnet node keeps its state in (default: tsnet's choice under the user config directory)")
+	f.Uint16Var(&opts.tailnet.Port, "tailnet-port", transport.DefaultTailnetPort, "tailnet port to serve on")
 	return cmd
+}
+
+// tailnetTransport builds the tailnet transport when one is configured, and
+// returns nil when the service is to listen on the socket alone.
+func tailnetTransport(opts serveOptions, log *slog.Logger) (*transport.Tailnet, error) {
+	if opts.tailnet.Hostname == "" {
+		if len(opts.tailnet.Tags) > 0 {
+			return nil, errors.New("dg serve: --tailnet-tag needs --tailnet-hostname")
+		}
+		return nil, nil
+	}
+	cfg := opts.tailnet
+	cfg.Logger = log
+	tn, err := transport.NewTailnet(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("dg serve: %w", err)
+	}
+	return tn, nil
 }
 
 func runServe(cmd *cobra.Command, opts serveOptions) error {
@@ -84,6 +117,10 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	}
 	if opts.databaseURL == "" {
 		return fmt.Errorf("dg serve: a database URL is required; pass --database-url or set %s", databaseURLEnv)
+	}
+	tailnet, err := tailnetTransport(opts, log)
+	if err != nil {
+		return err
 	}
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
@@ -106,10 +143,17 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	}
 	defer pool.Close()
 
-	// Every request is attributed to a principal by its unix peer
-	// credentials before a handler sees it; the handlers reach the graph
-	// through the domain alone.
+	// Every request is attributed to a principal before a handler sees it:
+	// by unix peer credentials over the socket, by tailscale node over the
+	// tailnet. The handlers reach the graph through the domain alone and
+	// are the same set on both.
 	svc := domain.NewService(pool, bundle)
+	resolvers := []interceptor.Resolver{interceptor.UnixResolver{}}
+	var transports []server.Transport
+	if tailnet != nil {
+		resolvers = append(resolvers, tailnet.Resolver())
+		transports = append(transports, tailnet)
+	}
 	srv := server.New(server.Config{
 		SocketPath:      opts.socket,
 		SocketMode:      os.FileMode(mode),
@@ -117,8 +161,9 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		ShutdownTimeout: opts.shutdownTimeout,
 		Logger:          log,
 		Interceptors: []connect.Interceptor{
-			interceptor.NewPrincipal(server.NewIdentityLookup(svc), interceptor.UnixResolver{}),
+			interceptor.NewPrincipal(server.NewIdentityLookup(svc), resolvers...),
 		},
+		Transports: transports,
 	}, server.Services{
 		Graph: server.NewGraphService(svc),
 		Work:  server.NewWorkService(svc),
