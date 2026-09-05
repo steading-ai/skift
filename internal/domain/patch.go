@@ -1,0 +1,710 @@
+package domain
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/ivy/dagger/internal/store"
+)
+
+// Errors a patch is rejected with before any operation runs.
+var (
+	// ErrNoRequestID: every patch carries an idempotency key.
+	ErrNoRequestID = errors.New("a patch needs a request id")
+	// ErrNoOperations: a patch is a mutation, so an empty one is a mistake.
+	ErrNoOperations = errors.New("a patch needs at least one operation")
+	// ErrProjectArchived: an archived project is read-only.
+	ErrProjectArchived = errors.New("project is archived")
+)
+
+// Actor is the principal applying a patch, as the transport resolved it.
+// Every event the patch writes records it. Nothing here comes from the
+// request body: see docs/adrs/006-provenance-not-authority.md.
+type Actor struct {
+	PrincipalID string
+	// PrincipalKind is `user`, `agent`, or `service`.
+	PrincipalKind string
+	// IdentityScheme is the transport identity the actor arrived with.
+	IdentityScheme string
+}
+
+// Patch is one atomic mutation of the graph. See the Patch section of
+// docs/domain-model.md. Its JSON form is the canonical encoding the
+// idempotency hash is taken over, so two patches with the same fields hash
+// the same however they were built.
+type Patch struct {
+	// RequestID is the client-supplied idempotency key.
+	RequestID string `json:"request_id"`
+	// Project is the project the patch applies to: a slug, `org/slug`, or
+	// an id. Operations do not repeat it, and a bare `#7` resolves here.
+	Project string `json:"project"`
+	// Ops are applied in order.
+	Ops []Op `json:"ops"`
+}
+
+// Op is one operation. Exactly one field is set.
+type Op struct {
+	CreateNode *CreateNode `json:"create_node,omitempty"`
+	UpdateNode *UpdateNode `json:"update_node,omitempty"`
+	AddEdge    *AddEdge    `json:"add_edge,omitempty"`
+	RemoveEdge *RemoveEdge `json:"remove_edge,omitempty"`
+}
+
+// Name is the operation's name as events record it, or empty when no
+// field is set.
+func (o Op) Name() string {
+	switch {
+	case o.CreateNode != nil:
+		return OpCreateNode
+	case o.UpdateNode != nil:
+		return OpUpdateNode
+	case o.AddEdge != nil:
+		return OpAddEdge
+	case o.RemoveEdge != nil:
+		return OpRemoveEdge
+	}
+	return ""
+}
+
+// Operation names, as written to events.op.
+const (
+	OpCreateNode = "create_node"
+	OpUpdateNode = "update_node"
+	OpAddEdge    = "add_edge"
+	OpRemoveEdge = "remove_edge"
+)
+
+// CreateNode creates a node. The server assigns its id and number; later
+// operations in the patch refer to it by Alias.
+type CreateNode struct {
+	// Alias is a client-chosen name usable as a node reference by any
+	// later operation in the same patch. Optional, and never stored.
+	Alias string `json:"alias,omitempty"`
+	// Parent is a node reference. Empty for a root node.
+	Parent string `json:"parent,omitempty"`
+	// BlockedBy is shorthand for one add_edge from each reference into the
+	// new node.
+	BlockedBy []string `json:"blocked_by,omitempty"`
+	// Kind defaults to task.
+	Kind  string `json:"kind,omitempty"`
+	Title string `json:"title"`
+	Body  string `json:"body,omitempty"`
+	// Priority defaults to p2.
+	Priority string `json:"priority,omitempty"`
+	// AssigneeKind is empty, [AssigneeAgent], or [AssigneeUser].
+	AssigneeKind string   `json:"assignee_kind,omitempty"`
+	Assignee     string   `json:"assignee,omitempty"`
+	Labels       []string `json:"labels,omitempty"`
+}
+
+// UpdateNode changes the mutable fields of a node. A nil field is left
+// alone. Status is not here: it changes only through complete, drop, and
+// reopen.
+type UpdateNode struct {
+	// Node is a node reference.
+	Node string `json:"node"`
+	// Parent set to the empty string makes the node a root.
+	Parent   *string `json:"parent,omitempty"`
+	Kind     *string `json:"kind,omitempty"`
+	Title    *string `json:"title,omitempty"`
+	Body     *string `json:"body,omitempty"`
+	Priority *string `json:"priority,omitempty"`
+	// AssigneeKind set to the empty string makes the node agent-eligible.
+	AssigneeKind *string `json:"assignee_kind,omitempty"`
+	// Assignee set to the empty string unassigns.
+	Assignee *string `json:"assignee,omitempty"`
+	// Labels replaces the label set; an empty slice clears it.
+	Labels *[]string `json:"labels,omitempty"`
+}
+
+// AddEdge adds a directed edge: From blocks To.
+type AddEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Kind defaults to blocks.
+	Kind string `json:"kind,omitempty"`
+}
+
+// RemoveEdge removes an edge. Removal is an event.
+type RemoveEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Kind defaults to blocks.
+	Kind string `json:"kind,omitempty"`
+}
+
+// Result is what a patch produced: the state of everything it touched,
+// after it was applied. It is what the idempotency key stores, so a
+// retried patch gets it back verbatim.
+type Result struct {
+	// Nodes is every node the patch created or changed, in first-touched
+	// order, as it stands after the patch.
+	Nodes []store.Node `json:"nodes"`
+	// Aliases maps each alias a create_node declared to the `slug#number`
+	// reference of the node it created.
+	Aliases map[string]string `json:"aliases"`
+	// Events are the events the patch wrote, in operation order.
+	Events []store.Event `json:"events"`
+	// Replayed reports that this is the stored response of an earlier
+	// application of the same request, and nothing was written.
+	Replayed bool `json:"-"`
+}
+
+// RequestConflictError reports a request id seen before with different
+// content. A silent replay would return a response to a request that was
+// never made.
+type RequestConflictError struct {
+	RequestID string
+}
+
+func (e *RequestConflictError) Error() string {
+	return fmt.Sprintf("request %q was already applied with different content", e.RequestID)
+}
+
+// OpError reports the operation a patch failed at. It unwraps to the cause.
+type OpError struct {
+	// Index is the operation's position in the patch, from 0.
+	Index int
+	Op    string
+	Err   error
+}
+
+func (e *OpError) Error() string {
+	return fmt.Sprintf("operation %d (%s): %v", e.Index, e.Op, e.Err)
+}
+
+func (e *OpError) Unwrap() error { return e.Err }
+
+// Apply applies p for actor in one transaction. Every operation commits or
+// none does; aliases resolve across the whole patch; the wait relation is
+// checked for cycles once, over the resulting graph. Each operation writes
+// one event.
+//
+// A request id seen before with the same content returns the stored
+// [Result] with Replayed set and writes nothing. The same id with
+// different content is a [*RequestConflictError]. Two applications of one
+// request racing each other serialize on the key: the loser waits for the
+// winner to commit, then replays its response without repeating the work.
+//
+// Patches that mutate edges or parents take a transaction-scoped advisory
+// lock on the organization, so two of them cannot each see an acyclic
+// graph and together commit a cycle. Patches that only create or update
+// node fields take none. See the Concurrency section of
+// docs/domain-model.md.
+func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Patch) (*Result, error) {
+	if p.RequestID == "" {
+		return nil, ErrNoRequestID
+	}
+	if len(p.Ops) == 0 {
+		return nil, ErrNoOperations
+	}
+	for i, op := range p.Ops {
+		if op.Name() == "" {
+			return nil, &OpError{Index: i, Op: "empty", Err: errors.New("no operation set")}
+		}
+	}
+	hash, err := requestHash(p)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *Result
+	for attempt := 0; ; attempt++ {
+		err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) (err error) {
+			result, err = applyOnce(ctx, tx, orgID, actor, p, hash)
+			return err
+		})
+		if isKeyConflict(err) && attempt == 0 {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+}
+
+// applyOnce is one attempt at the patch inside tx.
+func applyOnce(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Patch, hash string) (*Result, error) {
+	if stored, err := replay(ctx, tx, orgID, p.RequestID, hash); stored != nil || err != nil {
+		return stored, err
+	}
+	// Claim the key before any work. A concurrent application of the same
+	// request blocks here until this transaction ends: on commit it fails
+	// with a key conflict, restarts, and replays; on rollback it proceeds
+	// as the first application.
+	if _, err := tx.CreateIdempotencyKey(ctx, store.CreateIdempotencyKeyParams{
+		OrgID: orgID, RequestID: p.RequestID, RequestHash: hash, Response: []byte("null"),
+	}); err != nil {
+		return nil, fmt.Errorf("claim request %q: %w", p.RequestID, err)
+	}
+
+	if mutatesWaits(p) {
+		if err := lockOrganization(ctx, tx, orgID); err != nil {
+			return nil, err
+		}
+	}
+
+	a, err := newApplier(ctx, tx, orgID, actor, p)
+	if err != nil {
+		return nil, err
+	}
+	for i, op := range p.Ops {
+		if err := a.apply(ctx, op); err != nil {
+			return nil, &OpError{Index: i, Op: op.Name(), Err: err}
+		}
+	}
+	if err := CheckAcyclic(ctx, tx, orgID, a.touched); err != nil {
+		return nil, err
+	}
+
+	result := a.result()
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("encode patch response: %w", err)
+	}
+	if _, err := tx.SetIdempotencyKeyResponse(ctx, store.SetIdempotencyKeyResponseParams{
+		OrgID: orgID, RequestID: p.RequestID, Response: encoded,
+	}); err != nil {
+		return nil, fmt.Errorf("record request %q: %w", p.RequestID, err)
+	}
+	// The caller receives exactly the bytes a retry will, so the two
+	// responses are identical rather than merely equivalent.
+	return decodeResult(encoded)
+}
+
+// replay returns the stored response when the request was applied before
+// with the same content, nil when it was never seen, and a
+// [*RequestConflictError] when it was seen with different content.
+func replay(ctx context.Context, tx store.Tx, orgID, requestID, hash string) (*Result, error) {
+	key, err := tx.GetIdempotencyKey(ctx, store.GetIdempotencyKeyParams{OrgID: orgID, RequestID: requestID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("look up request %q: %w", requestID, err)
+	}
+	if key.RequestHash != hash {
+		return nil, &RequestConflictError{RequestID: requestID}
+	}
+	result, err := decodeResult(key.Response)
+	if err != nil {
+		return nil, err
+	}
+	result.Replayed = true
+	return result, nil
+}
+
+func decodeResult(encoded []byte) (*Result, error) {
+	var r Result
+	if err := json.Unmarshal(encoded, &r); err != nil {
+		return nil, fmt.Errorf("decode patch response: %w", err)
+	}
+	return &r, nil
+}
+
+// requestHash is the digest the idempotency key stores, in the canonical
+// `sha256:` form the schema checks.
+func requestHash(p Patch) (string, error) {
+	canonical, err := json.Marshal(p)
+	if err != nil {
+		return "", fmt.Errorf("encode patch: %w", err)
+	}
+	sum := sha256.Sum256(canonical)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// isKeyConflict reports a unique violation on the idempotency key: another
+// application of the same request committed first.
+func isKeyConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "idempotency_keys_pkey"
+}
+
+// mutatesWaits reports whether any operation changes the wait relation:
+// an edge, or a parent.
+func mutatesWaits(p Patch) bool {
+	for _, op := range p.Ops {
+		switch {
+		case op.AddEdge != nil, op.RemoveEdge != nil:
+			return true
+		case op.CreateNode != nil && (op.CreateNode.Parent != "" || len(op.CreateNode.BlockedBy) > 0):
+			return true
+		case op.UpdateNode != nil && op.UpdateNode.Parent != nil:
+			return true
+		}
+	}
+	return false
+}
+
+// lockNamespace is the first half of the advisory lock key, so the lock
+// cannot collide with any other use of advisory locks on the server.
+const lockNamespace = "dagger:graph"
+
+// lockOrganization takes the organization's graph lock for the rest of the
+// transaction. It blocks until any holder commits or rolls back.
+func lockOrganization(ctx context.Context, tx store.Tx, orgID string) error {
+	if _, err := tx.Tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, lockNamespace, orgID); err != nil {
+		return fmt.Errorf("lock organization graph: %w", err)
+	}
+	return nil
+}
+
+// applier carries the state of one patch through its operations.
+type applier struct {
+	tx       store.Tx
+	orgID    string
+	actor    Actor
+	request  string
+	project  *store.Project
+	resolver *Resolver
+	// nextNumber is the next unused number of the block allocated for the
+	// patch's create_node operations.
+	nextNumber int64
+	// touched are the waiting sides of every wait the patch added, for
+	// the cycle check.
+	touched []string
+	nodes   []store.Node
+	index   map[string]int
+	aliases map[string]string
+	events  []store.Event
+}
+
+func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Patch) (*applier, error) {
+	project, err := resolveProject(ctx, tx, orgID, p.Project)
+	if err != nil {
+		return nil, err
+	}
+	if project.ArchivedAt != nil {
+		return nil, fmt.Errorf("project %s: %w", project.Slug, ErrProjectArchived)
+	}
+	a := &applier{
+		tx: tx, orgID: orgID, actor: actor, request: p.RequestID, project: project,
+		resolver: NewResolver(tx, orgID, project),
+		index:    map[string]int{}, aliases: map[string]string{},
+	}
+	creates := 0
+	for _, op := range p.Ops {
+		if op.CreateNode != nil {
+			creates++
+		}
+	}
+	if creates > 0 {
+		first, err := AllocateNumbers(ctx, tx, orgID, project.ID, creates)
+		if err != nil {
+			return nil, err
+		}
+		a.nextNumber = first
+	}
+	return a, nil
+}
+
+// ulidShape is the canonical ULID text the schema accepts, used to tell an
+// id from a slug when a patch names its project.
+var ulidShape = regexp.MustCompile(`^[0-7][0-9A-HJKMNP-TV-Z]{25}$`)
+
+// resolveProject finds the patch's project by id, slug, or `org/slug`.
+func resolveProject(ctx context.Context, tx store.Tx, orgID, ref string) (*store.Project, error) {
+	if ref == "" {
+		return nil, ErrNoDefaultProject
+	}
+	r := NewResolver(tx, orgID, nil)
+	parsed := Ref{Project: ref}
+	if slash := strings.IndexByte(ref, '/'); slash >= 0 {
+		parsed.Org, parsed.Project = ref[:slash], ref[slash+1:]
+		ok, err := r.isOwnOrg(ctx, parsed.Org)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, &NotFoundError{Ref: parsed, Missing: MissingOrganization}
+		}
+	} else if ulidShape.MatchString(ref) {
+		p, err := tx.GetProject(ctx, store.GetProjectParams{OrgID: orgID, ID: ref})
+		if err == nil {
+			return &p, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("resolve project %s: %w", ref, err)
+		}
+	}
+	return r.projectFor(ctx, parsed)
+}
+
+func (a *applier) apply(ctx context.Context, op Op) error {
+	switch {
+	case op.CreateNode != nil:
+		return a.createNode(ctx, op.CreateNode)
+	case op.UpdateNode != nil:
+		return a.updateNode(ctx, op.UpdateNode)
+	case op.AddEdge != nil:
+		return a.addEdge(ctx, op.AddEdge)
+	case op.RemoveEdge != nil:
+		return a.removeEdge(ctx, op.RemoveEdge)
+	}
+	return errors.New("no operation set")
+}
+
+func (a *applier) createNode(ctx context.Context, op *CreateNode) error {
+	params := store.CreateNodeParams{
+		ID: newULID(), Number: a.nextNumber, OrgID: a.orgID, ProjectID: a.project.ID,
+		Kind: op.Kind, Title: op.Title, Body: op.Body, Priority: op.Priority, Labels: op.Labels,
+	}
+	a.nextNumber++
+	if params.Kind == "" {
+		params.Kind = "task"
+	}
+	if params.Priority == "" {
+		params.Priority = "p2"
+	}
+	if params.Labels == nil {
+		params.Labels = []string{}
+	}
+	if op.AssigneeKind != "" {
+		params.AssigneeKind = &op.AssigneeKind
+	}
+	if op.Assignee != "" {
+		params.Assignee = &op.Assignee
+	}
+	if op.Parent != "" {
+		parent, err := a.resolver.Resolve(ctx, op.Parent)
+		if err != nil {
+			return err
+		}
+		params.ParentID = &parent.ID
+		a.touched = append(a.touched, parent.ID)
+	}
+	blockers := make([]Resolved, 0, len(op.BlockedBy))
+	for _, ref := range op.BlockedBy {
+		b, err := a.resolver.Resolve(ctx, ref)
+		if err != nil {
+			return err
+		}
+		blockers = append(blockers, b)
+	}
+
+	node, err := a.tx.CreateNode(ctx, params)
+	if err != nil {
+		return fmt.Errorf("create node: %w", err)
+	}
+	if op.Alias != "" {
+		if err := a.resolver.Bind(op.Alias, node); err != nil {
+			return err
+		}
+		a.aliases[op.Alias] = NodeRef{Project: a.project.Slug, Number: node.Number}.String()
+	}
+	a.record(node)
+	if err := a.event(ctx, OpCreateNode, node.ID, node.ProjectID, nil, node); err != nil {
+		return err
+	}
+	for _, b := range blockers {
+		if err := a.link(ctx, b.ID, node.ID, "blocks"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *applier) updateNode(ctx context.Context, op *UpdateNode) error {
+	ref, err := a.resolver.Resolve(ctx, op.Node)
+	if err != nil {
+		return err
+	}
+	before, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: ref.ID})
+	if err != nil {
+		return fmt.Errorf("read node %s: %w", op.Node, err)
+	}
+	params := store.UpdateNodeParams{
+		OrgID: a.orgID, ID: before.ID, ParentID: before.ParentID, Kind: before.Kind, Title: before.Title,
+		Body: before.Body, Priority: before.Priority, AssigneeKind: before.AssigneeKind,
+		Assignee: before.Assignee, Labels: before.Labels,
+	}
+	if op.Parent != nil {
+		params.ParentID = nil
+		if *op.Parent != "" {
+			parent, err := a.resolver.Resolve(ctx, *op.Parent)
+			if err != nil {
+				return err
+			}
+			params.ParentID = &parent.ID
+			a.touched = append(a.touched, parent.ID)
+		}
+	}
+	if op.Kind != nil {
+		params.Kind = *op.Kind
+	}
+	if op.Title != nil {
+		params.Title = *op.Title
+	}
+	if op.Body != nil {
+		params.Body = *op.Body
+	}
+	if op.Priority != nil {
+		params.Priority = *op.Priority
+	}
+	if op.AssigneeKind != nil {
+		params.AssigneeKind = optional(*op.AssigneeKind)
+	}
+	if op.Assignee != nil {
+		params.Assignee = optional(*op.Assignee)
+	}
+	if op.Labels != nil {
+		params.Labels = *op.Labels
+		if params.Labels == nil {
+			params.Labels = []string{}
+		}
+	}
+	after, err := a.tx.UpdateNode(ctx, params)
+	if err != nil {
+		return fmt.Errorf("update node %s: %w", op.Node, err)
+	}
+	a.record(after)
+	return a.event(ctx, OpUpdateNode, after.ID, after.ProjectID, before, after)
+}
+
+func (a *applier) addEdge(ctx context.Context, op *AddEdge) error {
+	from, to, kind, err := a.endpoints(ctx, op.From, op.To, op.Kind)
+	if err != nil {
+		return err
+	}
+	return a.link(ctx, from.ID, to.ID, kind)
+}
+
+// link adds one edge and records it as an event on the waiting side.
+func (a *applier) link(ctx context.Context, fromID, toID, kind string) error {
+	edge, err := a.tx.CreateEdge(ctx, store.CreateEdgeParams{OrgID: a.orgID, FromNode: fromID, ToNode: toID, Kind: kind})
+	if err != nil {
+		return fmt.Errorf("add edge: %w", err)
+	}
+	a.touched = append(a.touched, toID)
+	if err := a.touch(ctx, toID); err != nil {
+		return err
+	}
+	return a.event(ctx, OpAddEdge, toID, a.projectOf(toID), nil, edge)
+}
+
+func (a *applier) removeEdge(ctx context.Context, op *RemoveEdge) error {
+	from, to, kind, err := a.endpoints(ctx, op.From, op.To, op.Kind)
+	if err != nil {
+		return err
+	}
+	edge := store.Edge{OrgID: a.orgID, FromNode: from.ID, ToNode: to.ID, Kind: kind}
+	n, err := a.tx.DeleteEdge(ctx, store.DeleteEdgeParams{OrgID: a.orgID, FromNode: from.ID, ToNode: to.ID, Kind: kind})
+	if err != nil {
+		return fmt.Errorf("remove edge: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("no %s edge from %s to %s", kind, op.From, op.To)
+	}
+	if err := a.touch(ctx, to.ID); err != nil {
+		return err
+	}
+	return a.event(ctx, OpRemoveEdge, to.ID, a.projectOf(to.ID), edge, nil)
+}
+
+func (a *applier) endpoints(ctx context.Context, fromRef, toRef, kind string) (from, to Resolved, k string, err error) {
+	if from, err = a.resolver.Resolve(ctx, fromRef); err != nil {
+		return from, to, "", err
+	}
+	if to, err = a.resolver.Resolve(ctx, toRef); err != nil {
+		return from, to, "", err
+	}
+	if kind == "" {
+		kind = "blocks"
+	}
+	return from, to, kind, nil
+}
+
+// touch adds a node the patch changed without writing its row, such as
+// the target of an edge, to the result.
+func (a *applier) touch(ctx context.Context, id string) error {
+	if _, ok := a.index[id]; ok {
+		return nil
+	}
+	node, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: id})
+	if err != nil {
+		return fmt.Errorf("read node: %w", err)
+	}
+	a.record(node)
+	return nil
+}
+
+// record keeps the latest state of a node the patch touched, in
+// first-touched order.
+func (a *applier) record(node store.Node) {
+	if i, ok := a.index[node.ID]; ok {
+		a.nodes[i] = node
+		return
+	}
+	a.index[node.ID] = len(a.nodes)
+	a.nodes = append(a.nodes, node)
+}
+
+// projectOf is the project of a node the patch already holds.
+func (a *applier) projectOf(id string) string {
+	return a.nodes[a.index[id]].ProjectID
+}
+
+// event writes the record of one operation. before and after are encoded
+// as JSON; nil leaves the column null.
+func (a *applier) event(ctx context.Context, op, nodeID, projectID string, before, after any) error {
+	beforeJSON, err := encodeChange(before)
+	if err != nil {
+		return err
+	}
+	afterJSON, err := encodeChange(after)
+	if err != nil {
+		return err
+	}
+	ev, err := a.tx.CreateEvent(ctx, store.CreateEventParams{
+		ID: newULID(), OrgID: a.orgID, ProjectID: &projectID, NodeID: &nodeID,
+		PrincipalID: a.actor.PrincipalID, PrincipalKind: a.actor.PrincipalKind,
+		IdentityScheme: a.actor.IdentityScheme, RequestID: &a.request,
+		Op: op, Before: beforeJSON, After: afterJSON,
+	})
+	if err != nil {
+		return fmt.Errorf("record %s event: %w", op, err)
+	}
+	a.events = append(a.events, ev)
+	return nil
+}
+
+func encodeChange(v any) ([]byte, error) {
+	if v == nil {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("encode event change: %w", err)
+	}
+	return encoded, nil
+}
+
+func (a *applier) result() *Result {
+	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Events: a.events}
+	if r.Nodes == nil {
+		r.Nodes = []store.Node{}
+	}
+	if r.Events == nil {
+		r.Events = []store.Event{}
+	}
+	return r
+}
+
+// optional maps the empty string, which a wire request uses to clear a
+// field, to null.
+func optional(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}

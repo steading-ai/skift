@@ -81,3 +81,32 @@ func (q *Queries) GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyPa
 	)
 	return i, err
 }
+
+const setIdempotencyKeyResponse = `-- name: SetIdempotencyKeyResponse :one
+UPDATE idempotency_keys
+SET response = $3
+WHERE org_id = $1 AND request_id = $2
+RETURNING org_id, request_id, request_hash, response, created_at
+`
+
+type SetIdempotencyKeyResponseParams struct {
+	OrgID     string
+	RequestID string
+	Response  []byte
+}
+
+// A patch claims its key before doing any work and stores the response
+// once it has one, so a concurrent repeat blocks on the key row rather
+// than repeating the work.
+func (q *Queries) SetIdempotencyKeyResponse(ctx context.Context, arg SetIdempotencyKeyResponseParams) (IdempotencyKey, error) {
+	row := q.db.QueryRow(ctx, setIdempotencyKeyResponse, arg.OrgID, arg.RequestID, arg.Response)
+	var i IdempotencyKey
+	err := row.Scan(
+		&i.OrgID,
+		&i.RequestID,
+		&i.RequestHash,
+		&i.Response,
+		&i.CreatedAt,
+	)
+	return i, err
+}
