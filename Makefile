@@ -21,7 +21,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build test test-unit test-db lint generate clean db-up db-down db-reset db-migrate
+.PHONY: all build test test-unit test-db lint check-generated generate clean db-up db-down db-reset db-migrate
 
 all: build
 
@@ -44,12 +44,25 @@ lint:
 	go vet ./...
 	golangci-lint run ./...
 	buf lint
+	$(MAKE) --no-print-directory check-generated
 
-# Code generators. buf and sqlc run only once their configs exist, so the
-# target is safe before the proto and schema nodes land.
+# Generated code is committed, so a consumer needs no proto toolchain. This
+# regenerates into a scratch directory and diffs it against gen/, failing
+# when the tree lags the proto. Specs living beside generated packages are
+# hand-written and excluded from the comparison.
+check-generated:
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	  buf generate -o "$$tmp" && \
+	  if ! diff -r --exclude='*_test.go' "$$tmp/gen" gen; then \
+	    echo "lint: generated code is stale relative to proto/; run make generate"; \
+	    exit 1; \
+	  fi
+
+# Code generators. sqlc runs only once its config exists, so the target is
+# safe before the schema node lands.
 generate:
 	go generate ./...
-	$(if $(wildcard buf.gen.yaml),buf generate,@echo "generate: no buf.gen.yaml, skipping buf")
+	buf generate
 	$(if $(wildcard sqlc.yaml),sqlc generate,@echo "generate: no sqlc.yaml, skipping sqlc")
 
 clean:

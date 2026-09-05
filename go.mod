@@ -3,12 +3,14 @@ module github.com/ivy/dagger
 go 1.25.7
 
 require (
+	connectrpc.com/connect v1.20.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.43.0
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/spf13/cobra v1.10.2
 	github.com/testcontainers/testcontainers-go v0.44.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -82,4 +84,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-tool github.com/onsi/ginkgo/v2/ginkgo
+tool (
+	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	github.com/onsi/ginkgo/v2/ginkgo
+	google.golang.org/protobuf/cmd/protoc-gen-go
+)

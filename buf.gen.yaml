@@ -1,0 +1,14 @@
+# Code generation for the proto module. Output under gen/ is committed so a
+# consumer of this repository needs no proto toolchain; see
+# docs/adrs/007-core-tech-stack.md.
+#
+# Both plugins run through `go tool`, so their versions are pinned by go.mod
+# alongside the runtime libraries they generate against.
+version: v2
+plugins:
+  - local: [go, tool, protoc-gen-go]
+    out: gen
+    opt: paths=source_relative
+  - local: [go, tool, protoc-gen-connect-go]
+    out: gen
+    opt: paths=source_relative

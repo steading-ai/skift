@@ -19,6 +19,15 @@ func writeFile(root, rel, content string) {
 	Expect(os.WriteFile(path, []byte(content), 0o644)).To(Succeed())
 }
 
+// appendToFile adds content to the end of an existing file in a copied
+// checkout.
+func appendToFile(root, rel, content string) {
+	path := filepath.Join(root, rel)
+	existing, err := os.ReadFile(path)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(path, append(existing, content...), 0o644)).To(Succeed())
+}
+
 // makeLint runs `make lint` in the given checkout and waits for it to exit.
 // Every package compiles from the shared build cache, so a couple of
 // minutes covers a cold golangci-lint run with margin.
@@ -59,6 +68,25 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 			ContainSubstring("internal/server/handler.go"),
 			ContainSubstring("(depguard)"),
 		))
+	})
+
+	It("Generated code is current", func() {
+		By("given a modified proto file")
+		dir := checkout()
+		appendToFile(dir, "proto/dagger/v1/dagger.proto", `
+// Stale exists only to make gen/ lag the proto in this spec.
+message Stale {
+  // value carries nothing.
+  string value = 1;
+}
+`)
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then the build fails saying generated code is stale")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(ContainSubstring("generated code is stale"))
 	})
 
 	It("Specs stay in Ginkgo", func() {
