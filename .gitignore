@@ -5,7 +5,7 @@ harness/STOP
 harness/state.json
 
 # Local research checkouts
-research/
+/research/
 
 # Build output
 /dg
