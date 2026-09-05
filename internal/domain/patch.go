@@ -67,6 +67,9 @@ type Op struct {
 	AddComment     *AddComment     `json:"add_comment,omitempty"`
 	EditComment    *EditComment    `json:"edit_comment,omitempty"`
 	ResolveComment *ResolveComment `json:"resolve_comment,omitempty"`
+
+	ReportUsage  *ReportUsage  `json:"report_usage,omitempty"`
+	EstimateNode *EstimateNode `json:"estimate_node,omitempty"`
 }
 
 // Name is the operation's name as events record it, or empty when no
@@ -95,6 +98,10 @@ func (o Op) Name() string {
 		return OpEditComment
 	case o.ResolveComment != nil:
 		return OpResolveComment
+	case o.ReportUsage != nil:
+		return OpReportUsage
+	case o.EstimateNode != nil:
+		return OpEstimateNode
 	}
 	return ""
 }
@@ -122,6 +129,10 @@ func (o Op) validate(l Limits) error {
 		return validateCommentBody(o.AddComment.Body, l)
 	case o.EditComment != nil:
 		return validateCommentBody(o.EditComment.Body, l)
+	case o.ReportUsage != nil:
+		return o.ReportUsage.validate()
+	case o.EstimateNode != nil:
+		return o.EstimateNode.validate()
 	}
 	return nil
 }
@@ -135,8 +146,8 @@ const (
 	OpReopenNode   = "reopen_node"
 	OpAddEdge      = "add_edge"
 	OpRemoveEdge   = "remove_edge"
-	// The attach_artifact operation is named in artifact.go, and comment
-	// operations in comment.go.
+	// The attach_artifact operation is named in artifact.go, comment
+	// operations in comment.go, and usage operations in usage.go.
 )
 
 // CreateNode creates a node. The server assigns its id and number; later
@@ -275,6 +286,8 @@ type Result struct {
 	// CommentAliases maps each alias an add_comment declared to the id of
 	// the comment it created.
 	CommentAliases map[string]string `json:"comment_aliases"`
+	// Usage is every usage record the patch wrote, in operation order.
+	Usage []store.Usage `json:"usage"`
 	// Events are the events the patch wrote, in operation order.
 	Events []store.Event `json:"events"`
 	// Replayed reports that this is the stored response of an earlier
@@ -564,6 +577,8 @@ type applier struct {
 	comments       []store.Comment
 	commentIndex   map[string]int
 	commentAliases map[string]string
+	// usage are the usage records the patch wrote.
+	usage []store.Usage
 }
 
 func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, p Patch) (*applier, error) {
@@ -722,6 +737,10 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 		return a.editComment(ctx, op.EditComment)
 	case op.ResolveComment != nil:
 		return a.resolveComment(ctx, op.ResolveComment)
+	case op.ReportUsage != nil:
+		return a.reportUsage(ctx, op.ReportUsage)
+	case op.EstimateNode != nil:
+		return a.estimateNode(ctx, op.EstimateNode)
 	}
 	return errors.New("no operation set")
 }
@@ -1040,12 +1059,15 @@ func (a *applier) projectOf(id string) string {
 }
 
 func (a *applier) result() *Result {
-	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Comments: a.comments, CommentAliases: a.commentAliases, Events: a.events}
+	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Comments: a.comments, CommentAliases: a.commentAliases, Usage: a.usage, Events: a.events}
 	if r.Nodes == nil {
 		r.Nodes = []store.Node{}
 	}
 	if r.Comments == nil {
 		r.Comments = []store.Comment{}
+	}
+	if r.Usage == nil {
+		r.Usage = []store.Usage{}
 	}
 	if r.Events == nil {
 		r.Events = []store.Event{}

@@ -64,6 +64,86 @@ func (q *Queries) CreateUsage(ctx context.Context, arg CreateUsageParams) (Usage
 	return i, err
 }
 
+const getCurrentEstimate = `-- name: GetCurrentEstimate :one
+SELECT id, org_id, node_id, lease_id, principal, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, kind, basis, created_at FROM usage
+WHERE org_id = $1 AND node_id = $2 AND kind = 'estimate'
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetCurrentEstimateParams struct {
+	OrgID  string
+	NodeID string
+}
+
+// The current estimate is the most recent one: derived, never stored on
+// the node.
+func (q *Queries) GetCurrentEstimate(ctx context.Context, arg GetCurrentEstimateParams) (Usage, error) {
+	row := q.db.QueryRow(ctx, getCurrentEstimate, arg.OrgID, arg.NodeID)
+	var i Usage
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.NodeID,
+		&i.LeaseID,
+		&i.Principal,
+		&i.Model,
+		&i.InputTokens,
+		&i.OutputTokens,
+		&i.CacheReadTokens,
+		&i.CacheWriteTokens,
+		&i.Kind,
+		&i.Basis,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listAllUsageForNode = `-- name: ListAllUsageForNode :many
+SELECT id, org_id, node_id, lease_id, principal, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, kind, basis, created_at FROM usage
+WHERE org_id = $1 AND node_id = $2
+ORDER BY created_at, id
+`
+
+type ListAllUsageForNodeParams struct {
+	OrgID  string
+	NodeID string
+}
+
+func (q *Queries) ListAllUsageForNode(ctx context.Context, arg ListAllUsageForNodeParams) ([]Usage, error) {
+	rows, err := q.db.Query(ctx, listAllUsageForNode, arg.OrgID, arg.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Usage{}
+	for rows.Next() {
+		var i Usage
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.NodeID,
+			&i.LeaseID,
+			&i.Principal,
+			&i.Model,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+			&i.Kind,
+			&i.Basis,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsageForNode = `-- name: ListUsageForNode :many
 SELECT id, org_id, node_id, lease_id, principal, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, kind, basis, created_at FROM usage
 WHERE org_id = $1 AND node_id = $2 AND kind = $3
@@ -99,6 +179,136 @@ func (q *Queries) ListUsageForNode(ctx context.Context, arg ListUsageForNodePara
 			&i.Kind,
 			&i.Basis,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollupActuals = `-- name: RollupActuals :many
+WITH RECURSIVE subtree AS (
+    SELECT n.id FROM nodes n WHERE n.org_id = $1 AND n.id = $2
+    UNION
+    SELECT c.id FROM subtree s JOIN nodes c ON c.org_id = $1 AND c.parent_id = s.id
+)
+SELECT u.model,
+    count(*)::bigint                  AS records,
+    sum(u.input_tokens)::bigint       AS input_tokens,
+    sum(u.output_tokens)::bigint      AS output_tokens,
+    sum(u.cache_read_tokens)::bigint  AS cache_read_tokens,
+    sum(u.cache_write_tokens)::bigint AS cache_write_tokens
+FROM usage u JOIN subtree s ON s.id = u.node_id
+WHERE u.org_id = $1 AND u.kind = 'actual'
+GROUP BY u.model
+ORDER BY u.model
+`
+
+type RollupActualsParams struct {
+	OrgID string
+	ID    string
+}
+
+type RollupActualsRow struct {
+	Model            *string
+	Records          int64
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
+// Actuals over a node and every descendant through the parent relation,
+// grouped by model. Computed on each read; nothing stores a total. UNION
+// rather than UNION ALL so the walk ends even if a patch in flight has made
+// the parent relation cyclic before the cycle check has run over it.
+func (q *Queries) RollupActuals(ctx context.Context, arg RollupActualsParams) ([]RollupActualsRow, error) {
+	rows, err := q.db.Query(ctx, rollupActuals, arg.OrgID, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupActualsRow{}
+	for rows.Next() {
+		var i RollupActualsRow
+		if err := rows.Scan(
+			&i.Model,
+			&i.Records,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollupEstimates = `-- name: RollupEstimates :many
+WITH RECURSIVE subtree AS (
+    SELECT n.id FROM nodes n WHERE n.org_id = $1 AND n.id = $2
+    UNION
+    SELECT c.id FROM subtree s JOIN nodes c ON c.org_id = $1 AND c.parent_id = s.id
+),
+current AS (
+    SELECT DISTINCT ON (u.node_id) u.id, u.org_id, u.node_id, u.lease_id, u.principal, u.model, u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens, u.kind, u.basis, u.created_at
+    FROM usage u JOIN subtree s ON s.id = u.node_id
+    WHERE u.org_id = $1 AND u.kind = 'estimate'
+    ORDER BY u.node_id, u.created_at DESC, u.id DESC
+)
+SELECT c.model,
+    count(*)::bigint                  AS records,
+    sum(c.input_tokens)::bigint       AS input_tokens,
+    sum(c.output_tokens)::bigint      AS output_tokens,
+    sum(c.cache_read_tokens)::bigint  AS cache_read_tokens,
+    sum(c.cache_write_tokens)::bigint AS cache_write_tokens
+FROM current c
+GROUP BY c.model
+ORDER BY c.model
+`
+
+type RollupEstimatesParams struct {
+	OrgID string
+	ID    string
+}
+
+type RollupEstimatesRow struct {
+	Model            *string
+	Records          int64
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
+// The current estimate of a node and every descendant, grouped by model.
+// Each node contributes its most recent estimate alone; superseded ones
+// stay in the table as history and count for nothing here.
+func (q *Queries) RollupEstimates(ctx context.Context, arg RollupEstimatesParams) ([]RollupEstimatesRow, error) {
+	rows, err := q.db.Query(ctx, rollupEstimates, arg.OrgID, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupEstimatesRow{}
+	for rows.Next() {
+		var i RollupEstimatesRow
+		if err := rows.Scan(
+			&i.Model,
+			&i.Records,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
 		); err != nil {
 			return nil, err
 		}

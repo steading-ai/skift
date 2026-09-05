@@ -9,7 +9,7 @@
 #   action     one of the action names below
 #   resource   {node, edge, lease, comment}    what the action is applied to,
 #                                              as it stands before
-#   after      {node, edge, comment}           the proposed post-state; absent
+#   after      {node, edge, comment, usage}    the proposed post-state; absent
 #                                              for actions that remove
 #   lease      {id, node_id, holder}           the lease the request carries
 #
@@ -18,7 +18,9 @@
 # ancestor up to the root, each as {id, created_by}. An edge carries from,
 # to, and kind, where from blocks to. A comment carries id, node_id,
 # author, in_reply_to, and resolved, and travels with the node it is on,
-# which a comment action leaves as it stands.
+# which a comment action leaves as it stands. A usage record carries
+# node_id, lease_id, principal, and kind, and travels with its node the
+# same way.
 #
 # The decision is `allow` with the `reasons` it was refused for. Nothing here
 # reads outside `input`, so evaluation is a pure function of the request.
@@ -51,6 +53,10 @@ edge_actions := {"add_edge", "remove_edge"}
 
 comment_actions := {"add_comment", "edit_comment", "resolve_comment"}
 
+# Reporting an actual and recording an estimate add to a node's cost
+# record without changing the node.
+usage_actions := {"report_usage", "estimate_node"}
+
 # Users act for the organization: every action within its scope, except
 # what the vetoes below refuse everyone.
 
@@ -67,6 +73,11 @@ permitted if {
 permitted if {
 	input.principal.kind == "user"
 	input.action in comment_actions
+}
+
+permitted if {
+	input.principal.kind == "user"
+	input.action in usage_actions
 }
 
 permitted if {
@@ -88,6 +99,14 @@ permitted if {
 permitted if {
 	input.principal.kind == "agent"
 	input.action in comment_actions
+	own(input.after.node)
+}
+
+# A lease holder may report what its own node cost and estimate what it
+# and the work it created under it will cost, as it may mutate them.
+permitted if {
+	input.principal.kind == "agent"
+	input.action in usage_actions
 	own(input.after.node)
 }
 

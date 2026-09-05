@@ -201,10 +201,31 @@ func (r *recorder) policyInput(ctx context.Context, op, nodeID string, before, a
 			}
 			in.Resource.Comment = commentInfo(prior)
 		}
+	case OpReportUsage, OpEstimateNode:
+		usage, err := as[store.Usage](after)
+		if err != nil {
+			return in, err
+		}
+		node, err := r.tx.GetNode(ctx, store.GetNodeParams{OrgID: r.orgID, ID: usage.NodeID})
+		if err != nil {
+			return in, fmt.Errorf("read node %s: %w", usage.NodeID, err)
+		}
+		info, err := r.nodeInfo(ctx, node)
+		if err != nil {
+			return in, err
+		}
+		// A usage record changes nothing about its node; the record is
+		// what is added.
+		in.Resource.Node = info
+		in.After = &policy.Resource{Node: info, Usage: usageInfo(usage)}
 	default:
 		return in, fmt.Errorf("operation %q has no policy shape", op)
 	}
 	return in, nil
+}
+
+func usageInfo(u store.Usage) *policy.Usage {
+	return &policy.Usage{NodeID: u.NodeID, LeaseID: u.LeaseID, Principal: u.Principal, Kind: u.Kind}
 }
 
 func commentInfo(c store.Comment) *policy.Comment {

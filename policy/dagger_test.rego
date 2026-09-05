@@ -279,3 +279,39 @@ test_decision_carries_reasons if {
 	allowed := authz.decision with input as node_op(agent_a, "update_node", node7, node7, lease_a)
 	allowed == {"allow": true, "reasons": set()}
 }
+
+# Usage. A usage record travels with the node it is on, which stands the
+# same before and after.
+
+usage(node_id, lease_id, principal, kind) := {
+	"node_id": node_id,
+	"lease_id": lease_id,
+	"principal": principal,
+	"kind": kind,
+}
+
+usage_op(principal, action, n, u, lease) := patch(
+	principal,
+	action,
+	{"node": n},
+	{"node": n, "usage": u},
+	lease,
+)
+
+test_user_records_usage_anywhere if {
+	authz.allow with input as usage_op(user, "estimate_node", node8, usage("n8", null, "U", "estimate"), null)
+	authz.allow with input as usage_op(user, "report_usage", node7, usage("n7", "L7", "U", "actual"), lease_a)
+}
+
+test_holder_records_usage_on_its_own_node if {
+	authz.allow with input as usage_op(agent_a, "report_usage", node7, usage("n7", "L7", "A", "actual"), lease_a)
+	authz.allow with input as usage_op(agent_a, "estimate_node", node7, usage("n7", null, "A", "estimate"), lease_a)
+	authz.allow with input as usage_op(agent_a, "estimate_node", node9, usage("n9", null, "A", "estimate"), lease_a)
+}
+
+test_holder_does_not_record_usage_elsewhere if {
+	not authz.allow with input as usage_op(agent_a, "estimate_node", node8, usage("n8", null, "A", "estimate"), lease_a)
+	not authz.allow with input as usage_op(agent_a, "estimate_node", node10, usage("n10", null, "A", "estimate"), lease_a)
+	not authz.allow with input as usage_op(agent_a, "report_usage", node7, usage("n7", "L7", "A", "actual"), null)
+	not authz.allow with input as usage_op(service, "report_usage", node7, usage("n7", "L7", "S", "actual"), null)
+}

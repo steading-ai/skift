@@ -113,14 +113,27 @@ type Comment struct {
 	Resolved  bool    `json:"resolved"`
 }
 
+// Usage is a usage record as policy sees it.
+type Usage struct {
+	NodeID string `json:"node_id"`
+	// LeaseID is the attempt an actual is attributed to; nil on an
+	// estimate.
+	LeaseID *string `json:"lease_id"`
+	// Principal is who reported the actual or made the estimate.
+	Principal string `json:"principal"`
+	// Kind is `actual` or `estimate`.
+	Kind string `json:"kind"`
+}
+
 // Resource is what an action applies to. One of Node and Edge is set;
-// Lease accompanies Node for lease actions, and Comment accompanies Node
-// for comment actions.
+// Lease accompanies Node for lease actions, Comment accompanies Node for
+// comment actions, and Usage accompanies Node for usage actions.
 type Resource struct {
 	Node    *Node    `json:"node,omitempty"`
 	Edge    *Edge    `json:"edge,omitempty"`
 	Lease   *Lease   `json:"lease,omitempty"`
 	Comment *Comment `json:"comment,omitempty"`
+	Usage   *Usage   `json:"usage,omitempty"`
 }
 
 // Input is one authorization question. Action is the operation name as
