@@ -8,7 +8,8 @@
 #   principal  {id, kind}                      kind is user, agent, or service
 #   action     one of the action names below
 #   resource   {node, edge, lease, comment}    what the action is applied to,
-#                                              as it stands before
+#                                              as it stands before; a search
+#                                              carries the node it would show
 #   after      {node, edge, comment, usage}    the proposed post-state; absent
 #                                              for actions that remove
 #   lease      {id, node_id, holder}           the lease the request carries
@@ -83,6 +84,13 @@ permitted if {
 permitted if {
 	input.principal.kind == "user"
 	input.action == "claim_node"
+}
+
+# Search is a read. Every principal of an organization may search all of
+# it: an agent assembles context from work it did not create, and a user
+# looks for what was lost. A deployment that narrows reads does it here.
+permitted if {
+	input.action == "search"
 }
 
 # A lease holder may mutate its own node and the children it created under

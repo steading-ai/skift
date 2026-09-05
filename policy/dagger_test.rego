@@ -315,3 +315,12 @@ test_holder_does_not_record_usage_elsewhere if {
 	not authz.allow with input as usage_op(agent_a, "report_usage", node7, usage("n7", "L7", "A", "actual"), null)
 	not authz.allow with input as usage_op(service, "report_usage", node7, usage("n7", "L7", "S", "actual"), null)
 }
+
+search_op(principal, node) := {"principal": principal, "action": "search", "resource": {"node": node}}
+
+test_everyone_searches_the_organization if {
+	authz.allow with input as search_op(user, node8)
+	authz.allow with input as search_op(agent_a, node8)
+	authz.allow with input as search_op(agent_b, node10)
+	authz.allow with input as search_op(service, other_project)
+}
