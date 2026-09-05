@@ -249,7 +249,9 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			Expect(g.countEvents(ctx, "empty")).To(BeZero())
 
 			_, err = g.apply(ctx, actor, "huge", complete("#1", strings.Repeat("x", domain.MaxResultBytes+1)))
-			Expect(err).To(MatchError(domain.ErrResultTooLarge))
+			var limitErr *domain.LimitError
+			Expect(errors.As(err, &limitErr)).To(BeTrue(), "expected a limit error, got %v", err)
+			Expect(limitErr.Limit).To(Equal(domain.LimitResultBytes))
 
 			_, err = g.apply(ctx, actor, "dropped", complete("#2", "done"))
 			Expect(err).To(MatchError(ContainSubstring("is dropped")))
@@ -274,7 +276,7 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			reject("two-kinds", domain.Artifact{Name: "x", Parts: []domain.Part{{Text: text, Blob: &domain.BlobPart{Digest: specDigest}}}}, "exactly one of")
 			reject("bad-digest", domain.Artifact{Name: "x", Parts: []domain.Part{{Reference: &domain.ReferencePart{URI: "https://x", Digest: "md5:abc"}}}}, "not sha256")
 			reject("no-uri", domain.Artifact{Name: "x", Parts: []domain.Part{{Reference: &domain.ReferencePart{Digest: specDigest}}}}, "needs a uri")
-			reject("big", domain.Artifact{Name: "x", Parts: []domain.Part{{Text: &domain.TextPart{Text: strings.Repeat("x", domain.MaxInlinePartBytes+1)}}}}, domain.ErrPartTooLarge.Error())
+			reject("big", domain.Artifact{Name: "x", Parts: []domain.Part{{Text: &domain.TextPart{Text: strings.Repeat("x", domain.MaxInlinePartBytes+1)}}}}, string(domain.LimitInlinePartBytes))
 
 			_, err := g.apply(ctx, actor, "twice", complete("#1", "done", textArtifact("x", "1"), textArtifact("x", "2")))
 			Expect(err).To(MatchError(ContainSubstring("named twice")))

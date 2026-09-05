@@ -86,16 +86,20 @@ func (o Op) Name() string {
 }
 
 // validate rejects an operation that cannot be applied however the graph
-// stands: no operation set, or a transition missing the reason it must
-// carry.
-func (o Op) validate() error {
+// stands: no operation set, a body over its ceiling, or a transition
+// missing the reason it must carry.
+func (o Op) validate(l Limits) error {
 	switch {
 	case o.Name() == "":
 		return errors.New("no operation set")
+	case o.CreateNode != nil:
+		return exceeded(LimitBodyBytes, int64(len(o.CreateNode.Body)), int64(l.BodyBytes))
+	case o.UpdateNode != nil && o.UpdateNode.Body != nil:
+		return exceeded(LimitBodyBytes, int64(len(*o.UpdateNode.Body)), int64(l.BodyBytes))
 	case o.DropNode != nil:
 		return o.DropNode.validate()
 	case o.CompleteNode != nil:
-		return o.CompleteNode.validate()
+		return o.CompleteNode.validate(l)
 	case o.ReopenNode != nil && o.ReopenNode.Reason == "":
 		return ErrReasonRequired
 	}
@@ -290,7 +294,10 @@ func (e *OpError) Unwrap() error { return e.Err }
 //
 // The actor is whatever the transport resolved, never anything the patch
 // carries. A patch with no actor, or with a transition missing its reason,
-// is rejected before it claims its request id or touches the graph.
+// is rejected before it claims its request id or touches the graph. So is
+// one that exceeds a ceiling in [ActiveLimits], with a [*LimitError]
+// naming the ceiling: the shape of the whole patch is checked first, then
+// each operation's sizes. See limits.go.
 //
 // A request id seen before with the same content returns the stored
 // [Result] with Replayed set and writes nothing. The same id with
@@ -321,8 +328,12 @@ func Apply(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string
 	if err := actor.validate(); err != nil {
 		return nil, err
 	}
+	limits := ActiveLimits()
+	if err := checkPatchShape(p, limits); err != nil {
+		return nil, err
+	}
 	for i, op := range p.Ops {
-		if err := op.validate(); err != nil {
+		if err := op.validate(limits); err != nil {
 			name := op.Name()
 			if name == "" {
 				name = "empty"

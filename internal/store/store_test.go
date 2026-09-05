@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -199,6 +201,44 @@ var _ = Describe("Store", Label(testsupport.DBLabel), func() {
 				_, err = s.Queries().GetOrganization(ctx, id)
 				Expect(err).To(MatchError(pgx.ErrNoRows))
 				return nil
+			})).To(Succeed())
+		})
+	})
+
+	Describe("Statement timeout", func() {
+		It("is in force by default and set locally to each transaction", func(ctx SpecContext) {
+			Expect(s.StatementTimeout()).To(Equal(store.DefaultStatementTimeout))
+			Expect(s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+				var timeout string
+				Expect(tx.Tx.QueryRow(ctx, `SHOW statement_timeout`).Scan(&timeout)).To(Succeed())
+				Expect(timeout).To(Equal("30s"))
+				return nil
+			})).To(Succeed())
+
+			By("and a connection outside a transaction carries none over")
+			var timeout string
+			Expect(s.Pool().QueryRow(ctx, `SHOW statement_timeout`).Scan(&timeout)).To(Succeed())
+			Expect(timeout).To(Equal("0"))
+		})
+
+		It("cuts off a pathological recursive query rather than stalling", func(ctx SpecContext) {
+			s.SetStatementTimeout(200 * time.Millisecond)
+			start := time.Now()
+			err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+				var n int64
+				return tx.Tx.QueryRow(ctx, `
+					WITH RECURSIVE forever(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM forever)
+					SELECT count(*) FROM forever`).Scan(&n)
+			})
+			Expect(time.Since(start)).To(BeNumerically("<", 10*time.Second))
+			var pgErr *pgconn.PgError
+			Expect(errors.As(err, &pgErr)).To(BeTrue(), "expected a PostgreSQL error, got %v", err)
+			Expect(pgErr.Code).To(Equal("57014"), "query_canceled")
+
+			By("and the store answers the next transaction")
+			Expect(s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+				var one int
+				return tx.Tx.QueryRow(ctx, `SELECT 1`).Scan(&one)
 			})).To(Succeed())
 		})
 	})

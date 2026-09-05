@@ -49,7 +49,8 @@ type ReadyQuery struct {
 	// MinPriority restricts the set to nodes at this priority or more
 	// urgent, `p0` through `p4`. Empty means any.
 	MinPriority string
-	// Limit caps the number of rows returned. Zero means no cap.
+	// Limit caps the number of rows returned, at most [Limits.PageSize].
+	// Zero takes that ceiling.
 	Limit int
 }
 
@@ -183,10 +184,12 @@ func (q ReadyQuery) sql(orgID string, ordered bool) (string, []any, error) {
 	} else {
 		b.WriteString(" ORDER BY n.id")
 	}
-	if q.Limit > 0 {
-		args = append(args, q.Limit)
-		fmt.Fprintf(&b, " LIMIT $%d", len(args))
+	limit, err := boundPageSize(q.Limit, ActiveLimits())
+	if err != nil {
+		return "", nil, err
 	}
+	args = append(args, limit)
+	fmt.Fprintf(&b, " LIMIT $%d", len(args))
 	return b.String(), args, nil
 }
 

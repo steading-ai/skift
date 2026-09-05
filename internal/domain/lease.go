@@ -28,8 +28,6 @@ const (
 	// DefaultLeaseTTL applies when a claim or heartbeat requests none, and
 	// is what a write by the holder renews the lease to.
 	DefaultLeaseTTL = 15 * time.Minute
-	// MaxLeaseTTL is the ceiling a requested TTL is clamped to.
-	MaxLeaseTTL = time.Hour
 	// MaxClaimWait is the ceiling a ClaimNext wait is clamped to.
 	MaxClaimWait = 5 * time.Minute
 )
@@ -165,12 +163,14 @@ type LeaseChange struct {
 	Replayed bool `json:"-"`
 }
 
-// boundTTL applies the default and the ceiling to a requested TTL.
+// boundTTL applies the default and the ceiling to a requested TTL. Over
+// the ceiling is clamped rather than refused: the holder can always renew,
+// so a long request loses nothing but the guarantee it was after.
 func boundTTL(ttl time.Duration) time.Duration {
 	if ttl == 0 {
 		return DefaultLeaseTTL
 	}
-	return min(ttl, MaxLeaseTTL)
+	return min(ttl, ActiveLimits().LeaseTTL)
 }
 
 // Claim takes the most urgent ready node of the request's project that
@@ -486,13 +486,20 @@ func heldLease(ctx context.Context, tx store.Tx, orgID string, actor Actor, leas
 // timer calls; actor is the service principal it runs as, and the events
 // carry no request id since no client asked. The released leases are
 // returned, oldest expiry first.
-func ExpireLeases(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, pageSize int32) ([]store.Lease, error) {
+//
+// pageSize is bounded by [Limits.PageSize]: zero takes the ceiling, and
+// more is a [*LimitError].
+func ExpireLeases(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, pageSize int) ([]store.Lease, error) {
 	if err := actor.validate(); err != nil {
 		return nil, err
 	}
+	pageSize, err := boundPageSize(pageSize, ActiveLimits())
+	if err != nil {
+		return nil, err
+	}
 	var expired []store.Lease
-	err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-		due, err := tx.ListExpiredLeases(ctx, store.ListExpiredLeasesParams{OrgID: orgID, PageSize: pageSize})
+	err = s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+		due, err := tx.ListExpiredLeases(ctx, store.ListExpiredLeasesParams{OrgID: orgID, PageSize: int32(pageSize)})
 		if err != nil {
 			return fmt.Errorf("list expired leases: %w", err)
 		}

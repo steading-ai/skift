@@ -18,24 +18,12 @@ import (
 // from, which is what makes graph resume possible. See Completion and
 // results, and Artifact, in docs/domain-model.md.
 
-// Size ceilings on what a completion carries. See the Limits section of
-// docs/domain-model.md.
-const (
-	// MaxResultBytes bounds a result body.
-	MaxResultBytes = 256 << 10
-	// MaxInlinePartBytes bounds one inline text part.
-	MaxInlinePartBytes = 256 << 10
-)
-
-// Errors a complete_node is rejected with.
+// Errors a complete_node is rejected with. A body or inline part over its
+// ceiling is a [*LimitError]; see limits.go.
 var (
 	// ErrResultRequired: a completion carries a result body, since the
 	// result is what downstream reads.
 	ErrResultRequired = errors.New("a completion needs a result body")
-	// ErrResultTooLarge: the body exceeds [MaxResultBytes].
-	ErrResultTooLarge = errors.New("result body exceeds the size cap")
-	// ErrPartTooLarge: an inline part exceeds [MaxInlinePartBytes].
-	ErrPartTooLarge = errors.New("inline part exceeds the size cap")
 	// ErrBlobNotFound: a blob part names a digest the organization holds
 	// no blob for.
 	ErrBlobNotFound = errors.New("no managed blob with that digest")
@@ -55,7 +43,7 @@ type CompleteNode struct {
 // NodeResult is what completing a node produces: a markdown summary and
 // zero or more artifacts.
 type NodeResult struct {
-	// Body is markdown under [MaxResultBytes]. Required.
+	// Body is markdown under [Limits.ResultBytes]. Required.
 	Body string `json:"body"`
 	// Artifacts are outputs beyond text, attached to the node on
 	// completion.
@@ -121,15 +109,15 @@ const defaultTextMediaType = "text/plain"
 var digestShape = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // validate rejects a completion that cannot be applied however the graph
-// stands: no body, a body or part over its cap, an artifact with no name
-// or no parts, or a part not of exactly one kind.
-func (c *CompleteNode) validate() error {
+// stands: no body, a body or part over its ceiling, an artifact with no
+// name or no parts, or a part not of exactly one kind.
+func (c *CompleteNode) validate(l Limits) error {
 	r := c.Result
 	if r.Body == "" {
 		return ErrResultRequired
 	}
-	if len(r.Body) > MaxResultBytes {
-		return fmt.Errorf("%w: %d bytes, cap %d", ErrResultTooLarge, len(r.Body), MaxResultBytes)
+	if err := exceeded(LimitResultBytes, int64(len(r.Body)), int64(l.ResultBytes)); err != nil {
+		return err
 	}
 	names := map[string]bool{}
 	for i := range r.Artifacts {
@@ -145,7 +133,7 @@ func (c *CompleteNode) validate() error {
 			return fmt.Errorf("artifact %q: at least one part is required", a.Name)
 		}
 		for j := range a.Parts {
-			if err := a.Parts[j].validate(); err != nil {
+			if err := a.Parts[j].validate(l); err != nil {
 				return fmt.Errorf("artifact %q part %d: %w", a.Name, j, err)
 			}
 		}
@@ -153,7 +141,7 @@ func (c *CompleteNode) validate() error {
 	return nil
 }
 
-func (p *Part) validate() error {
+func (p *Part) validate(l Limits) error {
 	set := 0
 	for _, present := range []bool{p.Text != nil, p.Blob != nil, p.Reference != nil} {
 		if present {
@@ -165,8 +153,8 @@ func (p *Part) validate() error {
 	}
 	switch {
 	case p.Text != nil:
-		if len(p.Text.Text) > MaxInlinePartBytes {
-			return fmt.Errorf("%w: %d bytes, cap %d", ErrPartTooLarge, len(p.Text.Text), MaxInlinePartBytes)
+		if err := exceeded(LimitInlinePartBytes, int64(len(p.Text.Text)), int64(l.InlinePartBytes)); err != nil {
+			return err
 		}
 	case p.Blob != nil:
 		if !digestShape.MatchString(p.Blob.Digest) {
