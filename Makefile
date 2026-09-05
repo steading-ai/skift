@@ -17,7 +17,11 @@ LDFLAGS := -X $(MODULE)/internal/version.version=$(VERSION)
 
 GINKGO := go tool ginkgo -r --randomize-all --fail-on-pending --keep-going
 
-.PHONY: all build test test-unit test-db lint generate clean
+COMPOSE := podman compose
+# Silence podman's "executing external compose provider" banner.
+export PODMAN_COMPOSE_WARNING_LOGS = false
+
+.PHONY: all build test test-unit test-db lint generate clean db-up db-down db-reset
 
 all: build
 
@@ -50,3 +54,27 @@ generate:
 clean:
 	rm -f $(BINARY)
 	rm -rf dist
+
+# Development database. See compose.yaml and the "Developing" section of README.md.
+
+# .env carries the development credentials and is gitignored. Seed it from the
+# example on a fresh clone so db-up works out of the box.
+.env:
+	cp .env.example .env
+
+# Start PostgreSQL and block until it accepts TCP connections.
+db-up: .env
+	$(COMPOSE) up -d --wait --wait-timeout 30
+
+# Stop the stack. The data volume survives; `podman compose down -v` removes it.
+db-down:
+	$(COMPOSE) down
+
+# Drop and recreate the development database inside the running container.
+# Credentials resolve from the container's environment, so this file never
+# needs to read .env.
+db-reset: db-up
+	$(COMPOSE) exec -T postgres sh -euc '\
+	  psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d postgres \
+	    -c "DROP DATABASE IF EXISTS $$POSTGRES_DB WITH (FORCE)" \
+	    -c "CREATE DATABASE $$POSTGRES_DB"'
