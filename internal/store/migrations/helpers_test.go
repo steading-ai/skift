@@ -102,3 +102,84 @@ func HavePgCode(code string) types.GomegaMatcher {
 func repeat(n int) string {
 	return strings.Repeat("a", n)
 }
+
+// foreignKeyViolation is the SQLSTATE for a missing referenced row.
+const foreignKeyViolation = "23503"
+
+// node is the subset of a nodes row the specs write. Zero values take the
+// column defaults.
+type node struct {
+	id, orgID, projectID string
+	number               int64
+	parentID             *string
+	status               string
+	assigneeKind         *string
+	assignee             *string
+}
+
+func insertNode(ctx context.Context, db *pgxpool.Pool, n node) error {
+	if n.id == "" {
+		n.id = newULID()
+	}
+	if n.status == "" {
+		n.status = "open"
+	}
+	_, err := db.Exec(ctx, `
+		INSERT INTO nodes (id, number, org_id, project_id, parent_id, title, status, assignee_kind, assignee)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		n.id, n.number, n.orgID, n.projectID, n.parentID, "Node "+n.id, n.status, n.assigneeKind, n.assignee)
+	return err
+}
+
+// newNode inserts an open node with the next free number in the project.
+func newNode(ctx context.Context, db *pgxpool.Pool, orgID, projectID string) string {
+	GinkgoHelper()
+	var number int64
+	Expect(db.QueryRow(ctx, `SELECT coalesce(max(number), 0) + 1 FROM nodes WHERE project_id = $1`, projectID).Scan(&number)).To(Succeed())
+	id := newULID()
+	Expect(insertNode(ctx, db, node{id: id, orgID: orgID, projectID: projectID, number: number})).To(Succeed())
+	return id
+}
+
+func insertEdge(ctx context.Context, db *pgxpool.Pool, orgID, from, to string) error {
+	_, err := db.Exec(ctx, `INSERT INTO edges (org_id, from_node, to_node) VALUES ($1, $2, $3)`, orgID, from, to)
+	return err
+}
+
+// insertLease claims nodeID for holder with a one-hour TTL and returns the
+// lease id, the fencing token.
+func insertLease(ctx context.Context, db *pgxpool.Pool, orgID, nodeID, holder string) (string, error) {
+	id := newULID()
+	_, err := db.Exec(ctx, `
+		INSERT INTO leases (id, org_id, node_id, holder, harness, agent_ref, expires_at)
+		VALUES ($1, $2, $3, $4, 'claude-code', 'workstation', now() + interval '1 hour')`,
+		id, orgID, nodeID, holder)
+	return id, err
+}
+
+func claim(ctx context.Context, db *pgxpool.Pool, orgID, nodeID, holder string) string {
+	GinkgoHelper()
+	id, err := insertLease(ctx, db, orgID, nodeID, holder)
+	Expect(err).NotTo(HaveOccurred())
+	return id
+}
+
+func release(ctx context.Context, db *pgxpool.Pool, leaseID, reason string) {
+	GinkgoHelper()
+	_, err := db.Exec(ctx, `UPDATE leases SET released_at = now(), release_reason = $2 WHERE id = $1`, leaseID, reason)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+// liveLease is the predicate readiness and fencing share: unreleased and
+// not yet expired.
+const liveLease = `released_at IS NULL AND expires_at > now()`
+
+func countLeases(ctx context.Context, db *pgxpool.Pool, nodeID string) (total, live int) {
+	GinkgoHelper()
+	Expect(db.QueryRow(ctx, `
+		SELECT count(*), count(*) FILTER (WHERE `+liveLease+`)
+		  FROM leases WHERE node_id = $1`, nodeID).Scan(&total, &live)).To(Succeed())
+	return total, live
+}
+
+func ptr[T any](v T) *T { return &v }
