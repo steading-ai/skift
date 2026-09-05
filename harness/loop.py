@@ -48,6 +48,10 @@ LOGS = ROOT / "harness" / "logs"
 # The implementer must not grade its own homework or rewrite the spec.
 PROTECTED = ("backlog.toml", "harness/", "docs/", "scripts/ready.py")
 
+# The harness writes these itself while an agent is running, so they are never
+# evidence that the implementer went out of bounds.
+HARNESS_RUNTIME = ("harness/state.json", "harness/logs/", "harness/STOP", "harness/.venv/")
+
 IMPLEMENTER_PROMPT = """\
 You are implementing exactly one node of the dagger backlog, in a repository you
 are seeing for the first time.
@@ -168,7 +172,12 @@ def git(*args, check=True):
 
 
 def working_tree_dirty():
-    return bool(git("status", "--porcelain"))
+    """True when the implementer changed something, ignoring harness bookkeeping."""
+    for line in git("status", "--porcelain").splitlines():
+        path = line[3:].strip().strip('"')
+        if not any(path.startswith(p) for p in HARNESS_RUNTIME):
+            return True
+    return False
 
 
 def touched_protected():
@@ -176,6 +185,8 @@ def touched_protected():
     hits = []
     for line in changed:
         path = line[3:].strip().strip('"')
+        if any(path.startswith(p) for p in HARNESS_RUNTIME):
+            continue
         if any(path.startswith(p) for p in PROTECTED):
             hits.append(path)
     return hits
@@ -283,7 +294,8 @@ async def do_node(num, nodes, slug, state, args):
                 protected
             ) + ". Revert them and satisfy the contract in application code only."
             print(f"  !! touched protected paths: {protected}", flush=True)
-            git("checkout", "--", *protected, check=False)
+            for path in protected:
+                git("checkout", "--", path, check=False)
             continue
 
         if not working_tree_dirty():
