@@ -164,4 +164,5 @@ safe to run by hand alongside the timer. Set `DG=/path/to/dg` on
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Retrospectives](docs/retrospectives/)
+- [Current plan: prove the bet](docs/plans/2026-09-prove-the-bet.md)
 - [Architecture decision records](docs/adrs/)

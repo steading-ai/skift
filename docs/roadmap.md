@@ -16,6 +16,8 @@ Excludes artifacts, search, comments, the change stream, cost tracking, tsnet, M
 
 ## M1 — Dogfood
 
+In progress. The plan is [docs/plans/2026-09-prove-the-bet.md](plans/2026-09-prove-the-bet.md).
+
 Dagger holds its own backlog and the work of building it. Adds what a human needs to stay in the loop: gates with a notifier, `Explain`, comments, and lexical search.
 
 This is the first milestone where the vision's human-escalation story actually works, and the first real evidence about whether the model fits real work.
