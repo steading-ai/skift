@@ -80,7 +80,7 @@ Output is JSON whenever stdout is not a terminal, and on request with
 
 	root.AddCommand(
 		newVersionCommand(),
-		newMCPCommand(),
+		a.mcpCommand(),
 		newServeCommand(),
 		a.projectCommand(),
 		a.nodeCommand(),
@@ -108,17 +108,6 @@ func newVersionCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := fmt.Fprintf(cmd.OutOrStdout(), "dg version %s\n", version.String())
 			return err
-		},
-	}
-}
-
-func newMCPCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "mcp",
-		Short: "Serve the CLI as an MCP server over stdio",
-		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("dg mcp: %w", ErrNotImplemented)
 		},
 	}
 }

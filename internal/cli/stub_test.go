@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
@@ -34,6 +35,10 @@ type stub struct {
 	mu       sync.Mutex
 	nodes    []*daggerv1.Node
 	projects map[string]*daggerv1.Project
+	// leases are every lease handed out, by id. A lease expires the way
+	// the server's do: a claim past its expiry returns the node to the
+	// ready set.
+	leases map[string]*stubLease
 	// requests are every request message received, in order.
 	requests []any
 	// readyGate, when set, is closed by a spec to make work appear for a
@@ -41,8 +46,15 @@ type stub struct {
 	readyGate chan struct{}
 }
 
+// stubLease is a lease the stub handed out and its state.
+type stubLease struct {
+	node      *daggerv1.Node
+	expiresAt time.Time
+	reason    daggerv1.ReleaseReason
+}
+
 func newStub() *stub {
-	return &stub{projects: map[string]*daggerv1.Project{}}
+	return &stub{projects: map[string]*daggerv1.Project{}, leases: map[string]*stubLease{}}
 }
 
 func (s *stub) record(req any) {
@@ -81,8 +93,35 @@ func (s *stub) newNode(title string) *daggerv1.Node {
 	return n
 }
 
+// lease renders a lease. An id the stub never handed out is rendered live,
+// so specs can name leases without claiming first.
 func (s *stub) lease(id string) *daggerv1.Lease {
-	return &daggerv1.Lease{Id: id, Holder: "01JAGENT000000000000000000", Harness: "dg", ExpiresAt: timestamppb.New(time.Now().Add(15 * time.Minute))}
+	l := &daggerv1.Lease{Id: id, Holder: "01JAGENT000000000000000000", Harness: "dg", ExpiresAt: timestamppb.New(time.Now().Add(15 * time.Minute))}
+	if held, ok := s.leases[id]; ok {
+		l.NodeId = held.node.GetId()
+		l.ExpiresAt = timestamppb.New(held.expiresAt)
+		l.ReleaseReason = held.reason
+	}
+	return l
+}
+
+// expire releases every lease past its expiry, returning its node to the
+// ready set, as the server's reaper does. Callers hold s.mu.
+func (s *stub) expire() {
+	for _, l := range s.leases {
+		if l.reason == daggerv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED && time.Now().After(l.expiresAt) {
+			l.reason = daggerv1.ReleaseReason_RELEASE_REASON_EXPIRED
+			l.node.Claimed, l.node.Ready = false, true
+		}
+	}
+}
+
+// ttlOr is the requested TTL, or the default.
+func ttlOr(d *durationpb.Duration) time.Duration {
+	if d == nil || d.AsDuration() <= 0 {
+		return 15 * time.Minute
+	}
+	return d.AsDuration()
 }
 
 // GraphService.
@@ -226,6 +265,7 @@ func (s *stub) ArchiveProject(_ context.Context, req *connect.Request[daggerv1.A
 // WorkService.
 
 func (s *stub) ready() []*daggerv1.Node {
+	s.expire()
 	var out []*daggerv1.Node
 	for _, n := range s.nodes {
 		if n.GetReady() {
@@ -258,7 +298,12 @@ func (s *stub) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.Clai
 		if len(ready) > 0 {
 			n := ready[0]
 			n.Ready, n.Claimed = false, true
-			return connect.NewResponse(&daggerv1.ClaimNextResponse{Node: n, Lease: s.lease("01JLEASE0000000000000000001")}), nil
+			s.mu.Lock()
+			id := fmt.Sprintf("01JLEASE%019d", len(s.leases)+1)
+			s.leases[id] = &stubLease{node: n, expiresAt: time.Now().Add(ttlOr(req.Msg.GetTtl()))}
+			l := s.lease(id)
+			s.mu.Unlock()
+			return connect.NewResponse(&daggerv1.ClaimNextResponse{Node: n, Lease: l}), nil
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -275,14 +320,29 @@ func (s *stub) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.Clai
 
 func (s *stub) Heartbeat(_ context.Context, req *connect.Request[daggerv1.HeartbeatRequest]) (*connect.Response[daggerv1.HeartbeatResponse], error) {
 	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expire()
 	if req.Msg.GetLeaseId() == expiredLease {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+	}
+	if held, ok := s.leases[req.Msg.GetLeaseId()]; ok {
+		if held.reason != daggerv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+		}
+		held.expiresAt = time.Now().Add(ttlOr(req.Msg.GetTtl()))
 	}
 	return connect.NewResponse(&daggerv1.HeartbeatResponse{Lease: s.lease(req.Msg.GetLeaseId())}), nil
 }
 
 func (s *stub) Release(_ context.Context, req *connect.Request[daggerv1.ReleaseRequest]) (*connect.Response[daggerv1.ReleaseResponse], error) {
 	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if held, ok := s.leases[req.Msg.GetLeaseId()]; ok {
+		held.reason = req.Msg.GetReason()
+		held.node.Claimed, held.node.Ready = false, true
+	}
 	l := s.lease(req.Msg.GetLeaseId())
 	l.ReleaseReason = req.Msg.GetReason()
 	return connect.NewResponse(&daggerv1.ReleaseResponse{Lease: l}), nil

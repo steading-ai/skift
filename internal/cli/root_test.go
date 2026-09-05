@@ -44,13 +44,6 @@ var _ = Describe("root command", Label("unit"), func() {
 			"claim", "heartbeat", "release", "complete", "comment", "search", "events"))
 	})
 
-	DescribeTable("faces without behaviour fail loudly",
-		func(face string) {
-			Expect(execute(face)).To(MatchError(cli.ErrNotImplemented))
-		},
-		Entry("mcp", "mcp"),
-	)
-
 	Describe("serve", func() {
 		It("requires a database URL", func() {
 			GinkgoT().Setenv("DATABASE_URL", "")

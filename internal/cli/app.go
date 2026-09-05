@@ -130,20 +130,31 @@ func readBody(cmd *cobra.Command, arg string) (string, error) {
 // the wire enum whose values carry the given prefix. Empty means
 // unspecified, which the server treats as its default.
 func enumFlag[E ~int32](flag, value, prefix string, values map[string]int32) (E, error) {
+	return parseEnum[E]("--"+flag, value, prefix, values)
+}
+
+// parseEnum is enumFlag for an input named by something other than a flag,
+// such as an MCP tool argument. The name is how the error refers to it.
+func parseEnum[E ~int32](name, value, prefix string, values map[string]int32) (E, error) {
 	if value == "" {
 		return 0, nil
 	}
 	n, ok := values[prefix+strings.ToUpper(strings.ReplaceAll(value, "-", "_"))]
 	if !ok || n == 0 {
-		names := make([]string, 0, len(values))
-		for name, n := range values {
-			if n != 0 {
-				names = append(names, enumName(name))
-			}
-		}
-		return 0, usage("--%s: %q is not one of %s", flag, value, strings.Join(slices.Sorted(slices.Values(names)), ", "))
+		return 0, usage("%s: %q is not one of %s", name, value, strings.Join(enumNames(values), ", "))
 	}
 	return E(n), nil
+}
+
+// enumNames lists the short names of an enum's non-zero values, sorted.
+func enumNames(values map[string]int32) []string {
+	names := make([]string, 0, len(values))
+	for name, n := range values {
+		if n != 0 {
+			names = append(names, enumName(name))
+		}
+	}
+	return slices.Sorted(slices.Values(names))
 }
 
 // send runs one RPC and prints its response.
