@@ -21,7 +21,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build test test-unit test-db lint generate clean db-up db-down db-reset
+.PHONY: all build test test-unit test-db lint generate clean db-up db-down db-reset db-migrate
 
 all: build
 
@@ -70,6 +70,13 @@ db-up: .env
 # Stop the stack. The data volume survives; `podman compose down -v` removes it.
 db-down:
 	$(COMPOSE) down
+
+# Apply every pending migration to the development database. The service
+# and the specs embed the same files; this is for working on the schema by
+# hand. DATABASE_URL comes from .env.
+db-migrate: db-up
+	set -a && . ./.env && set +a && \
+	  goose -dir internal/store/migrations postgres "$$DATABASE_URL" up
 
 # Drop and recreate the development database inside the running container.
 # Credentials resolve from the container's environment, so this file never

@@ -60,6 +60,16 @@ podman compose exec postgres psql -U dagger
 
 or from the host with anything that reads `DATABASE_URL` from `.env`.
 
+### Apply the schema
+
+```sh
+make db-migrate
+```
+
+Runs every pending goose migration from `internal/store/migrations` against
+the development database. The same files are embedded in the binary, so this
+is only for working on the schema by hand; specs migrate their own databases.
+
 ### Reset the database
 
 ```sh
