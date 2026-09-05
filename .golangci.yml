@@ -1,0 +1,56 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - depguard
+    - forbidigo
+    - gocritic
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    # Handlers reach the database through the domain layer, never around it.
+    # See docs/adrs/007-core-tech-stack.md.
+    depguard:
+      rules:
+        store-only-from-domain:
+          files:
+            - "!**/internal/domain/**"
+            - "!**/internal/store/**"
+          deny:
+            - pkg: github.com/ivy/dagger/internal/store
+              desc: only the domain layer may import the store
+    # Specs are Ginkgo. The testing package appears only in the suite
+    # bootstrap file that hands control to Ginkgo.
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^testing\.
+          msg: use Ginkgo and Gomega; testing belongs only in *_suite_test.go
+    # Ginkgo and Gomega are written with dot imports by design.
+    revive:
+      rules:
+        - name: dot-imports
+          arguments:
+            - allowedPackages:
+                - github.com/onsi/ginkgo/v2
+                - github.com/onsi/gomega
+  exclusions:
+    rules:
+      - path: _suite_test\.go$
+        linters:
+          - forbidigo
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ivy/dagger

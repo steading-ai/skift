@@ -2,6 +2,7 @@
 harness/.venv/
 harness/logs/
 harness/STOP
+harness/state.json
 
 # Local research checkouts
 research/
@@ -12,3 +13,8 @@ research/
 
 # Local environment
 .env
+
+# Go
+*.test
+*.out
+/.gocache/
