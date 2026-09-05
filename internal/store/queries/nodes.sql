@@ -40,3 +40,27 @@ UPDATE nodes
 SET status = $3
 WHERE org_id = $1 AND id = $2
 RETURNING *;
+
+-- A node and each of its ancestors up to the root, nearest first, with the
+-- principal that created each: the actor of its create_node event, or empty
+-- for a node with none, such as one whose event is about to be written.
+-- This is what policy judges ownership from. The path guard stops the walk
+-- if a patch in flight has made the parent relation cyclic before the cycle
+-- check has run over it.
+-- name: NodeLineage :many
+WITH RECURSIVE chain AS (
+    SELECT n.id, n.parent_id, n.project_id, ARRAY[n.id]::text[] AS path
+    FROM nodes n
+    WHERE n.org_id = $1 AND n.id = $2
+    UNION ALL
+    SELECT p.id, p.parent_id, p.project_id, c.path || p.id
+    FROM chain c
+    JOIN nodes p ON p.org_id = $1 AND p.id = c.parent_id
+    WHERE NOT p.id = ANY(c.path)
+)
+SELECT c.id, c.parent_id, c.project_id,
+    COALESCE((SELECT e.principal_id FROM events e
+              WHERE e.org_id = $1 AND e.node_id = c.id AND e.op = 'create_node'
+              ORDER BY e.id LIMIT 1), '')::text AS created_by
+FROM chain c
+ORDER BY array_length(c.path, 1);

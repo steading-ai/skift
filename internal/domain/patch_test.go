@@ -16,23 +16,32 @@ import (
 	"github.com/ivy/dagger/internal/testsupport"
 )
 
-// principal inserts an agent principal to act as.
+// principal inserts a user principal to act as: the person laying out the
+// work, whom the default policy lets edit anything in the organization.
 func (g *graph) principal(ctx context.Context) domain.Actor {
 	GinkgoHelper()
-	var actor domain.Actor
-	g.given(ctx, func(ctx context.Context, tx store.Tx) {
-		p, err := tx.CreatePrincipal(ctx, store.CreatePrincipalParams{ID: newULID(), OrgID: g.org, Kind: "agent"})
-		Expect(err).NotTo(HaveOccurred())
-		actor = domain.Actor{PrincipalID: p.ID, PrincipalKind: p.Kind, IdentityScheme: "unix"}
-	})
-	return actor
+	return g.principalOf(ctx, "user")
+}
+
+// agent inserts an agent principal, which the default policy confines to
+// the node it holds a lease on and what it creates under it.
+func (g *graph) agent(ctx context.Context) domain.Actor {
+	GinkgoHelper()
+	return g.principalOf(ctx, "agent")
 }
 
 // apply runs one patch against the spec's project and records every node
 // it returns under its reference, so later steps can name them.
 func (g *graph) apply(ctx context.Context, actor domain.Actor, requestID string, ops ...domain.Op) (*domain.Result, error) {
 	GinkgoHelper()
-	r, err := domain.Apply(ctx, g.s, g.org, actor, domain.Patch{RequestID: requestID, Project: "platform", Ops: ops})
+	return g.applyPatch(ctx, actor, domain.Patch{RequestID: requestID, Project: "platform", Ops: ops})
+}
+
+// applyPatch runs one patch as given and records every node it returns
+// under its reference.
+func (g *graph) applyPatch(ctx context.Context, actor domain.Actor, p domain.Patch) (*domain.Result, error) {
+	GinkgoHelper()
+	r, err := domain.Apply(ctx, g.s, pol, g.org, actor, p)
 	if r != nil {
 		for _, n := range r.Nodes {
 			g.ids[fmt.Sprintf("platform#%d", n.Number)] = n.ID
@@ -79,7 +88,7 @@ func (g *graph) applyAsync(ctx context.Context, actor domain.Actor, requestID st
 	done := make(chan error, 1)
 	go func() {
 		defer GinkgoRecover()
-		_, err := domain.Apply(ctx, g.s, g.org, actor, domain.Patch{RequestID: requestID, Project: "platform", Ops: ops})
+		_, err := domain.Apply(ctx, g.s, pol, g.org, actor, domain.Patch{RequestID: requestID, Project: "platform", Ops: ops})
 		done <- err
 	}()
 	return done
@@ -177,7 +186,7 @@ var _ = Describe("Patch application", Label(testsupport.DBLabel), func() {
 			Expect(r.Events).To(HaveEach(SatisfyAll(
 				HaveField("RequestID", HaveValue(Equal("req-1"))),
 				HaveField("PrincipalID", actor.PrincipalID),
-				HaveField("PrincipalKind", "agent"),
+				HaveField("PrincipalKind", "user"),
 				HaveField("IdentityScheme", "unix"),
 			)))
 			Expect(g.hasEdge(ctx, "#3", "#1")).To(BeTrue())
@@ -428,12 +437,12 @@ var _ = Describe("Patch application", Label(testsupport.DBLabel), func() {
 
 		It("resolves the project by id, slug, or org/slug, and refuses an archived one", func(ctx SpecContext) {
 			for i, project := range []string{g.project, "platform", "acme/platform"} {
-				_, err := domain.Apply(ctx, s, g.org, actor, domain.Patch{RequestID: fmt.Sprintf("req-%d", i), Project: project, Ops: []domain.Op{create("", "A")}})
+				_, err := domain.Apply(ctx, s, pol, g.org, actor, domain.Patch{RequestID: fmt.Sprintf("req-%d", i), Project: project, Ops: []domain.Op{create("", "A")}})
 				Expect(err).NotTo(HaveOccurred(), "project %q", project)
 			}
 			Expect(g.countNodes(ctx)).To(Equal(3))
 
-			_, err := domain.Apply(ctx, s, g.org, actor, domain.Patch{RequestID: "missing", Project: "nope", Ops: []domain.Op{create("", "A")}})
+			_, err := domain.Apply(ctx, s, pol, g.org, actor, domain.Patch{RequestID: "missing", Project: "nope", Ops: []domain.Op{create("", "A")}})
 			Expect(err).To(MatchError(domain.ErrProjectNotFound))
 
 			g.given(ctx, func(ctx context.Context, tx store.Tx) { g.archive(ctx, tx, g.project) })

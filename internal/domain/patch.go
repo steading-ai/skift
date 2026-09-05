@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/store"
 )
 
@@ -269,6 +270,11 @@ func (e *OpError) Unwrap() error { return e.Err }
 // checked for cycles once, over the resulting graph. Each operation writes
 // one event.
 //
+// Every operation is authorized by pol once resolved, against the state it
+// produced, inside the transaction. A denial is a [*policy.DeniedError]
+// wrapped in the [*OpError] naming the operation, and rolls the patch back.
+// The events carry the version of the bundle that allowed them.
+//
 // The actor is whatever the transport resolved, never anything the patch
 // carries. A patch with no actor, or with a transition missing its reason,
 // is rejected before it claims its request id or touches the graph.
@@ -292,7 +298,7 @@ func (e *OpError) Unwrap() error { return e.Err }
 // [ErrLeaseNotLive] or [ErrNotLeaseHolder] whatever it touches. A patch
 // that passes renews its lease to [DefaultLeaseTTL] from now, never
 // shortening it.
-func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Patch) (*Result, error) {
+func Apply(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, p Patch) (*Result, error) {
 	if p.RequestID == "" {
 		return nil, ErrNoRequestID
 	}
@@ -319,7 +325,7 @@ func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Pat
 	var result *Result
 	for attempt := 0; ; attempt++ {
 		err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) (err error) {
-			result, err = applyOnce(ctx, tx, orgID, actor, p, hash)
+			result, err = applyOnce(ctx, tx, pol, orgID, actor, p, hash)
 			return err
 		})
 		if isKeyConflict(err) && attempt == 0 {
@@ -333,7 +339,7 @@ func Apply(ctx context.Context, s *store.Store, orgID string, actor Actor, p Pat
 }
 
 // applyOnce is one attempt at the patch inside tx.
-func applyOnce(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Patch, hash string) (*Result, error) {
+func applyOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, p Patch, hash string) (*Result, error) {
 	result, replayed, err := withRequest(ctx, tx, orgID, p.RequestID, hash, func(ctx context.Context) (*Result, error) {
 		if mutatesWaits(p) {
 			if err := lockOrganization(ctx, tx, orgID); err != nil {
@@ -341,7 +347,7 @@ func applyOnce(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Pa
 			}
 		}
 
-		a, err := newApplier(ctx, tx, orgID, actor, p)
+		a, err := newApplier(ctx, tx, pol, orgID, actor, p)
 		if err != nil {
 			return nil, err
 		}
@@ -503,7 +509,7 @@ type applier struct {
 	aliases map[string]string
 }
 
-func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p Patch) (*applier, error) {
+func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, p Patch) (*applier, error) {
 	project, err := resolveProject(ctx, tx, orgID, p.Project)
 	if err != nil {
 		return nil, err
@@ -512,7 +518,7 @@ func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p P
 		return nil, fmt.Errorf("project %s: %w", project.Slug, ErrProjectArchived)
 	}
 	a := &applier{
-		recorder: recorder{tx: tx, orgID: orgID, actor: actor, request: &p.RequestID},
+		recorder: recorder{tx: tx, orgID: orgID, actor: actor, policy: pol, request: &p.RequestID},
 		project:  project,
 		resolver: NewResolver(tx, orgID, project),
 		created:  map[string]bool{}, fenced: map[string]bool{},
@@ -524,6 +530,7 @@ func newApplier(ctx context.Context, tx store.Tx, orgID string, actor Actor, p P
 			return nil, err
 		}
 		a.lease = &lease
+		a.recorder.lease = &lease
 	}
 	creates := 0
 	for _, op := range p.Ops {

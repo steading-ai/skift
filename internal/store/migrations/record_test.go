@@ -136,8 +136,8 @@ var _ = Describe("Events, usage, comments, artifacts", Label(testsupport.DBLabel
 			f := newFixture(ctx, db)
 			other := newOrg(ctx, db)
 			_, err := db.Exec(ctx, `
-				INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, op)
-				VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'create_node')`,
+				INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, op)
+				VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'sha256:spec', 'create_node')`,
 				newULID(), other, f.project, f.node, f.agent)
 			Expect(err).To(HavePgCode(foreignKeyViolation))
 		})
@@ -146,8 +146,8 @@ var _ = Describe("Events, usage, comments, artifacts", Label(testsupport.DBLabel
 			db := pg.Database(ctx)
 			f := newFixture(ctx, db)
 			_, err := db.Exec(ctx, `
-				INSERT INTO events (id, org_id, node_id, principal_id, principal_kind, identity_scheme, op)
-				VALUES ($1, $2, $3, $4, 'agent', 'unix', 'create_node')`,
+				INSERT INTO events (id, org_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, op)
+				VALUES ($1, $2, $3, $4, 'agent', 'unix', 'sha256:spec', 'create_node')`,
 				newULID(), f.org, f.node, f.agent)
 			Expect(err).To(HavePgCode(checkViolation))
 		})
@@ -166,8 +166,8 @@ var _ = Describe("Events, usage, comments, artifacts", Label(testsupport.DBLabel
 			f := newFixture(ctx, db)
 			nextMonth := time.Now().UTC().AddDate(0, 1, 0)
 			_, err := db.Exec(ctx, `
-				INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, op, occurred_at)
-				VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'create_node', $6)`,
+				INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, op, occurred_at)
+				VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'sha256:spec', 'create_node', $6)`,
 				newULID(), f.org, f.project, f.node, f.agent, nextMonth)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -200,8 +200,8 @@ var _ = Describe("Events, usage, comments, artifacts", Label(testsupport.DBLabel
 			db := pg.Database(ctx)
 			f := newFixture(ctx, db)
 			_, err := db.Exec(ctx, `
-				INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, op, occurred_at)
-				VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'create_node', now() - interval '10 years')`,
+				INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, op, occurred_at)
+				VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'sha256:spec', 'create_node', now() - interval '10 years')`,
 				newULID(), f.org, f.project, f.node, f.agent)
 			Expect(err).To(HavePgCode(checkViolation))
 		})
@@ -517,8 +517,8 @@ func (f fixture) event(ctx context.Context, op string) string {
 	GinkgoHelper()
 	id := newULID()
 	_, err := f.db.Exec(ctx, `
-		INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, request_id, op, before, after)
-		VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', $6, $7, '{"status": "open"}', '{"status": "done"}')`,
+		INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, request_id, op, before, after)
+		VALUES ($1, $2, $3, $4, $5, 'agent', 'unix', 'sha256:spec', $6, $7, '{"status": "open"}', '{"status": "done"}')`,
 		id, f.org, f.project, f.node, f.agent, "req-"+id, op)
 	Expect(err).NotTo(HaveOccurred())
 	return id

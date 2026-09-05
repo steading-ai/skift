@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/store"
 )
 
@@ -53,21 +54,30 @@ func requiresReason(op string) bool {
 
 // recorder writes the events of one transaction for one actor, and keeps
 // them in the order written. request is nil for writes no client asked
-// for, such as the expiry timer releasing a lease.
+// for, such as the expiry timer releasing a lease. lease is the lease the
+// request carries, when it carries one.
 type recorder struct {
 	tx      store.Tx
 	orgID   string
 	actor   Actor
+	policy  *policy.Bundle
 	request *string
+	lease   *store.Lease
 	events  []store.Event
 }
 
-// event writes the record of one operation. reason is nil for operations
-// that carry none. before and after are encoded as JSON; nil leaves the
-// column null.
+// event authorizes one operation and writes its record. Authorization
+// sits here because every mutation writes an event and nothing else
+// does, so a mutation the policy has not allowed cannot be committed.
+// reason is nil for operations that carry none. before and after are the
+// typed change, encoded as JSON; nil leaves the column null.
 func (r *recorder) event(ctx context.Context, op, nodeID, projectID string, reason *string, before, after any) error {
 	if requiresReason(op) && (reason == nil || *reason == "") {
 		return fmt.Errorf("%s: %w", op, ErrReasonRequired)
+	}
+	version, err := r.authorize(ctx, op, nodeID, before, after)
+	if err != nil {
+		return err
 	}
 	beforeJSON, err := encodeChange(before)
 	if err != nil {
@@ -81,7 +91,7 @@ func (r *recorder) event(ctx context.Context, op, nodeID, projectID string, reas
 		ID: newULID(), OrgID: r.orgID, ProjectID: &projectID, NodeID: &nodeID,
 		PrincipalID: r.actor.PrincipalID, PrincipalKind: r.actor.PrincipalKind,
 		IdentityScheme: r.actor.IdentityScheme, RequestID: r.request,
-		Op: op, Reason: reason, Before: beforeJSON, After: afterJSON,
+		Op: op, Reason: reason, Before: beforeJSON, After: afterJSON, PolicyVersion: version,
 	})
 	if err != nil {
 		return fmt.Errorf("record %s event: %w", op, err)

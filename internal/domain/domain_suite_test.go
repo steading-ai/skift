@@ -8,6 +8,7 @@ import (
 	"github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
 
+	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/store/migrations"
 	"github.com/ivy/dagger/internal/testsupport"
 )
@@ -27,6 +28,10 @@ func TestDomain(t *testing.T) {
 // pg is the server every database spec in this suite clones from.
 var pg *testsupport.Postgres
 
+// pol is the default policy bundle, which every write in this suite is
+// authorized by.
+var pol *policy.Bundle
+
 var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
 	if !needsDatabase {
 		return nil
@@ -36,10 +41,12 @@ var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
 	DeferCleanup(started.Stop)
 	return []byte(started.URL())
 }, func(ctx context.Context, adminURL []byte) {
+	var err error
+	pol, err = policy.LoadDefault(ctx)
+	Expect(err).NotTo(HaveOccurred())
 	if len(adminURL) == 0 {
 		return
 	}
-	var err error
 	pg, err = testsupport.Attach(ctx, string(adminURL))
 	Expect(err).NotTo(HaveOccurred())
 })

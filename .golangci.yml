@@ -2,6 +2,10 @@ version: "2"
 
 run:
   timeout: 5m
+  # The root specs run `make lint` in several copies of the tree at once.
+  # Without this, golangci-lint takes a machine-wide lock and the second
+  # instance fails rather than waits.
+  allow-parallel-runners: true
 
 linters:
   default: standard

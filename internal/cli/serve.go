@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ivy/dagger/internal/logging"
+	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/version"
 )
@@ -85,6 +86,14 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
+	// The policy bundle compiles before anything listens: a service with
+	// no policy would deny every request, which is a service not worth
+	// starting. The handler node hands the bundle to the domain layer.
+	bundle, err := policy.LoadDefault(ctx)
+	if err != nil {
+		return fmt.Errorf("dg serve: %w", err)
+	}
+
 	// The pool connects lazily, so a database that is down at startup is
 	// reported by the health check rather than preventing the service from
 	// listening; systemd would otherwise restart it in a loop.
@@ -104,7 +113,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		Logger:          log,
 	}, server.Services{}, pool)
 
-	log.Info("dg serve starting", "version", version.String())
+	log.Info("dg serve starting", "version", version.String(), "policy_version", bundle.Version())
 	if err := srv.Listen(); err != nil {
 		return fmt.Errorf("dg serve: %w", err)
 	}

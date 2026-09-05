@@ -26,7 +26,7 @@ func claimReq(requestID string, ttl time.Duration) domain.ClaimRequest {
 // reference.
 func (g *graph) claim(ctx context.Context, actor domain.Actor, req domain.ClaimRequest) (*domain.Claimed, error) {
 	GinkgoHelper()
-	c, err := domain.Claim(ctx, g.s, g.org, actor, req)
+	c, err := domain.Claim(ctx, g.s, pol, g.org, actor, req)
 	if c != nil {
 		g.ids[fmt.Sprintf("platform#%d", c.Node.Number)] = c.Node.ID
 	}
@@ -81,10 +81,10 @@ func update(node, title string) domain.Op {
 	return domain.Op{UpdateNode: &domain.UpdateNode{Node: node, Title: &title}}
 }
 
-// applyWithLease applies a patch that carries a lease id.
+// applyWithLease is apply for a patch that carries a lease id.
 func (g *graph) applyWithLease(ctx context.Context, actor domain.Actor, requestID, leaseID string, ops ...domain.Op) (*domain.Result, error) {
 	GinkgoHelper()
-	return domain.Apply(ctx, g.s, g.org, actor, domain.Patch{RequestID: requestID, Project: "platform", LeaseID: leaseID, Ops: ops})
+	return g.applyPatch(ctx, actor, domain.Patch{RequestID: requestID, Project: "platform", LeaseID: leaseID, Ops: ops})
 }
 
 var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
@@ -104,7 +104,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 		It("A stale worker cannot complete reclaimed work", func(ctx SpecContext) {
 			By("given agent A holds a lease on node 7")
 			g.given(ctx, func(ctx context.Context, tx store.Tx) { g.node(ctx, tx, 7, nil) })
-			agentA, agentB := g.principal(ctx), g.principal(ctx)
+			agentA, agentB := g.agent(ctx), g.agent(ctx)
 			first := g.mustClaim(ctx, agentA, claimReq("a-claim", time.Minute))
 			Expect(first.Node.Number).To(Equal(int64(7)))
 
@@ -115,7 +115,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 			Expect(ops(second.Events)).To(Equal([]string{domain.OpExpireLease, domain.OpClaimNode}))
 
 			By("when agent A completes node 7 with its old lease id")
-			_, err := domain.Release(ctx, s, g.org, agentA, "a-complete", first.Lease.ID, domain.ReleaseComplete, "")
+			_, err := domain.Release(ctx, s, pol, g.org, agentA, "a-complete", first.Lease.ID, domain.ReleaseComplete, "")
 
 			By("then the write is rejected")
 			Expect(err).To(MatchError(domain.ErrLeaseNotLive))
@@ -145,7 +145,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 				go func() {
 					defer GinkgoRecover()
 					defer wg.Done()
-					c, err := domain.ClaimNext(ctx, s, g.org, actor, claimReq(fmt.Sprintf("claim-%d", i), 0))
+					c, err := domain.ClaimNext(ctx, s, pol, g.org, actor, claimReq(fmt.Sprintf("claim-%d", i), 0))
 					Expect(err).NotTo(HaveOccurred())
 					results <- c
 				}()
@@ -229,7 +229,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 					defer wg.Done()
 					req := claimReq(fmt.Sprintf("wait-%d", i), 0)
 					req.Wait = 30 * time.Second
-					c, err := domain.ClaimNext(waitCtx, small, g.org, actor, req)
+					c, err := domain.ClaimNext(waitCtx, small, pol, g.org, actor, req)
 					Expect(c).To(BeNil())
 					Expect(err).To(MatchError(context.Canceled))
 				}()
@@ -271,7 +271,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 		})
 
 		It("rejects a write carrying a stale lease id", func(ctx SpecContext) {
-			_, err := domain.Release(ctx, s, g.org, actor, "release", held.Lease.ID, domain.ReleaseCrash, "")
+			_, err := domain.Release(ctx, s, pol, g.org, actor, "release", held.Lease.ID, domain.ReleaseCrash, "")
 			Expect(err).NotTo(HaveOccurred())
 			_, err = g.applyWithLease(ctx, actor, "stale", held.Lease.ID, update("#1", "Stale"))
 			Expect(err).To(MatchError(domain.ErrLeaseNotLive))
@@ -405,7 +405,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 			first := g.mustClaim(ctx, actor, claimReq("req", 0))
 			req := claimReq("req", 0)
 			req.Wait = 10 * time.Second
-			again, err := domain.ClaimNext(ctx, s, g.org, actor, req)
+			again, err := domain.ClaimNext(ctx, s, pol, g.org, actor, req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(again.Replayed).To(BeTrue())
 			Expect(again.Lease.ID).To(Equal(first.Lease.ID))
@@ -432,7 +432,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 			done := make(chan *domain.Claimed, 1)
 			go func() {
 				defer GinkgoRecover()
-				c, err := domain.ClaimNext(ctx, s, g.org, actor, req)
+				c, err := domain.ClaimNext(ctx, s, pol, g.org, actor, req)
 				Expect(err).NotTo(HaveOccurred())
 				done <- c
 			}()
@@ -450,7 +450,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 			req := claimReq("wait", 0)
 			req.Wait = 300 * time.Millisecond
 			started := time.Now()
-			c, err := domain.ClaimNext(ctx, s, g.org, actor, req)
+			c, err := domain.ClaimNext(ctx, s, pol, g.org, actor, req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(c).To(BeNil())
 			Expect(time.Since(started)).To(BeNumerically(">=", 300*time.Millisecond))
@@ -464,7 +464,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 			done := make(chan error, 1)
 			go func() {
 				defer GinkgoRecover()
-				_, err := domain.ClaimNext(waitCtx, s, g.org, actor, req)
+				_, err := domain.ClaimNext(waitCtx, s, pol, g.org, actor, req)
 				done <- err
 			}()
 			cancel()
@@ -481,47 +481,47 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 		})
 
 		It("renews the lease to the requested TTL from now, clamped, and records it", func(ctx SpecContext) {
-			change, err := domain.Heartbeat(ctx, s, g.org, actor, "beat", c.Lease.ID, 2*domain.MaxLeaseTTL)
+			change, err := domain.Heartbeat(ctx, s, pol, g.org, actor, "beat", c.Lease.ID, 2*domain.MaxLeaseTTL)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(change.Lease.ExpiresAt).To(BeTemporally("~", time.Now().Add(domain.MaxLeaseTTL), 5*time.Second))
 			Expect(g.getLease(ctx, c.Lease.ID).ExpiresAt).To(BeTemporally("==", change.Lease.ExpiresAt))
 			Expect(ops(g.nodeEvents(ctx, "#1"))).To(Equal([]string{domain.OpClaimNode, domain.OpHeartbeatLease}))
 
 			By("and a heartbeat with no TTL takes the default")
-			change, err = domain.Heartbeat(ctx, s, g.org, actor, "beat-2", c.Lease.ID, 0)
+			change, err = domain.Heartbeat(ctx, s, pol, g.org, actor, "beat-2", c.Lease.ID, 0)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(change.Lease.ExpiresAt).To(BeTemporally("~", time.Now().Add(domain.DefaultLeaseTTL), 5*time.Second))
 		})
 
 		It("is fenced: another principal, a released lease, and an expired lease are rejected", func(ctx SpecContext) {
-			_, err := domain.Heartbeat(ctx, s, g.org, g.principal(ctx), "beat", c.Lease.ID, 0)
+			_, err := domain.Heartbeat(ctx, s, pol, g.org, g.principal(ctx), "beat", c.Lease.ID, 0)
 			Expect(err).To(MatchError(domain.ErrNotLeaseHolder))
 
 			g.age(ctx, c.Lease.ID, time.Minute, -time.Second)
-			_, err = domain.Heartbeat(ctx, s, g.org, actor, "beat", c.Lease.ID, 0)
+			_, err = domain.Heartbeat(ctx, s, pol, g.org, actor, "beat", c.Lease.ID, 0)
 			Expect(err).To(MatchError(domain.ErrLeaseNotLive))
 			Expect(g.getLease(ctx, c.Lease.ID).ExpiresAt).To(BeTemporally("<", time.Now()))
 
 			g.age(ctx, c.Lease.ID, time.Minute, time.Minute)
-			_, err = domain.Release(ctx, s, g.org, actor, "release", c.Lease.ID, domain.ReleaseGate, "")
+			_, err = domain.Release(ctx, s, pol, g.org, actor, "release", c.Lease.ID, domain.ReleaseGate, "")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = domain.Heartbeat(ctx, s, g.org, actor, "beat", c.Lease.ID, 0)
+			_, err = domain.Heartbeat(ctx, s, pol, g.org, actor, "beat", c.Lease.ID, 0)
 			Expect(err).To(MatchError(domain.ErrLeaseNotLive))
 		})
 
 		It("replays under its request id and rejects a negative TTL or no lease id", func(ctx SpecContext) {
-			first, err := domain.Heartbeat(ctx, s, g.org, actor, "beat", c.Lease.ID, time.Minute)
+			first, err := domain.Heartbeat(ctx, s, pol, g.org, actor, "beat", c.Lease.ID, time.Minute)
 			Expect(err).NotTo(HaveOccurred())
-			again, err := domain.Heartbeat(ctx, s, g.org, actor, "beat", c.Lease.ID, time.Minute)
+			again, err := domain.Heartbeat(ctx, s, pol, g.org, actor, "beat", c.Lease.ID, time.Minute)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(again.Replayed).To(BeTrue())
 			again.Replayed = false
 			Expect(again).To(Equal(first))
 			Expect(g.countEvents(ctx, "beat")).To(Equal(1))
 
-			_, err = domain.Heartbeat(ctx, s, g.org, actor, "neg", c.Lease.ID, -time.Second)
+			_, err = domain.Heartbeat(ctx, s, pol, g.org, actor, "neg", c.Lease.ID, -time.Second)
 			Expect(err).To(MatchError(domain.ErrNegativeDuration))
-			_, err = domain.Heartbeat(ctx, s, g.org, actor, "none", "", 0)
+			_, err = domain.Heartbeat(ctx, s, pol, g.org, actor, "none", "", 0)
 			Expect(err).To(MatchError(domain.ErrNoLeaseID))
 		})
 	})
@@ -536,7 +536,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 		})
 
 		It("ends the lease with a reason, records it, and returns the node to the ready set", func(ctx SpecContext) {
-			change, err := domain.Release(ctx, s, g.org, actor, "release", c.Lease.ID, domain.ReleaseCrash, "out of memory")
+			change, err := domain.Release(ctx, s, pol, g.org, actor, "release", c.Lease.ID, domain.ReleaseCrash, "out of memory")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(change.Lease.ReleasedAt).NotTo(BeNil())
 			Expect(*change.Lease.ReleaseReason).To(Equal(domain.ReleaseCrash))
@@ -552,22 +552,22 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 		})
 
 		It("is fenced: a released or expired lease, or another principal's, is rejected", func(ctx SpecContext) {
-			_, err := domain.Release(ctx, s, g.org, g.principal(ctx), "theirs", c.Lease.ID, domain.ReleaseCrash, "")
+			_, err := domain.Release(ctx, s, pol, g.org, g.principal(ctx), "theirs", c.Lease.ID, domain.ReleaseCrash, "")
 			Expect(err).To(MatchError(domain.ErrNotLeaseHolder))
 
-			_, err = domain.Release(ctx, s, g.org, actor, "once", c.Lease.ID, domain.ReleaseBudget, "")
+			_, err = domain.Release(ctx, s, pol, g.org, actor, "once", c.Lease.ID, domain.ReleaseBudget, "")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = domain.Release(ctx, s, g.org, actor, "twice", c.Lease.ID, domain.ReleaseCrash, "")
+			_, err = domain.Release(ctx, s, pol, g.org, actor, "twice", c.Lease.ID, domain.ReleaseCrash, "")
 			Expect(err).To(MatchError(domain.ErrLeaseNotLive))
 			Expect(*g.getLease(ctx, c.Lease.ID).ReleaseReason).To(Equal(domain.ReleaseBudget))
 		})
 
 		It("requires a client reason, and leaves expired to the server", func(ctx SpecContext) {
-			_, err := domain.Release(ctx, s, g.org, actor, "r", c.Lease.ID, "", "")
+			_, err := domain.Release(ctx, s, pol, g.org, actor, "r", c.Lease.ID, "", "")
 			Expect(err).To(MatchError(domain.ErrReasonRequired))
-			_, err = domain.Release(ctx, s, g.org, actor, "r", c.Lease.ID, domain.ReleaseExpired, "")
+			_, err = domain.Release(ctx, s, pol, g.org, actor, "r", c.Lease.ID, domain.ReleaseExpired, "")
 			Expect(err).To(MatchError(domain.ErrReasonRequired))
-			_, err = domain.Release(ctx, s, g.org, actor, "r", c.Lease.ID, "bored", "")
+			_, err = domain.Release(ctx, s, pol, g.org, actor, "r", c.Lease.ID, "bored", "")
 			Expect(err).To(MatchError(`unknown release reason "bored"`))
 			Expect(g.liveLeases(ctx)).To(Equal(1))
 		})
@@ -583,7 +583,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 
 			By("when the timer runs as the service principal")
 			reaper := g.principalOf(ctx, "service")
-			released, err := domain.ExpireLeases(ctx, s, g.org, reaper, 100)
+			released, err := domain.ExpireLeases(ctx, s, pol, g.org, reaper, 100)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("then only the expired lease is released, as expired")
@@ -607,7 +607,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 			Expect(field(expiry.After, "ReleaseReason")).To(Equal(domain.ReleaseExpired))
 
 			By("and a second run finds nothing")
-			released, err = domain.ExpireLeases(ctx, s, g.org, reaper, 100)
+			released, err = domain.ExpireLeases(ctx, s, pol, g.org, reaper, 100)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(released).To(BeEmpty())
 		})

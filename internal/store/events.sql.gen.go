@@ -10,9 +10,9 @@ import (
 )
 
 const createEvent = `-- name: CreateEvent :one
-INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at
+INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, policy_version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version
 `
 
 type CreateEventParams struct {
@@ -29,6 +29,7 @@ type CreateEventParams struct {
 	Reason         *string
 	Before         []byte
 	After          []byte
+	PolicyVersion  string
 }
 
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event, error) {
@@ -46,6 +47,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 		arg.Reason,
 		arg.Before,
 		arg.After,
+		arg.PolicyVersion,
 	)
 	var i Event
 	err := row.Scan(
@@ -63,12 +65,13 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 		&i.Before,
 		&i.After,
 		&i.OccurredAt,
+		&i.PolicyVersion,
 	)
 	return i, err
 }
 
 const listEventsAfter = `-- name: ListEventsAfter :many
-SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at FROM events
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version FROM events
 WHERE org_id = $1 AND id > $2
 ORDER BY id
 LIMIT $3
@@ -105,6 +108,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.Before,
 			&i.After,
 			&i.OccurredAt,
+			&i.PolicyVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -117,7 +121,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 }
 
 const listEventsForNode = `-- name: ListEventsForNode :many
-SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at FROM events
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version FROM events
 WHERE org_id = $1 AND node_id = $2
 ORDER BY id
 LIMIT $4 OFFSET $3
@@ -160,6 +164,7 @@ func (q *Queries) ListEventsForNode(ctx context.Context, arg ListEventsForNodePa
 			&i.Before,
 			&i.After,
 			&i.OccurredAt,
+			&i.PolicyVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -172,7 +177,7 @@ func (q *Queries) ListEventsForNode(ctx context.Context, arg ListEventsForNodePa
 }
 
 const listEventsForRequest = `-- name: ListEventsForRequest :many
-SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at FROM events
+SELECT id, org_id, project_id, node_id, principal_id, principal_kind, on_behalf_of, identity_scheme, request_id, op, reason, before, after, occurred_at, policy_version FROM events
 WHERE org_id = $1 AND request_id = $2
 ORDER BY id
 `
@@ -208,6 +213,7 @@ func (q *Queries) ListEventsForRequest(ctx context.Context, arg ListEventsForReq
 			&i.Before,
 			&i.After,
 			&i.OccurredAt,
+			&i.PolicyVersion,
 		); err != nil {
 			return nil, err
 		}

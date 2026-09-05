@@ -21,20 +21,25 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build test test-unit test-db lint check-generated generate clean db-up db-down db-reset db-migrate
+.PHONY: all build test test-unit test-db test-policy lint check-generated generate clean db-up db-down db-reset db-migrate
 
 all: build
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/dg
 
-# Every spec. Database specs need podman for testcontainers.
-test:
+# Every spec, and the policy bundle's own suite. Database specs need
+# podman for testcontainers.
+test: test-policy
 	$(GINKGO) ./...
 
 # Specs that run without external services.
-test-unit:
+test-unit: test-policy
 	$(GINKGO) --label-filter='!db' ./...
+
+# The Rego suite beside the default policy bundle.
+test-policy:
+	opa test policy
 
 # Specs that need a real PostgreSQL, labelled "db".
 test-db:
@@ -44,6 +49,8 @@ lint:
 	go vet ./...
 	golangci-lint run ./...
 	buf lint
+	opa check --strict policy
+	opa fmt --fail --list policy
 	$(MAKE) --no-print-directory check-generated
 
 # Generated code is committed, so a consumer needs no proto or SQL toolchain.

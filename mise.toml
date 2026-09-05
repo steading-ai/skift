@@ -12,6 +12,7 @@ sqlc = "1.31.1"
 "aqua:pressly/goose" = "3.28.0"
 golangci-lint = "2.13.2"
 hk = "1.57.0"
+opa = "1.19.1"
 
 [env]
 _.python.venv = { path = "harness/.venv", create = true }

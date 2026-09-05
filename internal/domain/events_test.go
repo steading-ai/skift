@@ -111,34 +111,40 @@ var _ = Describe("Event emission", Label(testsupport.DBLabel), func() {
 		})
 
 		It("A client cannot forge an author", func(ctx SpecContext) {
-			By("given a request whose body sets a principal field")
+			By("given an agent holding a lease on node 1")
+			g.mustApply(ctx, actor, "setup", create("a", "A"))
+			agent := g.agent(ctx)
+			held := g.mustClaim(ctx, agent, claimReq("claim", 0))
+
+			By("and a request whose body sets a principal field")
 			forged := g.principalOf(ctx, "user")
 			body := `{
 				"request_id": "req-1",
 				"project": "platform",
+				"lease_id": "` + held.Lease.ID + `",
 				"principal_id": "` + forged.PrincipalID + `",
 				"principal_kind": "user",
 				"identity_scheme": "oidc",
-				"ops": [{"create_node": {"title": "A", "principal_id": "` + forged.PrincipalID + `"}}]
+				"ops": [{"create_node": {"title": "B", "parent": "#1", "principal_id": "` + forged.PrincipalID + `"}}]
 			}`
 			var patch domain.Patch
 			Expect(json.Unmarshal([]byte(body), &patch)).To(Succeed())
 
 			By("when the patch is applied")
-			r, err := domain.Apply(ctx, s, g.org, actor, patch)
+			r, err := domain.Apply(ctx, s, pol, g.org, agent, patch)
 			Expect(err).NotTo(HaveOccurred())
-			g.ids["platform#1"] = r.Nodes[0].ID
+			g.ids["platform#2"] = r.Nodes[0].ID
 
 			By("then the event records the transport-resolved principal")
 			events := g.eventsFor(ctx, "req-1")
 			Expect(events).To(HaveLen(1))
-			Expect(events[0].PrincipalID).To(Equal(actor.PrincipalID))
+			Expect(events[0].PrincipalID).To(Equal(agent.PrincipalID))
 			Expect(events[0].PrincipalKind).To(Equal("agent"))
 			Expect(events[0].IdentityScheme).To(Equal("unix"))
 
 			By("and the body's value is ignored")
 			Expect(events[0].PrincipalID).NotTo(Equal(forged.PrincipalID))
-			Expect(g.humanTouched(ctx, "#1")).To(BeFalse(), "a forged user principal leaves no human trace")
+			Expect(g.humanTouched(ctx, "#2")).To(BeFalse(), "a forged user principal leaves no human trace")
 		})
 
 		It("Dropping requires a reason", func(ctx SpecContext) {
@@ -291,30 +297,43 @@ var _ = Describe("Event emission", Label(testsupport.DBLabel), func() {
 
 	Describe("human_touched", func() {
 		It("is false until a user principal writes to the node, then true", func(ctx SpecContext) {
-			g.mustApply(ctx, actor, "by-agent", create("a", "A"))
-			Expect(g.humanTouched(ctx, "#1")).To(BeFalse())
+			By("given a node an agent created under the one it holds")
+			g.mustApply(ctx, actor, "setup", create("a", "A"))
+			agent := g.agent(ctx)
+			held := g.mustClaim(ctx, agent, claimReq("claim", 0))
+			_, err := g.applyWithLease(ctx, agent, "by-agent", held.Lease.ID,
+				domain.Op{CreateNode: &domain.CreateNode{Alias: "b", Title: "B", Parent: "#1"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.humanTouched(ctx, "#2")).To(BeFalse())
 
-			service := g.principalOf(ctx, "service")
-			title := "A, by a service"
-			g.mustApply(ctx, service, "by-service", domain.Op{UpdateNode: &domain.UpdateNode{Node: "#1", Title: &title}})
-			Expect(g.humanTouched(ctx, "#1")).To(BeFalse(), "only a user principal counts")
+			title := "B, by its agent"
+			_, err = g.applyWithLease(ctx, agent, "by-agent-again", held.Lease.ID,
+				domain.Op{UpdateNode: &domain.UpdateNode{Node: "#2", Title: &title}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.humanTouched(ctx, "#2")).To(BeFalse(), "only a user principal counts")
 
-			user := g.principalOf(ctx, "user")
-			g.mustApply(ctx, user, "by-user", drop("#1", domain.DropNoLongerRelevant))
-			Expect(g.humanTouched(ctx, "#1")).To(BeTrue())
+			g.mustApply(ctx, actor, "by-user", drop("#2", domain.DropNoLongerRelevant))
+			Expect(g.humanTouched(ctx, "#2")).To(BeTrue())
 
-			g.mustApply(ctx, actor, "again", reopen("#1", "still needed"))
-			Expect(g.humanTouched(ctx, "#1")).To(BeTrue(), "a later agent write does not erase the human's")
+			_, err = g.applyWithLease(ctx, agent, "reopen", held.Lease.ID, reopen("#2", "still needed"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.humanTouched(ctx, "#2")).To(BeTrue(), "a later agent write does not erase the human's")
 		})
 
 		It("counts an edge a user added into the node, and not the edge's source", func(ctx SpecContext) {
-			g.mustApply(ctx, actor, "setup", create("a", "A"), create("b", "B"))
-			user := g.principalOf(ctx, "user")
+			By("given nodes A and B an agent created under the one it holds")
+			g.mustApply(ctx, actor, "setup", create("root", "Root"))
+			agent := g.agent(ctx)
+			held := g.mustClaim(ctx, agent, claimReq("claim", 0))
+			_, err := g.applyWithLease(ctx, agent, "children", held.Lease.ID, childOf("a", "A", "#1"), childOf("b", "B", "#1"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.humanTouched(ctx, "#2")).To(BeFalse())
+			Expect(g.humanTouched(ctx, "#3")).To(BeFalse())
 
-			g.mustApply(ctx, user, "link", addEdge("#1", "#2"))
+			g.mustApply(ctx, actor, "link", addEdge("#2", "#3"))
 
-			Expect(g.humanTouched(ctx, "#2")).To(BeTrue(), "the waiting side is what changed")
-			Expect(g.humanTouched(ctx, "#1")).To(BeFalse())
+			Expect(g.humanTouched(ctx, "#3")).To(BeTrue(), "the waiting side is what changed")
+			Expect(g.humanTouched(ctx, "#2")).To(BeFalse())
 		})
 	})
 })

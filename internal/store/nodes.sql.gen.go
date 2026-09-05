@@ -283,6 +283,68 @@ func (q *Queries) ListNodes(ctx context.Context, arg ListNodesParams) ([]Node, e
 	return items, nil
 }
 
+const nodeLineage = `-- name: NodeLineage :many
+WITH RECURSIVE chain AS (
+    SELECT n.id, n.parent_id, n.project_id, ARRAY[n.id]::text[] AS path
+    FROM nodes n
+    WHERE n.org_id = $1 AND n.id = $2
+    UNION ALL
+    SELECT p.id, p.parent_id, p.project_id, c.path || p.id
+    FROM chain c
+    JOIN nodes p ON p.org_id = $1 AND p.id = c.parent_id
+    WHERE NOT p.id = ANY(c.path)
+)
+SELECT c.id, c.parent_id, c.project_id,
+    COALESCE((SELECT e.principal_id FROM events e
+              WHERE e.org_id = $1 AND e.node_id = c.id AND e.op = 'create_node'
+              ORDER BY e.id LIMIT 1), '')::text AS created_by
+FROM chain c
+ORDER BY array_length(c.path, 1)
+`
+
+type NodeLineageParams struct {
+	OrgID string
+	ID    string
+}
+
+type NodeLineageRow struct {
+	ID        string
+	ParentID  *string
+	ProjectID string
+	CreatedBy string
+}
+
+// A node and each of its ancestors up to the root, nearest first, with the
+// principal that created each: the actor of its create_node event, or empty
+// for a node with none, such as one whose event is about to be written.
+// This is what policy judges ownership from. The path guard stops the walk
+// if a patch in flight has made the parent relation cyclic before the cycle
+// check has run over it.
+func (q *Queries) NodeLineage(ctx context.Context, arg NodeLineageParams) ([]NodeLineageRow, error) {
+	rows, err := q.db.Query(ctx, nodeLineage, arg.OrgID, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NodeLineageRow{}
+	for rows.Next() {
+		var i NodeLineageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentID,
+			&i.ProjectID,
+			&i.CreatedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setNodeStatus = `-- name: SetNodeStatus :one
 UPDATE nodes
 SET status = $3

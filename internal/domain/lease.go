@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/store"
 )
 
@@ -186,7 +187,7 @@ func boundTTL(ttl time.Duration) time.Duration {
 // A request id seen before with the same content returns the stored
 // [Claimed] with Replayed set and claims nothing more. Returning empty
 // stores nothing, so a retry after an empty response can still claim.
-func Claim(ctx context.Context, s *store.Store, orgID string, actor Actor, req ClaimRequest) (*Claimed, error) {
+func Claim(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, req ClaimRequest) (*Claimed, error) {
 	if err := req.validate(actor); err != nil {
 		return nil, err
 	}
@@ -200,7 +201,7 @@ func Claim(ctx context.Context, s *store.Store, orgID string, actor Actor, req C
 	for attempt := 0; attempt < claimAttempts; attempt++ {
 		var claimed *Claimed
 		err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) (err error) {
-			claimed, err = claimOnce(ctx, tx, orgID, actor, req, hash)
+			claimed, err = claimOnce(ctx, tx, pol, orgID, actor, req, hash)
 			return err
 		})
 		switch {
@@ -227,7 +228,7 @@ var errNothingReady = errors.New("nothing ready")
 var errClaimLost = errors.New("claim lost")
 
 // claimOnce is one attempt at the claim inside tx.
-func claimOnce(ctx context.Context, tx store.Tx, orgID string, actor Actor, req ClaimRequest, hash string) (*Claimed, error) {
+func claimOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, req ClaimRequest, hash string) (*Claimed, error) {
 	claimed, replayed, err := withRequest(ctx, tx, orgID, req.RequestID, hash, func(ctx context.Context) (*Claimed, error) {
 		project, err := resolveProject(ctx, tx, orgID, req.Project)
 		if err != nil {
@@ -249,7 +250,7 @@ func claimOnce(ctx context.Context, tx store.Tx, orgID string, actor Actor, req 
 		// each statement below a fresh snapshot, so what they see is
 		// everything that committed before the lock was taken, which the
 		// selecting statement's snapshot may predate.
-		r := recorder{tx: tx, orgID: orgID, actor: actor, request: &req.RequestID}
+		r := recorder{tx: tx, orgID: orgID, actor: actor, policy: pol, request: &req.RequestID}
 		if err := r.expireOn(ctx, node); err != nil {
 			return nil, err
 		}
@@ -328,14 +329,14 @@ func isLiveLeaseConflict(err error) bool {
 // no transaction, row lock, or connection, so any number of orchestrators
 // may wait on an empty project without starving the pool. A cancelled
 // context ends the wait with its error.
-func ClaimNext(ctx context.Context, s *store.Store, orgID string, actor Actor, req ClaimRequest) (*Claimed, error) {
+func ClaimNext(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, req ClaimRequest) (*Claimed, error) {
 	if err := req.validate(actor); err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(min(req.Wait, MaxClaimWait))
 	interval := claimPollInitial
 	for {
-		claimed, err := Claim(ctx, s, orgID, actor, req)
+		claimed, err := Claim(ctx, s, pol, orgID, actor, req)
 		if err != nil || claimed != nil {
 			return claimed, err
 		}
@@ -357,11 +358,11 @@ func ClaimNext(ctx context.Context, s *store.Store, orgID string, actor Actor, r
 // Heartbeat renews the lease to ttl from now, fenced: the lease must be
 // live and held by actor. Zero ttl takes [DefaultLeaseTTL]; more than
 // [MaxLeaseTTL] is clamped to it.
-func Heartbeat(ctx context.Context, s *store.Store, orgID string, actor Actor, requestID, leaseID string, ttl time.Duration) (*LeaseChange, error) {
+func Heartbeat(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, requestID, leaseID string, ttl time.Duration) (*LeaseChange, error) {
 	if ttl < 0 {
 		return nil, ErrNegativeDuration
 	}
-	return leaseOp(ctx, s, orgID, actor, requestID, leaseID, OpHeartbeatLease, ttl, func(ctx context.Context, tx store.Tx, r *recorder, before store.Lease, node store.Node) (store.Lease, error) {
+	return leaseOp(ctx, s, pol, orgID, actor, requestID, leaseID, OpHeartbeatLease, ttl, func(ctx context.Context, tx store.Tx, r *recorder, before store.Lease, node store.Node) (store.Lease, error) {
 		after, err := tx.RenewLease(ctx, store.RenewLeaseParams{OrgID: orgID, ID: before.ID, ExpiresAt: time.Now().Add(boundTTL(ttl))})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return after, fmt.Errorf("lease %s: %w", before.ID, ErrLeaseNotLive)
@@ -377,7 +378,7 @@ func Heartbeat(ctx context.Context, s *store.Store, orgID string, actor Actor, r
 // held by actor. reason is one of the Release constants other than
 // [ReleaseExpired], which only the server sets; detail is free text for
 // the event.
-func Release(ctx context.Context, s *store.Store, orgID string, actor Actor, requestID, leaseID, reason, detail string) (*LeaseChange, error) {
+func Release(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, requestID, leaseID, reason, detail string) (*LeaseChange, error) {
 	switch reason {
 	case ReleaseComplete, ReleaseGate, ReleaseCrash, ReleaseBudget, ReleasePreempted:
 	case ReleaseExpired:
@@ -391,7 +392,7 @@ func Release(ctx context.Context, s *store.Store, orgID string, actor Actor, req
 	if detail != "" {
 		eventReason = reason + ": " + detail
 	}
-	return leaseOp(ctx, s, orgID, actor, requestID, leaseID, OpReleaseLease, eventReason, func(ctx context.Context, tx store.Tx, r *recorder, before store.Lease, node store.Node) (store.Lease, error) {
+	return leaseOp(ctx, s, pol, orgID, actor, requestID, leaseID, OpReleaseLease, eventReason, func(ctx context.Context, tx store.Tx, r *recorder, before store.Lease, node store.Node) (store.Lease, error) {
 		after, err := tx.ReleaseLiveLease(ctx, store.ReleaseLiveLeaseParams{OrgID: orgID, ID: before.ID, ReleaseReason: &reason})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return after, fmt.Errorf("lease %s: %w", before.ID, ErrLeaseNotLive)
@@ -407,7 +408,7 @@ func Release(ctx context.Context, s *store.Store, orgID string, actor Actor, req
 // holds. write receives the lease as it stands and its node, and returns
 // the lease as it stands after. content distinguishes the request's hash
 // from another operation on the same lease under the same request id.
-func leaseOp(ctx context.Context, s *store.Store, orgID string, actor Actor, requestID, leaseID, op string, content any, write func(context.Context, store.Tx, *recorder, store.Lease, store.Node) (store.Lease, error)) (*LeaseChange, error) {
+func leaseOp(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, requestID, leaseID, op string, content any, write func(context.Context, store.Tx, *recorder, store.Lease, store.Node) (store.Lease, error)) (*LeaseChange, error) {
 	if requestID == "" {
 		return nil, ErrNoRequestID
 	}
@@ -438,7 +439,7 @@ func leaseOp(ctx context.Context, s *store.Store, orgID string, actor Actor, req
 				if err != nil {
 					return nil, fmt.Errorf("read node %s: %w", before.NodeID, err)
 				}
-				r := &recorder{tx: tx, orgID: orgID, actor: actor, request: &requestID}
+				r := &recorder{tx: tx, orgID: orgID, actor: actor, policy: pol, request: &requestID, lease: &before}
 				after, err := write(ctx, tx, r, before, node)
 				if err != nil {
 					return nil, err
@@ -485,7 +486,7 @@ func heldLease(ctx context.Context, tx store.Tx, orgID string, actor Actor, leas
 // timer calls; actor is the service principal it runs as, and the events
 // carry no request id since no client asked. The released leases are
 // returned, oldest expiry first.
-func ExpireLeases(ctx context.Context, s *store.Store, orgID string, actor Actor, pageSize int32) ([]store.Lease, error) {
+func ExpireLeases(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string, actor Actor, pageSize int32) ([]store.Lease, error) {
 	if err := actor.validate(); err != nil {
 		return nil, err
 	}
@@ -502,7 +503,7 @@ func ExpireLeases(ctx context.Context, s *store.Store, orgID string, actor Actor
 		for _, l := range due {
 			ids = append(ids, l.ID)
 		}
-		r := recorder{tx: tx, orgID: orgID, actor: actor}
+		r := recorder{tx: tx, orgID: orgID, actor: actor, policy: pol}
 		expired, err = r.expire(ctx, due, func() ([]store.Lease, error) {
 			return tx.ExpireLeases(ctx, store.ExpireLeasesParams{OrgID: orgID, Ids: ids})
 		})
