@@ -21,7 +21,7 @@ SELECT * FROM projects
 WHERE org_id = $1
   AND (archived_at IS NULL OR sqlc.arg(include_archived)::boolean)
 ORDER BY created_at DESC, id DESC
-LIMIT sqlc.arg(page_size);
+LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 
 -- name: RenameProject :one
 UPDATE projects

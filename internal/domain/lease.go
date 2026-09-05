@@ -123,6 +123,10 @@ type ClaimRequest struct {
 	// Wait is how long [ClaimNext] keeps asking before returning empty.
 	// Zero asks once. More than [MaxClaimWait] is clamped to it.
 	Wait time.Duration `json:"wait,omitempty"`
+	// Stop, when it closes, ends the wait early between asks with an
+	// empty answer, never inside a transaction. A server that is draining
+	// closes it. Nil never fires.
+	Stop <-chan struct{} `json:"-"`
 }
 
 func (r ClaimRequest) validate(actor Actor) error {
@@ -349,6 +353,9 @@ func ClaimNext(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID st
 		case <-ctx.Done():
 			timer.Stop()
 			return nil, ctx.Err()
+		case <-req.Stop:
+			timer.Stop()
+			return nil, nil
 		case <-timer.C:
 		}
 		interval = min(interval*2, claimPollMax)

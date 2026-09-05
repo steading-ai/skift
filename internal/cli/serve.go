@@ -10,12 +10,15 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/ivy/dagger/internal/domain"
 	"github.com/ivy/dagger/internal/logging"
 	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/server"
+	"github.com/ivy/dagger/internal/server/interceptor"
 	"github.com/ivy/dagger/internal/version"
 )
 
@@ -88,7 +91,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 
 	// The policy bundle compiles before anything listens: a service with
 	// no policy would deny every request, which is a service not worth
-	// starting. The handler node hands the bundle to the domain layer.
+	// starting.
 	bundle, err := policy.LoadDefault(ctx)
 	if err != nil {
 		return fmt.Errorf("dg serve: %w", err)
@@ -103,15 +106,23 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	}
 	defer pool.Close()
 
-	// Service implementations arrive with the handler node; until then
-	// every RPC answers Unimplemented over a working transport.
+	// Every request is attributed to a principal by its unix peer
+	// credentials before a handler sees it; the handlers reach the graph
+	// through the domain alone.
+	svc := domain.NewService(pool, bundle)
 	srv := server.New(server.Config{
 		SocketPath:      opts.socket,
 		SocketMode:      os.FileMode(mode),
 		SocketGroup:     opts.socketGroup,
 		ShutdownTimeout: opts.shutdownTimeout,
 		Logger:          log,
-	}, server.Services{}, pool)
+		Interceptors: []connect.Interceptor{
+			interceptor.NewPrincipal(server.NewIdentityLookup(svc), interceptor.UnixResolver{}),
+		},
+	}, server.Services{
+		Graph: server.NewGraphService(svc),
+		Work:  server.NewWorkService(svc),
+	}, pool)
 
 	log.Info("dg serve starting", "version", version.String(), "policy_version", bundle.Version())
 	if err := srv.Listen(); err != nil {

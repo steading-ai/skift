@@ -69,8 +69,8 @@ var _ = Describe("dg serve", Label("unit"), func() {
 		client := daggerv1connect.NewGraphServiceClient(socketClient(socket), "http://dagger")
 		_, err := client.GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
 
-		By("then the handler answers: unimplemented until the handler node lands, but over a working transport")
-		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnimplemented))
+		By("then the service answers over the socket: the database is unreachable, so the caller cannot be resolved")
+		Expect(connect.CodeOf(err)).To(Equal(connect.CodeInternal))
 
 		By("and the socket carries the requested permissions")
 		mode, _, err := server.SocketOwner(socket)

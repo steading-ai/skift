@@ -92,7 +92,7 @@ func (a *applier) completeNode(ctx context.Context, op *CompleteNode) error {
 		return fmt.Errorf("read node %s: %w", op.Node, err)
 	}
 	if before.Status != "open" {
-		return fmt.Errorf("node %s is %s", op.Node, before.Status)
+		return fmt.Errorf("node %s is %s: %w", op.Node, before.Status, ErrStatusConflict)
 	}
 	if err := a.uniqueArtifactNames(ctx, before.ID, op.Result.Artifacts); err != nil {
 		return err

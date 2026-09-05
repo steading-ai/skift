@@ -156,19 +156,25 @@ SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at 
 WHERE org_id = $1
   AND (archived_at IS NULL OR $2::boolean)
 ORDER BY created_at DESC, id DESC
-LIMIT $3
+LIMIT $4 OFFSET $3
 `
 
 type ListProjectsParams struct {
 	OrgID           string
 	IncludeArchived bool
+	PageOffset      int32
 	PageSize        int32
 }
 
 // Most recently created first. Archived projects are hidden unless asked
 // for.
 func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]Project, error) {
-	rows, err := q.db.Query(ctx, listProjects, arg.OrgID, arg.IncludeArchived, arg.PageSize)
+	rows, err := q.db.Query(ctx, listProjects,
+		arg.OrgID,
+		arg.IncludeArchived,
+		arg.PageOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}

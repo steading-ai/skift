@@ -52,6 +52,9 @@ type ReadyQuery struct {
 	// Limit caps the number of rows returned, at most [Limits.PageSize].
 	// Zero takes that ceiling.
 	Limit int
+	// Offset skips that many rows of the ordered set, for the next page.
+	// Only an ordered query pages.
+	Offset int
 }
 
 // Each readiness condition is one subquery over the node aliased n, and
@@ -108,6 +111,9 @@ const readyWhere = `n.org_id = $1 AND n.status = 'open'
 func Ready(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) ([]store.Node, error) {
 	if len(q.Projects) != 1 {
 		return nil, ErrOneProject
+	}
+	if q.Offset < 0 {
+		return nil, errors.New("offset is negative")
 	}
 	return queryReady(ctx, tx, orgID, q, true)
 }
@@ -190,6 +196,10 @@ func (q ReadyQuery) sql(orgID string, ordered bool) (string, []any, error) {
 	}
 	args = append(args, limit)
 	fmt.Fprintf(&b, " LIMIT $%d", len(args))
+	if q.Offset > 0 {
+		args = append(args, q.Offset)
+		fmt.Fprintf(&b, " OFFSET $%d", len(args))
+	}
 	return b.String(), args, nil
 }
 

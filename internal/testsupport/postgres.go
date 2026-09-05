@@ -77,9 +77,16 @@ func Start(ctx context.Context, migrate Migrate) (*Postgres, error) {
 			},
 			// Spec databases are disposable, so trade durability for speed.
 			Cmd: []string{"-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"},
-			// The server restarts once after initdb, so a port probe alone
-			// would report ready too early: wait for the second log line.
-			WaitingFor: wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+			// Readiness is judged by the server answering over TCP, in
+			// awaitConnections, not by the container log: podman's journald
+			// log driver intermittently drops everything the server writes
+			// after the entrypoint hands over to it, so a wait on the "ready
+			// to accept connections" line stalls against a database that is
+			// up. The port alone is not enough, since the temporary server
+			// initdb runs first does not listen on TCP and the real one is
+			// not yet up when it stops; the port is only the cheap first
+			// gate before the query loop.
+			WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(startTimeout),
 		},
 		Started: true,
 	})
@@ -177,8 +184,12 @@ func (p *Postgres) drop(ctx context.Context, name string) error {
 	return nil
 }
 
-// awaitConnections retries until the server answers a query over TCP. The
-// log line says the server is up; this proves the published port is too.
+// awaitConnections retries until the server answers a query over TCP. This
+// is the readiness check: the temporary server initdb starts listens on a
+// unix socket only, so a query that succeeds through the published port
+// can only have reached the real server. Refused connections, resets from
+// the port forwarder before anything listens, and "the database system is
+// starting up" are all retried until the start timeout.
 func (p *Postgres) awaitConnections(ctx context.Context) error {
 	var err error
 	for {

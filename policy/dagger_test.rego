@@ -324,3 +324,20 @@ test_everyone_searches_the_organization if {
 	authz.allow with input as search_op(agent_b, node10)
 	authz.allow with input as search_op(service, other_project)
 }
+
+# Projects
+
+test_user_creates_and_archives_projects if {
+	authz.allow with input as {"principal": user, "action": "create_project"}
+	authz.allow with input as {"principal": user, "action": "archive_project"}
+}
+
+test_agent_creates_but_does_not_archive_projects if {
+	authz.allow with input as {"principal": agent_a, "action": "create_project"}
+	not authz.allow with input as {"principal": agent_a, "action": "archive_project"}
+}
+
+test_service_touches_no_project if {
+	not authz.allow with input as {"principal": service, "action": "create_project"}
+	not authz.allow with input as {"principal": service, "action": "archive_project"}
+}

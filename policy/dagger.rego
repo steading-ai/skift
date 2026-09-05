@@ -58,6 +58,11 @@ comment_actions := {"add_comment", "edit_comment", "resolve_comment"}
 # record without changing the node.
 usage_actions := {"report_usage", "estimate_node"}
 
+# A project is an authorization scope, not a unit that requires a grant,
+# and it is free to create: a user or an agent opens one without ceremony.
+# Archiving is a deliberate lifecycle act, so it is a person's.
+project_actions := {"create_project", "archive_project"}
+
 # Users act for the organization: every action within its scope, except
 # what the vetoes below refuse everyone.
 
@@ -84,6 +89,16 @@ permitted if {
 permitted if {
 	input.principal.kind == "user"
 	input.action == "claim_node"
+}
+
+permitted if {
+	input.principal.kind == "user"
+	input.action in project_actions
+}
+
+permitted if {
+	input.principal.kind == "agent"
+	input.action == "create_project"
 }
 
 # Search is a read. Every principal of an organization may search all of

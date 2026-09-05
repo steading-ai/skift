@@ -7,6 +7,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/ivy/dagger/internal/domain"
+	"github.com/ivy/dagger/internal/policy"
 	"github.com/ivy/dagger/internal/testsupport"
 )
 
@@ -15,10 +17,14 @@ func TestServer(t *testing.T) {
 	RunSpecs(t, "server")
 }
 
-// pg is the server the db-labelled specs use to prove the health check
-// against a real database. Its template needs no schema: the check only
-// pings.
+// pg is the server the db-labelled specs clone their databases from. The
+// template carries the current schema, since the handler specs drive the
+// real domain over the wire.
 var pg *testsupport.Postgres
+
+// pol is the default policy bundle every write in the handler specs is
+// authorized by.
+var pol *policy.Bundle
 
 // dbSpecsSelected reports whether the label filter admits any db-labelled
 // spec. This suite mixes unit and db specs, so unlike a db-only suite it
@@ -32,15 +38,17 @@ var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
 	if !dbSpecsSelected() {
 		return nil
 	}
-	started, err := testsupport.Start(ctx, nil)
+	started, err := testsupport.Start(ctx, domain.Migrate)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(started.Stop)
 	return []byte(started.URL())
 }, func(ctx context.Context, adminURL []byte) {
+	var err error
+	pol, err = policy.LoadDefault(ctx)
+	Expect(err).NotTo(HaveOccurred())
 	if len(adminURL) == 0 {
 		return
 	}
-	var err error
 	pg, err = testsupport.Attach(ctx, string(adminURL))
 	Expect(err).NotTo(HaveOccurred())
 })

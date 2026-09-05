@@ -26,6 +26,10 @@ var (
 	ErrNoOperations = errors.New("a patch needs at least one operation")
 	// ErrProjectArchived: an archived project is read-only.
 	ErrProjectArchived = errors.New("project is archived")
+	// ErrStatusConflict: a transition the node's stored status does not
+	// permit, such as completing a node that is not open. The error
+	// wrapping it names the node and its status.
+	ErrStatusConflict = errors.New("node status does not permit the transition")
 )
 
 // Patch is one atomic mutation of the graph. See the Patch section of
@@ -877,7 +881,7 @@ func (a *applier) dropNode(ctx context.Context, op *DropNode) error {
 	notDropped := func(ref string) func(store.Node) error {
 		return func(n store.Node) error {
 			if n.Status == "dropped" {
-				return fmt.Errorf("node %s is already dropped", ref)
+				return fmt.Errorf("node %s is already dropped: %w", ref, ErrStatusConflict)
 			}
 			return nil
 		}
@@ -931,7 +935,7 @@ func (a *applier) dropNode(ctx context.Context, op *DropNode) error {
 func (a *applier) reopenNode(ctx context.Context, op *ReopenNode) error {
 	return a.transition(ctx, OpReopenNode, op.Node, &op.Reason, func(n store.Node) error {
 		if n.Status == "open" {
-			return fmt.Errorf("node %s is open", op.Node)
+			return fmt.Errorf("node %s is open: %w", op.Node, ErrStatusConflict)
 		}
 		return nil
 	}, "open")
