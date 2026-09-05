@@ -46,10 +46,11 @@ lint:
 	buf lint
 	$(MAKE) --no-print-directory check-generated
 
-# Generated code is committed, so a consumer needs no proto toolchain. This
-# regenerates into a scratch directory and diffs it against gen/, failing
-# when the tree lags the proto. Specs living beside generated packages are
-# hand-written and excluded from the comparison.
+# Generated code is committed, so a consumer needs no proto or SQL toolchain.
+# Proto output is regenerated into a scratch directory and diffed against
+# gen/; sqlc compares its own output in place. Either lagging its source
+# fails the build. Specs living beside generated packages are hand-written
+# and excluded from the comparison.
 check-generated:
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
 	  buf generate -o "$$tmp" && \
@@ -57,13 +58,17 @@ check-generated:
 	    echo "lint: generated code is stale relative to proto/; run make generate"; \
 	    exit 1; \
 	  fi
+	@if ! sqlc diff; then \
+	  echo "lint: generated code is stale relative to internal/store/queries/; run make generate"; \
+	  exit 1; \
+	fi
 
-# Code generators. sqlc runs only once its config exists, so the target is
-# safe before the schema node lands.
+# Code generators. Each is deterministic: running twice leaves the tree
+# unchanged, which check-generated relies on.
 generate:
 	go generate ./...
 	buf generate
-	$(if $(wildcard sqlc.yaml),sqlc generate,@echo "generate: no sqlc.yaml, skipping sqlc")
+	sqlc generate
 
 clean:
 	rm -f $(BINARY)

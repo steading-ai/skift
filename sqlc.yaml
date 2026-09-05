@@ -1,0 +1,29 @@
+# sqlc reads the goose migrations as its schema, so the schema and the
+# queries have one source of truth. See docs/adrs/007-core-tech-stack.md.
+#
+# Every query under internal/store/queries carries its organization
+# predicate in static SQL: see docs/adrs/006-provenance-not-authority.md and
+# the "Organization scoping is not optional" spec in internal/store.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: internal/store/migrations
+    queries: internal/store/queries
+    gen:
+      go:
+        package: store
+        out: internal/store
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        output_db_file_name: db.gen.go
+        output_models_file_name: models.gen.go
+        output_files_suffix: .gen
+        overrides:
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true

@@ -1,0 +1,12 @@
+-- name: CreateIdempotencyKey :one
+INSERT INTO idempotency_keys (org_id, request_id, request_hash, response)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: GetIdempotencyKey :one
+SELECT * FROM idempotency_keys
+WHERE org_id = $1 AND request_id = $2;
+
+-- name: DeleteIdempotencyKeysBefore :execrows
+DELETE FROM idempotency_keys
+WHERE org_id = $1 AND created_at < $2;

@@ -53,11 +53,8 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 	It("Handlers may not reach the store directly", func() {
 		By(`given a file under "internal/server" importing "internal/store"`)
 		dir := checkout()
-		// The store package has no Go files yet; the import must resolve
-		// for depguard to see it rather than the type checker.
-		writeFile(dir, "internal/store/store.go", "package store\n\n// Open is a placeholder.\nfunc Open() {}\n")
 		writeFile(dir, "internal/server/handler.go",
-			"package server\n\nimport \"github.com/ivy/dagger/internal/store\"\n\n// Handle reaches the store directly.\nfunc Handle() { store.Open() }\n")
+			"package server\n\nimport \"github.com/ivy/dagger/internal/store\"\n\n// Handle reaches the store directly.\nfunc Handle() { _ = store.Open }\n")
 
 		By(`when I run "make lint"`)
 		session := makeLint(dir)
@@ -87,6 +84,22 @@ message Stale {
 		By("then the build fails saying generated code is stale")
 		Expect(session).NotTo(gexec.Exit(0))
 		Expect(string(session.Out.Contents())).To(ContainSubstring("generated code is stale"))
+	})
+
+	It("Generated query code is current", func() {
+		By("given a modified query file")
+		dir := checkout()
+		appendToFile(dir, "internal/store/queries/nodes.sql", `
+-- name: CountStaleNodes :one
+SELECT count(*) FROM nodes WHERE org_id = $1;
+`)
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then the build fails saying generated code is stale")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(ContainSubstring("generated code is stale relative to internal/store/queries/"))
 	})
 
 	It("Specs stay in Ginkgo", func() {
