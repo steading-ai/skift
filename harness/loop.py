@@ -48,9 +48,7 @@ LOGS = ROOT / "harness" / "logs"
 # The implementer must not grade its own homework or rewrite the spec. The
 # design docs are protected; operational docs under docs/how-to/ are the
 # implementer's to write, since a work order may name one as a deliverable.
-PROTECTED = ("backlog.toml", "harness/", "scripts/ready.py", "AGENTS.md", "CLAUDE.md",
-             "docs/vision.md", "docs/core-principles.md", "docs/domain-model.md",
-             "docs/architecture.md", "docs/roadmap.md", "docs/adrs/", "docs/research/")
+PROTECTED = backlog.PROTECTED
 
 # The harness writes these itself while an agent is running, so they are never
 # evidence that the implementer went out of bounds.
