@@ -101,6 +101,9 @@ make test-db     # specs labelled "db"
 make lint
 ```
 
+`hk install` wires `make lint` and `make test-unit` into a pre-commit hook
+(see `hk.pkl`); `hk check` runs the same steps by hand.
+
 Specs labelled `db` need podman. Store specs start their own PostgreSQL
 through testcontainers rather than using the compose stack, so they never
 touch your development data. The compose specs at the repository root

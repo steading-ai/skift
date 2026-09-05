@@ -46,6 +46,11 @@ linters:
         linters:
           - forbidigo
 
+issues:
+  # Report every rule that fires on a line. Hiding one violation behind
+  # another on the same line costs an extra lint cycle to find it.
+  uniq-by-line: false
+
 formatters:
   enable:
     - gofmt
