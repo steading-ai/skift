@@ -86,14 +86,17 @@ operations; compared against the `PatchOp` oneof in
 `update_node` is the operation an agent revising a backlog needs most, and it is
 the one the description omits. Having no schema and no mention, the session
 guessed its target field was `ref`; it is `node`
-(`proto/dagger/v1/service.proto:185`). The real names `set_priority` and
-`reparent_node` suggest are both `update_node` fields.
+(`proto/dagger/v1/service.proto:185`).
+
+The three named-but-absent operations are a naming question rather than missing
+features — all eleven `PatchOp` variants are implemented and dispatched. §6
+works through what they map to, and what checking it turned up.
 
 **Suggestion.** Generate the `ops` JSON Schema from the proto — a `oneOf` over
 the eleven operation messages, with each one's fields and enum values. It
 cannot drift from the contract because it is derived from it, the phantom
 operations disappear, and a model can no longer guess a field name because the
-schema names them. This subsumes most of §3 and §8 as well.
+schema names them. This subsumes most of §3 and §9 as well.
 
 If generating the full schema is too large a change to make at once, listing
 the eleven operations correctly is a five-minute fix worth doing immediately.
@@ -162,7 +165,7 @@ answer one:
 
 Candidates where this is missing today: priority (the idiom), `kind` (free
 string, conventionally `task`/`bug`/`spike`/`chore` — an agent cannot know the
-convention from the schema), and `assignee_kind` (see §7).
+convention from the schema), and `assignee_kind` (see §8).
 
 ## 5. MCP cannot see projects at all
 
@@ -183,7 +186,75 @@ environment cannot work around.
 Archive is rarer and can wait. If ten tools is felt to be the budget, note that
 a `view` parameter (§1) buys back far more context than three small tools cost.
 
-## 6. Cascading drops: the danger is breadth, not permanence
+## 6. Built, but with no door
+
+Checking whether the operations §2 calls absent were *wanted* turned up
+something more interesting: two capabilities that are finished in the domain
+and unreachable by any client.
+
+### The named-but-absent operations are all reachable
+
+| Description says | Actually | Verdict |
+|---|---|---|
+| `drop_edge` | `remove_edge` | renamed |
+| `reparent_node` | `update_node.parent` (`service.proto:186-188`) | folded in |
+| `set_priority` | `update_node.priority` (`service.proto:195-196`) | folded in |
+
+All eleven `PatchOp` variants are implemented and dispatched
+(`internal/domain/patch.go:721-743`). Nothing hides behind those three names,
+and they are not worth adding as operations.
+
+They may be worth adding as **CLI verbs**. `create`, `link`, `comment` and
+`complete` each have a shortcut that builds the patch for you; reparenting,
+repriorotising, editing a body and dropping all require hand-writing one. That
+asymmetry is probably why the description reached for names that sound like
+verbs — the shortcuts are the thing that is missing, not the operations.
+
+### Two capabilities are implemented and have no contract
+
+**Predecessor results — the handoff mechanism.** `internal/domain/inputs.go`
+implements `Inputs`: the results and artifacts of every node blocking a given
+node, which is precisely what a downstream agent assembles its context from. It
+is exercised by specs and has **zero non-test callers**. There is no RPC, no
+MCP tool, no CLI command; `proto/` mentions inputs only in a comment
+(`service.proto:228`).
+
+This is the capability that makes a graph of agent work more than a task list —
+backlog #22's scenario is "a design agent hands work to a coding agent" — and
+no client can ask for it today. `show_node` returns a node's own result, never
+its predecessors'.
+
+**Usage and estimates.** `internal/domain/usage.go` implements `ReportUsage`
+(line 200) and `OpEstimateNode`, both authorized (`authz.go:204`) and dispatched
+(`patch.go:744-745`). Neither appears anywhere in `proto/`. An agent cannot
+report what an attempt cost or record an estimate, though the domain is waiting
+to receive both.
+
+Backlog #22, #25 and #26 are open, so this is work in flight rather than
+neglect. It is worth flagging for one reason that generalises beyond these two:
+
+> An acceptance criterion satisfied in `internal/domain` is not satisfied for a
+> client. #22's "Predecessor results are retrievable as the inputs to a node"
+> is true of the domain and false of every interface. A criterion that does not
+> name the surface it holds at can be honestly checked off while the capability
+> stays unreachable.
+
+### Missing from MCP, present in the contract
+
+Beyond the project tools of §5, MCP omits two more of the fourteen RPCs:
+
+| RPC | CLI | MCP |
+|---|---|---|
+| `ListNodes` | `dg node list` | — |
+| `CreateProject` / `GetProject` / `ListProjects` / `ArchiveProject` | `dg project …` | — |
+| `WatchEvents` | `dg events` | — |
+
+`ListNodes` is the sharpest. Without it an MCP-only agent can see the ready set
+and run a text search, and nothing else — it cannot ask what is blocked, what is
+in flight, what it finished, or what carries a label. `explain` answers only for
+a node it can already name. Triage and reporting are both out of reach.
+
+## 7. Cascading drops: the danger is breadth, not permanence
 
 Worth correcting the framing first, because it changes what guardrail is right.
 **A drop is reversible.** `reopenNode` rejects only a node that is already open
@@ -220,7 +291,7 @@ One property already correct and worth protecting: a dropped gate still blocks
 (`internal/domain/ready.go:65-76`), so a cascade cannot be used to clear a gate
 out of the way.
 
-## 7. "Never claim a user-assigned node" is convention, and probably wrong advice
+## 8. "Never claim a user-assigned node" is convention, and probably wrong advice
 
 This one deserves rethinking rather than documenting.
 
@@ -264,7 +335,7 @@ doing before it:
 - Make the veto's message say *why* and what to do instead. An error a model
   reads is an opportunity to teach it the right move; right now it only says no.
 
-## 8. Errors do not carry the fix
+## 9. Errors do not carry the fix
 
 Both first-attempt failures in the session produced errors that named the
 problem and withheld the answer, though the server knows it:
@@ -283,7 +354,7 @@ not can cost several, or a silent fallback to a worse approach.
 failure, list the accepted values; on an unknown field, list the fields of the
 message that failed. Both are available from the descriptor.
 
-## 9. Smaller things
+## 10. Smaller things
 
 - **`ready` means two things.** The CLI's `dg ready --wait` blocks and returns
   the node *claimed under a lease* (`internal/cli/work.go:82-90`), while the MCP
@@ -292,7 +363,7 @@ message that failed. Both are available from the descriptor.
   alias for `claim --wait` and removing it from `ready`, so the verb means one
   thing everywhere.
 - **`drop` has no CLI verb.** `create`, `link`, `comment` and `complete` all have
-  shortcuts that build a patch; dropping requires hand-writing one. Given §6,
+  shortcuts that build a patch; dropping requires hand-writing one. Given §7,
   a `dg drop` that requires an explicit blast radius would be a good place to
   put the guardrail.
 - **`dg events` cannot answer "what happened"** — it streams until interrupted,
@@ -306,24 +377,36 @@ message that failed. Both are available from the descriptor.
 
 ## What I would do first
 
-Ordered by benefit per unit of work:
+Ordered by benefit per unit of work.
 
 1. **§2, listing the eleven operations correctly.** Minutes; removes a defect
-   that actively misleads.
+   that actively misleads, and the only one on this list that is purely a
+   mistake rather than a trade-off.
 2. **§1, `view` with `refs` as the write default and no `body` echo.** The
    single largest token win in the system, and the thing standing between
    dagger and an MCP-only harness.
-3. **§8, errors that name legal values.** Small, and every one saved is a retry
+3. **§6, an RPC and tool for `Inputs`.** The domain is written and tested; what
+   is missing is a door. Until there is one, an agent cannot read what the work
+   it depends on produced, which is the premise the rest of the design rests
+   on. Probably the highest value per line of new code anywhere here.
+4. **§9, errors that name legal values.** Small, and every one saved is a retry
    an agent does not spend.
-4. **§3, the enum codec, in the MCP and CLI layers.** One generic change that
+5. **§3, the enum codec, in the MCP and CLI layers.** One generic change that
    closes the trap for every enum that exists or will.
-5. **§5, three project tools.** Removes the second reason to reach for the CLI.
-6. **§2 properly, the generated `ops` schema.** Larger, and it subsumes part of
-   §3 and §8 — worth doing once the shape of those is settled.
-7. **§6, `cascade: {max_nodes: N}`.** A real control where there is currently a
+6. **§5 and §6, MCP coverage: `node_list` and the project tools.** Four small
+   tools that between them remove every remaining reason to shell out to the
+   CLI. `node_list` is the one an agent misses first.
+7. **§2 properly, the generated `ops` schema.** Larger, and it subsumes part of
+   §3 and §9 — worth doing once the shape of those is settled.
+8. **§7, `cascade: {max_nodes: N}`.** A real control where there is currently a
    hint.
-8. **§7, delegation grants.** The largest, and the one that needs a design
-   discussion before a node.
+9. **§6, a contract for usage and estimates.** The domain is ready; this is
+   finishing #26 rather than starting it.
+10. **§8, delegation grants.** The largest, and the one that wants a design
+    discussion before it wants a node.
+
+Items 1, 4 and 6 are each an afternoon at most and would change the experience
+of using dagger through MCP more than anything else on the list.
 
 ## A note on what this review is not
 
@@ -331,5 +414,5 @@ These are the observations of one agent that used the system hard for a day, on
 one project, over a unix socket. It did not exercise artifacts, comments at
 volume, `search` beyond a few queries, the tailnet transport, concurrency, or
 anything at scale. Where a finding rests on a measurement, the measurement is
-reproducible from this repository. Where it rests on judgement — §7 especially —
+reproducible from this repository. Where it rests on judgement — §8 especially —
 it is an opinion offered for argument, not a defect report.
