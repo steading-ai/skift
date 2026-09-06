@@ -87,6 +87,14 @@ claude plugin validate ./plugin --strict     # warnings are errors; for CI
 
 `--json` emits the report as JSON with the same exit codes.
 
+### The version is the cache key
+
+Installing copies the plugin into `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`.
+Editing the source afterwards does **not** update that copy, and
+`claude plugin update` reports "already at the latest version" while the
+installed skill stays as it was. Bump `version` in both manifests to publish a
+change, or work from `--plugin-dir`, which reads the tree directly.
+
 Bump `version` in **both** `.claude-plugin/plugin.json` and the marketplace's
 entry for it; `claude plugin tag` checks that they agree before tagging a
 release.
