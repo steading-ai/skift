@@ -29,6 +29,20 @@ machine over a tailnet or HTTPS. A caller whose identity maps to no principal is
 rejected as unauthenticated; that is an administrative fix on the service, not a
 client one.
 
+## If you already registered `dg mcp` by hand
+
+The plugin's server is registered **alongside** any you configured yourself, not
+instead of it. Both connect, both spawn a `dg mcp` process, and every session
+carries two copies of the same ten tools under different names:
+
+| Registration | Tool names |
+|--------------|------------|
+| your own, e.g. in `~/.claude.json` | `mcp__dagger__<tool>` |
+| this plugin | `mcp__plugin_dagger_dagger__<tool>` |
+
+Keep one. Removing the hand-rolled registration is `claude mcp remove dagger`,
+or deleting its entry from the settings file that declares it.
+
 ## Install
 
 From this repository:
