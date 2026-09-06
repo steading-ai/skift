@@ -67,15 +67,25 @@ In a session, `/mcp` lists the `dagger` server and its ten tools —
 
 ## Developing
 
-Validate the manifests without installing:
+Load the plugin straight from the working tree, with no marketplace and nothing
+installed. This is the iteration loop:
+
+```sh
+claude --plugin-dir ./plugin/dagger
+```
+
+A plugin loaded this way takes precedence over an installed one of the same
+name for that session, so it shadows a released version while you work on it.
+
+Validate the manifests, the skill's frontmatter, and the overall structure:
 
 ```sh
 claude plugin validate ./plugin              # the marketplace
 claude plugin validate ./plugin/dagger       # the plugin
+claude plugin validate ./plugin --strict     # warnings are errors; for CI
 ```
 
-After editing the skill, restart the session — skills are read at startup.
-Changing `.mcp.json` needs the plugin re-enabled or the session restarted.
+`--json` emits the report as JSON with the same exit codes.
 
 Bump `version` in **both** `.claude-plugin/plugin.json` and the marketplace's
 entry for it; `claude plugin tag` checks that they agree before tagging a
