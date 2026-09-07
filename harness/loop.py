@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-"""harness/loop.py — drive backlog.toml to a working release.
+"""harness/loop.py — work an epic in a running dagger service.
 
-One node per iteration. An implementer agent builds it, a reviewer agent decides
-whether the node's acceptance criteria and Gherkin scenarios are satisfied. On a
-pass the harness commits and pushes. On a fail the reviewer's findings go back to
-the implementer, up to a retry cap.
+One node per iteration. The harness claims the most urgent ready child of the
+epic under a lease, an implementer agent builds it, a reviewer agent decides
+whether the node's acceptance criteria and Gherkin scenarios are satisfied. On
+a pass the harness commits, pushes, and completes the node with a result the
+next node's work order will carry as an input. On a fail the reviewer's
+findings go back to the implementer, up to a retry cap.
 
 The reviewer judges the contract only. It is explicitly not a code reviewer.
 
-    mise exec -- python harness/loop.py                 run until the backlog drains
-    mise exec -- python harness/loop.py --effort high   more reasoning per node
-    mise exec -- python harness/loop.py --max 3         a few iterations
-    mise exec -- python harness/loop.py --dry-run       show what it would do
-    mise exec -- python harness/loop.py --node 2        force one node
+    harness/.venv/bin/python harness/loop.py --epic '#1'      run until the epic drains
+    harness/.venv/bin/python harness/loop.py --epic '#1' --dry-run
+    harness/.venv/bin/python harness/loop.py --epic '#1' --max 3
+    harness/.venv/bin/python harness/loop.py --report
 
 Exit codes: 0 drained, 1 error or cap reached, 2 blocked.
 """
 
 import argparse
 import asyncio
+import io
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-import ready as backlog  # noqa: E402
-
-from claude_agent_sdk import (  # noqa: E402
+from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ResultMessage,
@@ -40,49 +40,64 @@ from claude_agent_sdk import (  # noqa: E402
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-BACKLOG = ROOT / "backlog.toml"
 STATE = ROOT / "harness" / "state.json"
 STOP = ROOT / "harness" / "STOP"
 LOGS = ROOT / "harness" / "logs"
 
-# The implementer must not grade its own homework or rewrite the spec. The
-# design docs are protected; operational docs under docs/how-to/ are the
-# implementer's to write, since a work order may name one as a deliverable.
-PROTECTED = backlog.PROTECTED
+SESSION_URL = "https://claude.ai/code/session_017sEP9E8M4gp2qQ7DjYUbKu"
+
+# The implementer must not rewrite the machinery driving it. Design docs are
+# not protected: the work orders in dagger name them as deliverables.
+PROTECTED = ("backlog.toml", "harness/", "scripts/", ".claude/")
 
 # The harness writes these itself while an agent is running, so they are never
 # evidence that the implementer went out of bounds.
 HARNESS_RUNTIME = ("harness/state.json", "harness/logs/", "harness/STOP", "harness/.venv/")
 
+# Leases are bounded by the server at one hour. Renew well inside that.
+HEARTBEAT_EVERY = 600
+LEASE_TTL = "1h"
+
+# A node that exhausts its attempts trades the scope label for this one, so
+# the claim filter stops returning it. Put the scope label back to retry it.
+BLOCKED_LABEL = "harness-blocked"
+
 IMPLEMENTER_PROMPT = """\
-You are implementing exactly one node of the dagger backlog, in a repository you
-are seeing for the first time.
+You are implementing exactly one node of dagger's own work graph, in a
+repository you are seeing for the first time. The node is held under a lease
+by the harness that dispatched you; you have no dagger tools and need none.
 
 Before writing code, read the documents the work order references. They are the
 authority: docs/domain-model.md, docs/architecture.md, docs/core-principles.md,
-and the ADRs under docs/adrs/. The work order tells you which matter.
+and the ADRs under docs/adrs/. The work order tells you which matter. Where a
+work order names a document under docs/ or plugin/ as a deliverable, changing
+it is the work.
+
+If the work order carries inputs from predecessor nodes, they are the results
+of the work this node depends on. Read them before the code; they say what was
+built and where.
 
 Your job is to satisfy the node's contract:
 
 - Every acceptance criterion must hold.
 - Every Gherkin scenario must exist as an executable spec. Ginkgo and Gomega,
   in the package the code lives in. The scenario text becomes the spec name.
-- `make lint` and `make test` must pass when you are done. If the node is early
-  enough that those targets do not exist yet, create them.
+- `make lint` and `make test` must pass when you are done.
 
 Rules:
 
-- Do not modify backlog.toml, anything under harness/, docs/, or scripts/.
-  Those are the specification and the machinery driving you. If you believe one
-  of them is wrong, say so in your final message and continue.
+- Do not modify anything under harness/, scripts/, or .claude/, nor
+  backlog.toml. Those are the machinery driving you. If you believe one of
+  them is wrong, say so in your final message and continue.
 - Do not commit. The harness commits after review.
 - Do not start work belonging to another node. If a dependency turns out to be
   missing, say so in your final message rather than building it.
 - Prefer the standard library and the pinned toolchain. Add a dependency only
   when the work order names it.
 
-Finish with a short summary: what you built, which files, and anything the
-reviewer should look at first.
+Finish with a summary that a downstream agent can work from: what you built,
+which files, what changed on the wire or in the CLI if anything, and anything
+the reviewer should look at first. It becomes the node's result.
 """
 
 REVIEWER_PROMPT = """\
@@ -101,14 +116,16 @@ How to judge:
   executable spec whose assertions actually correspond to the Then clauses. A
   spec that is named after the scenario but asserts nothing is a fail.
 - Run the suite yourself. `make test` and `make lint`. Read the output.
-- A criterion you cannot verify is a fail, not a pass with a caveat.
+- A criterion you cannot verify is a fail, not a pass with a caveat. A
+  criterion that requires a deployed service or a person is out of your reach;
+  say so and judge the rest.
 
 Reasons to fail:
 
 - A criterion or scenario is unimplemented, or implemented only in prose.
 - A spec exists but does not assert what the scenario says.
 - Tests do not pass, or do not run.
-- The work touched backlog.toml, harness/, docs/, or scripts/.
+- The work touched harness/, scripts/, .claude/, or backlog.toml.
 
 End your response with exactly one line in this form, and nothing after it:
 
@@ -129,6 +146,134 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# --- dagger ------------------------------------------------------------------
+
+
+class Dagger:
+    """The dg CLI over the current project. Every call is one subprocess."""
+
+    def __init__(self, project):
+        self.project = project
+
+    def run(self, *args, stdin=None, check=True):
+        r = subprocess.run(
+            ["dg", "-p", self.project, "-o", "json", *args],
+            cwd=ROOT, capture_output=True, text=True, input=stdin,
+        )
+        if r.returncode != 0 and check:
+            raise RuntimeError(f"dg {' '.join(args)}: {r.stderr.strip() or r.stdout.strip()}")
+        return json.loads(r.stdout) if r.stdout.strip() else {}
+
+    def ref(self, node):
+        return f"{self.project}#{node['number']}"
+
+    def show(self, ref):
+        return self.run("node", "show", ref)
+
+    def list(self, **filters):
+        args = []
+        for k, v in filters.items():
+            args += [f"--{k.replace('_', '-')}", v]
+        return self.run("node", "list", *args).get("nodes", [])
+
+    def ready(self, label):
+        return self.run("ready", "-l", label, "--assignee-kind", "agent").get("nodes", [])
+
+    def claim(self, label, session):
+        r = self.run(
+            "claim", "-l", label, "--assignee-kind", "agent", "--ttl", LEASE_TTL,
+            "--harness", "harness/loop.py", "--session-ref", session,
+            "--agent-ref", socket.gethostname(),
+        )
+        return (r.get("node"), r.get("lease")) if r.get("node") else (None, None)
+
+    def heartbeat(self, lease_id):
+        self.run("heartbeat", lease_id, "--ttl", LEASE_TTL)
+
+    def release(self, lease_id, reason, detail):
+        self.run("release", lease_id, "--reason", reason, "--detail", detail, check=False)
+
+    def complete(self, ref, lease_id, result):
+        self.run("complete", ref, "--lease", lease_id, "--result", "-", stdin=result)
+
+    def comment(self, ref, lease_id, body):
+        self.run("comment", ref, "-", "--lease", lease_id, stdin=body)
+
+    def patch(self, ops):
+        return self.run("patch", "apply", "-", stdin=json.dumps({"ops": ops}))
+
+    def set_labels(self, node, labels, lease_id=None):
+        op = {"node": self.ref(node), "labels": {"values": sorted(labels)}}
+        if lease_id:
+            op["lease_id"] = lease_id
+        self.patch([{"update_node": op}])
+
+
+def scope_epic(dg, epic_ref, label):
+    """Label every open child of the epic so the claim filter finds only them.
+
+    Returns the children. The label is the scope: a node carrying it is the
+    harness's to claim, and a node that loses it is not.
+    """
+    children = dg.list(parent=epic_ref)
+    for node in children:
+        labels = set(node.get("labels", []))
+        if node["status"] != "STATUS_OPEN" or label in labels or BLOCKED_LABEL in labels:
+            continue
+        dg.set_labels(node, labels | {label})
+        print(f"  .. labelled {dg.ref(node)} {label}", flush=True)
+    return children
+
+
+def predecessors(dg, node, by_id):
+    """Done nodes that block this one, oldest first. Their results are inputs."""
+    shown = dg.show(dg.ref(node))
+    out = []
+    for edge in shown.get("edges", []):
+        if edge.get("to") != node["id"] or edge.get("kind") != "EDGE_KIND_BLOCKS":
+            continue
+        pred = by_id.get(edge["from"])
+        if pred and pred["status"] == "STATUS_DONE":
+            out.append(dg.show(dg.ref(pred)))
+    return sorted(out, key=lambda s: int(s["node"]["number"]))
+
+
+def short(value, prefix):
+    """PRIORITY_P2 -> p2. The wire form until the codec lands."""
+    return value[len(prefix):].lower() if value and value.startswith(prefix) else value
+
+
+def work_order_text(dg, node, by_id):
+    buf = io.StringIO()
+    w = buf.write
+    w(f"# {dg.ref(node)}: {node['title']}\n\n")
+    w(f"kind: {node.get('kind', 'task')}  priority: {short(node.get('priority'), 'PRIORITY_')}\n\n")
+    w(node.get("body", "").rstrip() + "\n")
+    preds = predecessors(dg, node, by_id)
+    if preds:
+        w("\n# Inputs from predecessors\n\n")
+        w("The results of the nodes this one waited on. They say what was built and where.\n")
+        for shown in preds:
+            p = shown["node"]
+            result = (shown.get("result") or {}).get("body")
+            w(f"\n## {dg.ref(p)}: {p['title']}\n\n")
+            w((result or "(completed with no result body)").rstrip() + "\n")
+    return buf.getvalue()
+
+
+def is_grouping(node, children):
+    """A node that groups work rather than being work.
+
+    It has children and states no acceptance criteria, so there is nothing for
+    an agent to satisfy and nothing for a reviewer to judge. Dagger makes it
+    ready once its children close; the honest completion is bookkeeping.
+    """
+    return bool(children) and "## Acceptance criteria" not in node.get("body", "")
+
+
+# --- local state: attempts and usage, until dagger takes usage reports ---------
+
+
 def load_state():
     if STATE.exists():
         return json.loads(STATE.read_text())
@@ -139,16 +284,15 @@ def save_state(state):
     STATE.write_text(json.dumps(state, indent=2) + "\n")
 
 
-def record(state, num, attempt, role, usage, turns, verdict):
+def record(state, ref, attempt, role, usage, turns, verdict):
     """One usage record per node, attempt and role. Same shape dagger stores."""
     state["history"].append({
-        "at": now(), "node": num, "attempt": attempt, "role": role,
+        "at": now(), "node": ref, "attempt": attempt, "role": role,
         "verdict": verdict, "turns": turns, "usage": usage,
     })
 
 
 def entry_cost(entry):
-    # Entries written before per-model usage was recorded carry only a total.
     return sum(u["cost_usd"] for u in entry.get("usage", [])) or entry.get("cost_usd", 0.0)
 
 
@@ -156,46 +300,11 @@ def total_cost(state):
     return sum(entry_cost(e) for e in state["history"])
 
 
-def node_state(state, num):
-    return state["nodes"].setdefault(str(num), {"status": "open", "attempts": 0})
+def node_state(state, ref):
+    return state["nodes"].setdefault(ref, {"status": "open", "attempts": 0})
 
 
-def merged_nodes(state):
-    """Backlog nodes with harness status merged in, for the readiness rules."""
-    _, nodes = backlog.load(BACKLOG)
-    backlog.validate(nodes)
-    for num, node in nodes.items():
-        status = node_state(state, num)["status"]
-        # A node interrupted mid-flight is resumable, not stranded. Attempts are
-        # preserved, so a crash costs one attempt rather than the whole node.
-        node["status"] = "open" if status == "in_progress" else status
-    return nodes
-
-
-def ready_nodes(state):
-    """Agent-claimable nodes, most important first. Mirrors dagger's ready rules."""
-    nodes = merged_nodes(state)
-    kids = backlog.children(nodes)
-    out = []
-    for num in sorted(nodes):
-        if nodes[num].get("assignee_kind") == "user":
-            continue
-        if backlog.blockers(num, nodes, kids):
-            continue
-        out.append(num)
-    out.sort(key=lambda n: (backlog.PRIORITIES.index(nodes[n].get("priority", "p2")), n))
-    return out, nodes
-
-
-def is_grouping(node, kids):
-    """A node that groups work rather than being work.
-
-    It has children and states no acceptance criteria, so there is nothing for
-    an agent to satisfy and nothing for a reviewer to judge. The domain model
-    says such a node becomes claimable when its children close; here the honest
-    completion is bookkeeping, not an agent.
-    """
-    return bool(kids) and "## Acceptance criteria" not in node.get("body", "")
+# --- git ---------------------------------------------------------------------
 
 
 def git(*args, check=True):
@@ -204,32 +313,23 @@ def git(*args, check=True):
     ).stdout.strip()
 
 
+def changed_paths():
+    return [line[3:].strip().strip('"') for line in git("status", "--porcelain").splitlines()]
+
+
 def working_tree_dirty():
     """True when the implementer changed something, ignoring harness bookkeeping."""
-    for line in git("status", "--porcelain").splitlines():
-        path = line[3:].strip().strip('"')
-        if not any(path.startswith(p) for p in HARNESS_RUNTIME):
-            return True
-    return False
+    return any(not p.startswith(HARNESS_RUNTIME) for p in changed_paths())
 
 
 def tree_snapshot():
     """Paths already modified before an agent runs. Not the agent's doing."""
-    return {line[3:].strip().strip('"') for line in git("status", "--porcelain").splitlines()}
+    return set(changed_paths())
 
 
 def touched_protected(baseline=frozenset()):
-    changed = git("status", "--porcelain").splitlines()
-    hits = []
-    for line in changed:
-        if line[3:].strip().strip('"') in baseline:
-            continue
-        path = line[3:].strip().strip('"')
-        if any(path.startswith(p) for p in HARNESS_RUNTIME):
-            continue
-        if any(path.startswith(p) for p in PROTECTED):
-            hits.append(path)
-    return hits
+    return [p for p in changed_paths()
+            if p not in baseline and not p.startswith(HARNESS_RUNTIME) and p.startswith(PROTECTED)]
 
 
 def head():
@@ -255,8 +355,32 @@ def undo_agent_commits(before):
     print("  .. agent committed; un-committed, harness owns history", flush=True)
 
 
+def commit_and_push(ref, node, summary, args):
+    git("add", "-A")
+    subject = f"{ref}: {node['title']}"
+    body = (
+        f"Implements {ref}.\n\n"
+        "Reviewed against the node's acceptance criteria and scenarios.\n\n"
+        f"Claude-Session: {SESSION_URL}"
+    )
+    subprocess.run(
+        ["git", "commit", "-m", subject, "-m", body], cwd=ROOT, check=True,
+        capture_output=True, text=True,
+    )
+    sha = head()
+    print(f"  ++ committed: {sha[:10]} {subject}", flush=True)
+    if not args.no_push:
+        r = subprocess.run(["git", "push"], cwd=ROOT, capture_output=True, text=True)
+        print("  ++ pushed" if r.returncode == 0 else f"  !! push failed: {r.stderr.strip()}",
+              flush=True)
+    return sha
+
+
+# --- agents ------------------------------------------------------------------
+
+
 async def run_agent(kind, system_prompt, prompt, log_path, args):
-    """Run one agent to completion. Returns (final_text, cost, turns)."""
+    """Run one agent to completion. Returns (final_text, cost, turns, usage)."""
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         cwd=str(ROOT),
@@ -324,35 +448,50 @@ def parse_verdict(text):
     return False, "The reviewer returned no VERDICT line.\n\n" + text.strip()
 
 
-def work_order_text(num, nodes, slug):
-    import io
-    from contextlib import redirect_stdout
+async def keep_alive(dg, lease_id):
+    """Renew the lease while an agent runs. Cancelled when the node is finished."""
+    while True:
+        await asyncio.sleep(HEARTBEAT_EVERY)
+        try:
+            dg.heartbeat(lease_id)
+        except RuntimeError as e:
+            print(f"  !! heartbeat failed: {e}", flush=True)
 
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        backlog.work_order(num, nodes, slug)
-    return buf.getvalue()
+
+async def with_lease(dg, lease_id, coro, timeout):
+    task = asyncio.create_task(keep_alive(dg, lease_id))
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout)
+    finally:
+        task.cancel()
 
 
-async def do_node(num, nodes, slug, state, args):
-    node = nodes[num]
-    ns = node_state(state, num)
-    kids = backlog.children(nodes)[num]
+# --- one node ----------------------------------------------------------------
 
-    if is_grouping(node, kids):
-        print(f"\n  {slug}#{num}  {node['title']}  (grouping; children complete)", flush=True)
+
+async def do_node(dg, node, lease, label, state, args):
+    ref = dg.ref(node)
+    lease_id = lease["id"]
+    ns = node_state(state, ref)
+    by_id = {n["id"]: n for n in dg.list()}
+    children = dg.list(parent=ref)
+
+    if is_grouping(node, children):
+        print(f"\n  {ref}  {node['title']}  (grouping; children complete)", flush=True)
+        dg.complete(ref, lease_id, "Grouping node: every child completed. See their results.")
         ns["status"] = "done"
-        record(state, num, 0, "harness", [], 0, "grouping")
+        record(state, ref, 0, "harness", [], 0, "grouping")
         save_state(state)
         return True
 
-    order = work_order_text(num, nodes, slug)
+    order = work_order_text(dg, node, by_id)
     LOGS.mkdir(parents=True, exist_ok=True)
-    log_path = LOGS / f"{num:03d}-{node['title'][:40].replace('/', '-')}.log"
+    log_path = LOGS / f"{int(node['number']):03d}-{node['title'][:40].replace('/', '-')}.log"
 
-    print(f"\n{'=' * 70}\n  {slug}#{num}  {node['title']}\n{'=' * 70}", flush=True)
+    print(f"\n{'=' * 70}\n  {ref}  {node['title']}\n{'=' * 70}", flush=True)
 
     feedback = None
+    summary = ""
     for attempt in range(ns["attempts"] + 1, args.attempts + 1):
         ns["attempts"] = attempt
         ns["status"] = "in_progress"
@@ -369,14 +508,15 @@ async def do_node(num, nodes, slug, state, args):
             )
         before, baseline = head(), tree_snapshot()
         try:
-            _, cost_i, turns_i, usage_i = await asyncio.wait_for(
+            summary, cost_i, turns_i, usage_i = await with_lease(
+                dg, lease_id,
                 run_agent("implementer", IMPLEMENTER_PROMPT, prompt, log_path, args),
-                timeout=args.timeout,
+                args.timeout,
             )
         except asyncio.TimeoutError:
             print(f"  !! implementer exceeded {args.timeout}s", flush=True)
             undo_agent_commits(before)
-            record(state, num, attempt, "implementer", [], 0, "timeout")
+            record(state, ref, attempt, "implementer", [], 0, "timeout")
             feedback = f"- The previous attempt ran past {args.timeout}s and was stopped. Work in smaller steps."
             continue
         undo_agent_commits(before)
@@ -404,57 +544,52 @@ async def do_node(num, nodes, slug, state, args):
             "Inspect the working tree, run the suite, and judge the contract."
         )
         try:
-            verdict_text, cost_r, turns_r, usage_r = await asyncio.wait_for(
+            verdict_text, cost_r, turns_r, usage_r = await with_lease(
+                dg, lease_id,
                 run_agent("reviewer", REVIEWER_PROMPT, review_prompt, log_path, args),
-                timeout=args.timeout,
+                args.timeout,
             )
         except asyncio.TimeoutError:
             print(f"  !! reviewer exceeded {args.timeout}s; treating as fail", flush=True)
             verdict_text, cost_r, turns_r, usage_r = "VERDICT: FAIL", 0.0, 0, []
         passed, feedback = parse_verdict(verdict_text)
 
-        record(state, num, attempt, "implementer", usage_i, turns_i, "n/a")
-        record(state, num, attempt, "reviewer", usage_r, turns_r,
+        record(state, ref, attempt, "implementer", usage_i, turns_i, "n/a")
+        record(state, ref, attempt, "reviewer", usage_r, turns_r,
                "pass" if passed else "fail")
 
         if passed:
             print(f"  == PASS  (${cost_i + cost_r:.2f}, {turns_i + turns_r} turns)", flush=True)
+            sha = commit_and_push(ref, node, summary, args)
+            result = f"{summary.rstrip()}\n\nCommit: {sha}\nFiles:\n{diff}\n"
+            dg.complete(ref, lease_id, result)
             ns["status"] = "done"
             save_state(state)
-            commit_and_push(num, node, slug, args)
+            print(f"  ++ completed {ref}", flush=True)
             return True
 
         print(f"  == FAIL\n{feedback}", flush=True)
         save_state(state)
 
+    # Out of attempts. Leave the findings on the node, take it out of scope,
+    # and give the lease back so the graph is honest about who holds what.
     ns["status"] = "blocked"
     ns["feedback"] = feedback
     save_state(state)
+    dg.comment(ref, lease_id,
+               f"harness: blocked after {args.attempts} attempts. Last review:\n\n{feedback}\n\n"
+               f"Relabel `{label}` to retry.")
+    labels = (set(node.get("labels", [])) - {label}) | {BLOCKED_LABEL}
+    dg.set_labels(node, labels, lease_id)
+    dg.release(lease_id, "budget", f"{args.attempts} attempts exhausted; see comment")
     return False
 
 
-def commit_and_push(num, node, slug, args):
-    git("add", "-A")
-    subject = f"{slug}#{num}: {node['title']}"
-    body = (
-        f"Implements {slug}#{num} from backlog.toml.\n\n"
-        "Reviewed against the node's acceptance criteria and scenarios.\n\n"
-        "Claude-Session: https://claude.ai/code/session_01SYqDtWFVHmx7NgvH7imxP5"
-    )
-    subprocess.run(
-        ["git", "commit", "-m", subject, "-m", body], cwd=ROOT, check=True,
-        capture_output=True, text=True,
-    )
-    print(f"  ++ committed: {subject}", flush=True)
-    if not args.no_push:
-        r = subprocess.run(["git", "push"], cwd=ROOT, capture_output=True, text=True)
-        print("  ++ pushed" if r.returncode == 0 else f"  !! push failed: {r.stderr.strip()}",
-              flush=True)
+# --- report ------------------------------------------------------------------
 
 
-def report(state, project, nodes):
+def report(state, titles):
     """Per-node token and cost tally. Calibration data for future estimates."""
-    slug = project.get("slug", "backlog")
     per = {}
     for e in state["history"]:
         a = per.setdefault(e["node"], {"in": 0, "out": 0, "cr": 0, "cw": 0,
@@ -470,22 +605,21 @@ def report(state, project, nodes):
         a["turns"] += e.get("turns", 0)
         a["attempts"] = max(a["attempts"], e.get("attempt", 0))
 
-    print(f"\n{'=' * 96}\n  {slug}: per-node usage\n{'=' * 96}")
-    print(f"{'node':<10} {'status':<8} {'try':>3} {'turns':>5} {'input':>9} {'output':>8} "
+    print(f"\n{'=' * 96}\n  per-node usage\n{'=' * 96}")
+    print(f"{'node':<12} {'status':<8} {'try':>3} {'turns':>5} {'input':>9} {'output':>8} "
           f"{'cache rd':>10} {'cache wr':>9} {'cost':>8}  title")
     print("-" * 96)
     tot = {"in": 0, "out": 0, "cr": 0, "cw": 0, "cost": 0.0, "turns": 0}
-    for num in sorted(per):
-        a = per[num]
+    for ref in sorted(per, key=lambda r: (r.rsplit("#", 1)[0], int(r.rsplit("#", 1)[1]) if "#" in r else 0)):
+        a = per[ref]
         for k in tot:
             tot[k] += a[k]
-        st = state["nodes"].get(str(num), {}).get("status", "?")
-        title = nodes[num]["title"][:30] if num in nodes else ""
-        print(f"{slug + '#' + str(num):<10} {st:<8} {a['attempts']:>3} {a['turns']:>5} "
+        st = state["nodes"].get(ref, {}).get("status", "?")
+        print(f"{str(ref):<12} {st:<8} {a['attempts']:>3} {a['turns']:>5} "
               f"{a['in']:>9,} {a['out']:>8,} {a['cr']:>10,} {a['cw']:>9,} "
-              f"${a['cost']:>7.2f}  {title}")
+              f"${a['cost']:>7.2f}  {titles.get(str(ref), '')[:30]}")
     print("-" * 96)
-    print(f"{'TOTAL':<10} {'':<8} {'':>3} {tot['turns']:>5} {tot['in']:>9,} {tot['out']:>8,} "
+    print(f"{'TOTAL':<12} {'':<8} {'':>3} {tot['turns']:>5} {tot['in']:>9,} {tot['out']:>8,} "
           f"{tot['cr']:>10,} {tot['cw']:>9,} ${tot['cost']:>7.2f}")
 
     billable = tot["in"] + tot["out"] + tot["cr"] + tot["cw"]
@@ -498,20 +632,26 @@ def report(state, project, nodes):
         print(f"  ${tot['cost'] / done:.2f} and {billable // done:,} tokens per completed node")
 
 
+# --- main --------------------------------------------------------------------
+
+
 async def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--project", default=os.environ.get("DG_PROJECT", "dagger"),
+                   help="project slug (default: $DG_PROJECT, then dagger)")
+    p.add_argument("--epic", default=None,
+                   help="the grouping node whose open children are the scope, as #N")
     p.add_argument("--max", type=int, default=100, help="max nodes this run")
     p.add_argument("--attempts", type=int, default=3, help="review attempts per node")
     p.add_argument("--model", default="claude-fable-5-1", help="model (default: Fable 5.1)")
     p.add_argument("--effort", default="medium",
                    choices=["low", "medium", "high", "xhigh", "max"],
                    help="reasoning effort (default: medium)")
-    p.add_argument("--node", type=int, default=None, help="force one node")
     p.add_argument("--budget", type=float, default=None,
                    help="stop once total spend passes this many USD")
     p.add_argument("--timeout", type=int, default=3600,
                    help="seconds before one agent is abandoned (default: 3600)")
-    p.add_argument("--dry-run", action="store_true", help="show the plan and exit")
+    p.add_argument("--dry-run", action="store_true", help="show the ready set and exit")
     p.add_argument("--report", action="store_true", help="print per-node usage and exit")
     p.add_argument("--no-push", action="store_true", help="commit but do not push")
     args = p.parse_args()
@@ -519,55 +659,74 @@ async def main():
     if STOP.exists():
         STOP.unlink()
     state = load_state()
-    project, _ = backlog.load(BACKLOG)
-    slug = project.get("slug", "backlog")
+    dg = Dagger(args.project)
 
     if args.report:
-        _, all_nodes = backlog.load(BACKLOG)
-        report(state, project, all_nodes)
+        titles = {dg.ref(n): n["title"] for n in dg.list()}
+        report(state, titles)
         return 0
 
+    if not args.epic:
+        p.error("--epic is required: the node whose children are the scope")
+    epic_ref = args.epic if "#" in args.epic and not args.epic.startswith("#") else f"{args.project}{args.epic}"
+    label = f"epic-{epic_ref.rsplit('#', 1)[1]}"
+    session = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+
+    print(f"{epic_ref}: scoping by label {label}", flush=True)
+    children = scope_epic(dg, epic_ref, label)
+    open_children = [c for c in children if c["status"] == "STATUS_OPEN"]
+
     if args.dry_run:
-        order, nodes = ready_nodes(state)
-        done = sum(1 for v in state["nodes"].values() if v["status"] == "done")
-        print(f"{slug}: {done} done, {len(order)} ready of {len(nodes)} total\n")
-        for num in order:
-            print(f"  {nodes[num].get('priority','p2')}  {slug}#{num}  {nodes[num]['title']}")
+        ready = dg.ready(label)
+        done = sum(1 for c in children if c["status"] == "STATUS_DONE")
+        print(f"\n{epic_ref}: {done} done, {len(ready)} ready of {len(children)} children\n")
+        for n in ready:
+            print(f"  {short(n.get('priority'), 'PRIORITY_')}  {dg.ref(n)}  {n['title']}")
+        waiting = [c for c in open_children if c.get("assignee_kind") == "ASSIGNEE_KIND_USER"]
+        for n in waiting:
+            print(f"  gate  {dg.ref(n)}  {n['title']}  (waiting on a person)")
         return 0
 
     total = 0.0
     for i in range(1, args.max + 1):
-        order, nodes = ready_nodes(state)
-        if args.node is not None:
-            order = [args.node] if i == 1 else []
-        if not order:
-            remaining = [n for n, v in state["nodes"].items() if v["status"] == "blocked"]
-            if remaining:
-                STOP.write_text(f"BLOCKED: nodes {sorted(remaining)} exhausted their attempts\n")
-                print(f"\nBLOCKED: {sorted(remaining)}")
-                report(state, project, nodes)
+        node, lease = dg.claim(label, session)
+        if node is None:
+            children = dg.list(parent=epic_ref)
+            still_open = [dg.ref(c) for c in children if c["status"] == "STATUS_OPEN"]
+            blocked = [dg.ref(c) for c in children if BLOCKED_LABEL in c.get("labels", [])]
+            titles = {dg.ref(n): n["title"] for n in children}
+            if blocked:
+                STOP.write_text(f"BLOCKED: {blocked} exhausted their attempts\n")
+                print(f"\nBLOCKED: {blocked}")
+                report(state, titles)
                 return 2
-            STOP.write_text("DONE: no agent-claimable nodes remain\n")
-            print("\nDONE: backlog drained")
-            report(state, project, nodes)
+            if still_open:
+                STOP.write_text(f"WAITING: {still_open} open but not claimable\n")
+                print(f"\nWAITING: nothing claimable; still open: {still_open}")
+                report(state, titles)
+                return 0
+            STOP.write_text("DONE: the epic's children are all closed\n")
+            print("\nDONE: epic drained")
+            report(state, titles)
             return 0
 
-        ok = await do_node(order[0], nodes, slug, state, args)
+        ref = dg.ref(node)
+        try:
+            ok = await do_node(dg, node, lease, label, state, args)
+        except BaseException as e:
+            dg.release(lease["id"], "crash", f"harness: {type(e).__name__}: {e}"[:500])
+            raise
         total = total_cost(state)
-        done = sum(1 for v in state["nodes"].values() if v["status"] == "done")
-        print(f"\n  {done}/{len(nodes)} done, ${total:.2f} spent", flush=True)
+        print(f"\n  ${total:.2f} spent this state file", flush=True)
         if args.budget and total >= args.budget:
             STOP.write_text(f"BLOCKED: budget ${args.budget} reached at ${total:.2f}\n")
             print(f"\nStopping: budget ${args.budget:.2f} reached")
-            report(state, project, nodes)
             return 2
         if not ok:
-            print(f"  {slug}#{order[0]} blocked after {args.attempts} attempts; moving on",
-                  flush=True)
+            print(f"  {ref} blocked after {args.attempts} attempts; moving on", flush=True)
         time.sleep(2)
 
     print(f"\nReached --max ({args.max}). Total: ${total:.2f}")
-    report(state, project, nodes)
     return 1
 
 
