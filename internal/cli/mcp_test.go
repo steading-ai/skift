@@ -281,6 +281,118 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 	})
 
+	Describe("the node_list tool", func() {
+		// setup gives the stub a backlog with an open node carrying a
+		// body, a done one, and a labelled one, which is enough to tell
+		// the filters apart.
+		setup := func() {
+			s.newNode("Open work").Body = "the body of the open node"
+			done := s.newNode("Finished work")
+			done.Status, done.Ready = daggerv1.Status_STATUS_DONE, false
+			done.Body = "the body of the done node"
+			labelled := s.newNode("Backend work")
+			labelled.Labels = []string{"backend"}
+		}
+
+		// references are the references of the nodes a result carries.
+		references := func(r toolResult) []string {
+			GinkgoHelper()
+			Expect(r.isError).To(BeFalse(), r.text)
+			nodes, _ := r.decode()["nodes"].([]any)
+			out := []string{}
+			for _, raw := range nodes {
+				node, _ := raw.(map[string]any)
+				out = append(out, node["reference"].(string))
+			}
+			return out
+		}
+
+		It("returns exactly the done nodes when asked for status done", func() {
+			setup()
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("when node_list is called with status done")
+			res := m.call("node_list", map[string]any{"status": "done"})
+
+			By("then the request carries that status and the project")
+			Expect(last[*daggerv1.ListNodesRequest](s).GetStatus()).To(Equal(daggerv1.Status_STATUS_DONE))
+			Expect(last[*daggerv1.ListNodesRequest](s).GetProject()).To(Equal("platform"))
+
+			By("and only the done node comes back")
+			Expect(references(res)).To(ConsistOf("platform#2"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("returns only nodes carrying the label", func() {
+			setup()
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("when node_list is called with the label backend")
+			res := m.call("node_list", map[string]any{"labels": []string{"backend"}})
+
+			By("then the request carries the label")
+			Expect(last[*daggerv1.ListNodesRequest](s).GetLabels()).To(Equal([]string{"backend"}))
+
+			By("and only the labelled node comes back")
+			Expect(references(res)).To(ConsistOf("platform#3"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("carries no body for any node by default", func() {
+			setup()
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("when node_list is called with no view")
+			res := m.call("node_list", map[string]any{})
+
+			By("then it asked for a summary")
+			Expect(last[*daggerv1.ListNodesRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+
+			By("and every node of the project came back with no body")
+			Expect(references(res)).To(ConsistOf("platform#1", "platform#2", "platform#3"))
+			for _, raw := range res.decode()["nodes"].([]any) {
+				Expect(raw.(map[string]any)).NotTo(HaveKey("body"))
+			}
+			Expect(res.text).NotTo(ContainSubstring("the body of"))
+
+			By("and a full view returns them when it is asked for")
+			full := m.call("node_list", map[string]any{"view": "full"})
+			Expect(last[*daggerv1.ListNodesRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(full.text).To(ContainSubstring("the body of the open node"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("declares its filters: status by enum, kind as free-form, and a view", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the tool's schema")
+			tool := m.tools()["node_list"]
+			props := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+
+			By("then status declares the statuses and kind says it is free-form")
+			Expect(props["status"].(map[string]any)["enum"]).To(ConsistOf("open", "done", "dropped"))
+			Expect(props["kind"].(map[string]any)).NotTo(HaveKey("enum"))
+			Expect(props["kind"].(map[string]any)["description"]).To(ContainSubstring("Free-form"))
+
+			By("and every filter dg node list takes is offered, with a view")
+			Expect(props).To(HaveKey("assignee_kind"))
+			Expect(props).To(HaveKey("labels"))
+			Expect(props).To(HaveKey("parent"))
+			Expect(props).To(HaveKey("project"))
+			Expect(props["view"].(map[string]any)["enum"]).To(ConsistOf("refs", "summary", "full"))
+
+			By("and the description says what it does not do")
+			description := tool["description"].(string)
+			Expect(description).To(ContainSubstring("does not tell you what is ready"))
+			Expect(description).To(ContainSubstring("no bodies"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
 	Describe("Scenario: Each tool asks for the view its purpose needs", func() {
 		It("Each tool asks for the view its purpose needs", func() {
 			s.newNode("Viewed")
@@ -289,7 +401,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("given the tools advertise a view argument with the short names")
 			tools := m.tools()
-			for _, name := range []string{"ready", "search", "show_node", "inputs", "apply_patch", "complete", "comment"} {
+			for _, name := range []string{"ready", "search", "show_node", "inputs", "node_list", "apply_patch", "complete", "comment"} {
 				props := tools[name]["inputSchema"].(map[string]any)["properties"].(map[string]any)
 				Expect(props).To(HaveKey("view"), name)
 				Expect(props["view"].(map[string]any)["enum"]).To(ConsistOf("refs", "summary", "full"), name)
@@ -411,8 +523,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m := startMCP("--socket", socket)
 			m.initialize()
 			tools := m.tools()
-			Expect(tools).To(HaveLen(11))
-			for _, name := range []string{"search", "show_node", "inputs", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment"} {
+			Expect(tools).To(HaveLen(12))
+			for _, name := range []string{"search", "show_node", "inputs", "node_list", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment"} {
 				Expect(tools).To(HaveKey(name))
 				Expect(tools[name]["description"]).NotTo(BeEmpty())
 				Expect(tools[name]["inputSchema"]).To(HaveKeyWithValue("type", "object"))

@@ -244,6 +244,67 @@ read the ones you need with show_node.
 			},
 		},
 		{
+			name: "node_list",
+			description: `List a project's nodes, filtered by status, kind, label, assignee kind and
+parent, by node number. Use it to triage and to report: what is still
+open, what is done, what a label covers, what hangs under a grouping
+node. It does not tell you what is ready — readiness is derived from
+blockers, leases and open children, and the ready tool answers it. A node
+missing from the ready set is explained by explain.
+
+Every node of the project is in scope, whatever its status, so filter or
+this is the whole backlog. Each node comes back as a summary (reference,
+title, kind, priority, status, labels) and no bodies; show_node reads one.`,
+			schema: objectSchema(pageSchema(map[string]any{
+				"project":       stringProp("Project to list, by slug or org/slug. Defaults to the current project."),
+				"status":        enumProp("Only nodes in this status. Unset means every status, open and closed alike.", enumChoices[daggerv1.Status]()),
+				"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
+				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate.", enumChoices[daggerv1.AssigneeKind]()),
+				"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
+				"parent":        stringProp(`Only the children of this node, as a node reference such as "#7".`),
+				"view":          viewProp(daggerv1.View_VIEW_SUMMARY),
+			})),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					Project      string   `json:"project"`
+					Status       string   `json:"status"`
+					Kind         string   `json:"kind"`
+					AssigneeKind string   `json:"assignee_kind"`
+					Labels       []string `json:"labels"`
+					Parent       string   `json:"parent"`
+					View         string   `json:"view"`
+					pageArgs
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				project := args.Project
+				if project == "" {
+					var err error
+					if project, err = a.project(); err != nil {
+						return nil, err
+					}
+				}
+				status, err := parseEnum[daggerv1.Status]("status", args.Status)
+				if err != nil {
+					return nil, err
+				}
+				assigneeKind, err := parseEnum[daggerv1.AssigneeKind]("assignee_kind", args.AssigneeKind)
+				if err != nil {
+					return nil, err
+				}
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_SUMMARY)
+				if err != nil {
+					return nil, err
+				}
+				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{
+					Project: project, Status: status, Kind: args.Kind, AssigneeKind: assigneeKind,
+					Labels: args.Labels, Parent: args.Parent,
+					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
+				})))
+			},
+		},
+		{
 			name: "explain",
 			description: `Explain why a node is not ready. Each reason names what stands in the way:
 an unfinished blocker (possibly a gate waiting on a person), an open

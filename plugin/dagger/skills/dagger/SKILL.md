@@ -15,6 +15,7 @@ allowed-tools:
   - mcp__plugin_dagger_dagger__search
   - mcp__plugin_dagger_dagger__show_node
   - mcp__plugin_dagger_dagger__inputs
+  - mcp__plugin_dagger_dagger__node_list
   - mcp__plugin_dagger_dagger__explain
 ---
 
@@ -58,14 +59,18 @@ transitive: a predecessor's result is the summary of its own inputs.
 
 ## Which interface
 
-MCP tools are the default: `ready`, `search`, `show_node`, `inputs`, `explain`,
-`claim`, `heartbeat`, `release`, `complete`, `comment`, `apply_patch`. A lease
-taken through them renews in the background, and is released if the session
-ends.
+MCP tools are the default: `ready`, `search`, `show_node`, `inputs`,
+`node_list`, `explain`, `claim`, `heartbeat`, `release`, `complete`, `comment`,
+`apply_patch`. A lease taken through them renews in the background, and is
+released if the session ends.
+
+`ready` is what you can work on; `node_list` is everything else — what is open,
+what is done, what a label or a parent covers. Triage and reporting go through
+`node_list`, and it never tells you what is ready.
 
 Responses are sized for a context window. A write returns references, status
 and readiness flags for what it touched, an alias map, and an event count —
-never the bodies you sent, never the events. `ready`, `search` and `node list`
+never the bodies you sent, never the events. `ready`, `search` and `node_list`
 return summaries (reference, title, kind, priority, status, labels); only
 `show_node` returns a body. Every one of these takes `view: refs | summary |
 full` when you need more or less, so filing a large patch through MCP costs

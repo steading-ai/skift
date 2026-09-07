@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -223,11 +225,51 @@ func (s *stub) GetInputs(_ context.Context, req *connect.Request[daggerv1.GetInp
 	return connect.NewResponse(res), nil
 }
 
+// ListNodes filters the stub's nodes the way the handler does — status,
+// kind, labels and assignee kind narrow the page, never widen it — and
+// projects each through the requested view, which defaults to a summary.
 func (s *stub) ListNodes(_ context.Context, req *connect.Request[daggerv1.ListNodesRequest]) (*connect.Response[daggerv1.ListNodesResponse], error) {
 	s.record(req.Msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return connect.NewResponse(&daggerv1.ListNodesResponse{Nodes: s.nodes}), nil
+	res := &daggerv1.ListNodesResponse{}
+	for _, n := range s.nodes {
+		if !matches(n, req.Msg) {
+			continue
+		}
+		res.Nodes = append(res.Nodes, summarize(n, req.Msg.GetView()))
+	}
+	return connect.NewResponse(res), nil
+}
+
+// matches reports whether a node passes every filter the request sets.
+func matches(n *daggerv1.Node, req *daggerv1.ListNodesRequest) bool {
+	if st := req.GetStatus(); st != daggerv1.Status_STATUS_UNSPECIFIED && n.GetStatus() != st {
+		return false
+	}
+	if k := req.GetKind(); k != "" && n.GetKind() != k {
+		return false
+	}
+	if ak := req.GetAssigneeKind(); ak != daggerv1.AssigneeKind_ASSIGNEE_KIND_UNSPECIFIED && n.GetAssigneeKind() != ak {
+		return false
+	}
+	for _, want := range req.GetLabels() {
+		if !slices.Contains(n.GetLabels(), want) {
+			return false
+		}
+	}
+	return true
+}
+
+// summarize is the stub's stand-in for the server's view projection: only
+// VIEW_FULL carries the body.
+func summarize(n *daggerv1.Node, view daggerv1.View) *daggerv1.Node {
+	if view == daggerv1.View_VIEW_FULL {
+		return n
+	}
+	out := proto.Clone(n).(*daggerv1.Node) //nolint:forcetypeassert // Clone returns the same type
+	out.Body = ""
+	return out
 }
 
 func (s *stub) Explain(_ context.Context, req *connect.Request[daggerv1.ExplainRequest]) (*connect.Response[daggerv1.ExplainResponse], error) {
