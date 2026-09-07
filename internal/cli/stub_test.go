@@ -195,7 +195,32 @@ func (s *stub) GetNode(_ context.Context, req *connect.Request[daggerv1.GetNodeR
 	if len(s.nodes) == 0 {
 		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
 	}
-	return connect.NewResponse(&daggerv1.GetNodeResponse{Node: s.nodes[0]}), nil
+	return connect.NewResponse(&daggerv1.GetNodeResponse{
+		Node:   s.nodes[0],
+		Inputs: &daggerv1.InputsHint{Count: int32(len(s.nodes) - 1), Bytes: 42}, //nolint:gosec // a spec's node count
+	}), nil
+}
+
+// GetInputs answers with every node but the last as an input of the last,
+// each carrying a result, which is enough for a spec to check what a
+// command sent and printed.
+func (s *stub) GetInputs(_ context.Context, req *connect.Request[daggerv1.GetInputsRequest]) (*connect.Response[daggerv1.GetInputsResponse], error) {
+	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.nodes) == 0 {
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
+	}
+	res := &daggerv1.GetInputsResponse{}
+	for _, n := range s.nodes[:len(s.nodes)-1] {
+		body := "result of " + n.GetTitle()
+		in := &daggerv1.Input{Node: n, Bytes: int64(len(body))}
+		if req.Msg.GetView() != daggerv1.View_VIEW_SUMMARY && req.Msg.GetView() != daggerv1.View_VIEW_REFS {
+			in.Result = &daggerv1.Result{Body: body}
+		}
+		res.Inputs = append(res.Inputs, in)
+	}
+	return connect.NewResponse(res), nil
 }
 
 func (s *stub) ListNodes(_ context.Context, req *connect.Request[daggerv1.ListNodesRequest]) (*connect.Response[daggerv1.ListNodesResponse], error) {

@@ -79,6 +79,17 @@ func (p printer) text(msg proto.Message) error {
 		if l := m.GetLease(); l != nil {
 			writeLease(&b, l)
 		}
+	case *daggerv1.GetInputsResponse:
+		if len(m.GetInputs()) == 0 {
+			b.WriteString("no inputs\n")
+		}
+		for _, in := range m.GetInputs() {
+			writeNodes(&b, []*daggerv1.Node{in.GetNode()})
+			fmt.Fprintf(&b, "    %d bytes\n", in.GetBytes())
+			if body := in.GetResult().GetBody(); body != "" {
+				fmt.Fprintf(&b, "\n%s\n\n", body)
+			}
+		}
 	case *daggerv1.ExplainResponse:
 		writeNodes(&b, []*daggerv1.Node{m.GetNode()})
 		if len(m.GetReasons()) == 0 {

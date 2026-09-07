@@ -91,6 +91,7 @@ Output is JSON whenever stdout is not a terminal, and on request with
 		a.linkCommand(),
 		a.readyCommand(),
 		a.explainCommand(),
+		a.inputsCommand(),
 		a.claimCommand(),
 		a.heartbeatCommand(),
 		a.releaseCommand(),

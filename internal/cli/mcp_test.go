@@ -251,6 +251,36 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 	})
 
+	Describe("the inputs tool", func() {
+		It("says when to call it and that show_node does not include what it returns", func() {
+			s.newNode("Alpha")
+			s.newNode("Beta")
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the tool's description")
+			description := m.tools()["inputs"]["description"].(string)
+
+			By("then it says to call it after claiming and before working")
+			Expect(description).To(ContainSubstring("after claiming"))
+			Expect(description).To(ContainSubstring("before doing the work"))
+
+			By("and that show_node does not include this")
+			Expect(description).To(ContainSubstring("show_node does not include it"))
+
+			By("when it is called on a node")
+			res := m.call("inputs", map[string]any{"ref": "#2"})
+			Expect(res.isError).To(BeFalse(), res.text)
+			Expect(last[*daggerv1.GetInputsRequest](s).GetNode()).To(Equal("#2"))
+			Expect(res.text).To(ContainSubstring("result of Alpha"))
+
+			By("and a summary view is sent as asked")
+			Expect(m.call("inputs", map[string]any{"ref": "#2", "view": "summary"}).isError).To(BeFalse())
+			Expect(last[*daggerv1.GetInputsRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
 	Describe("Scenario: Each tool asks for the view its purpose needs", func() {
 		It("Each tool asks for the view its purpose needs", func() {
 			s.newNode("Viewed")
@@ -259,7 +289,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("given the tools advertise a view argument with the short names")
 			tools := m.tools()
-			for _, name := range []string{"ready", "search", "show_node", "apply_patch", "complete", "comment"} {
+			for _, name := range []string{"ready", "search", "show_node", "inputs", "apply_patch", "complete", "comment"} {
 				props := tools[name]["inputSchema"].(map[string]any)["properties"].(map[string]any)
 				Expect(props).To(HaveKey("view"), name)
 				Expect(props["view"].(map[string]any)["enum"]).To(ConsistOf("refs", "summary", "full"), name)
@@ -381,8 +411,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m := startMCP("--socket", socket)
 			m.initialize()
 			tools := m.tools()
-			Expect(tools).To(HaveLen(10))
-			for _, name := range []string{"search", "show_node", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment"} {
+			Expect(tools).To(HaveLen(11))
+			for _, name := range []string{"search", "show_node", "inputs", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment"} {
 				Expect(tools).To(HaveKey(name))
 				Expect(tools[name]["description"]).NotTo(BeEmpty())
 				Expect(tools[name]["inputSchema"]).To(HaveKeyWithValue("type", "object"))

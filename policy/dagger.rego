@@ -9,7 +9,8 @@
 #   action     one of the action names below
 #   resource   {node, edge, lease, comment}    what the action is applied to,
 #                                              as it stands before; a search
-#                                              carries the node it would show
+#                                              or an inputs read carries the
+#                                              node it would show
 #   after      {node, edge, comment, usage}    the proposed post-state; absent
 #                                              for actions that remove
 #   lease      {id, node_id, holder}           the lease the request carries
@@ -106,6 +107,14 @@ permitted if {
 # looks for what was lost. A deployment that narrows reads does it here.
 permitted if {
 	input.action == "search"
+}
+
+# A node's inputs are the results of what it depends on, and reading them
+# is a read of the node they belong to, open to the organization for the
+# same reason search is: an agent picking up a node assembles its context
+# from work it did not do.
+permitted if {
+	input.action == "read_inputs"
 }
 
 # The change stream is a read as well, and open to the organization for

@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
@@ -317,6 +318,136 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
 			_, err = f.graph().GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Node: "#1"}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a bare number needs a project")
+		})
+	})
+
+	Describe("GetInputs", func() {
+		// handoff builds A and B done with results, D open, E dropped,
+		// all four blocking C, and returns C's reference.
+		handoff := func(ctx SpecContext) string {
+			GinkgoHelper()
+			f.project(ctx, "Platform")
+			f.mustApply(ctx,
+				createOp("a", "Alpha"), createOp("b", "Beta"), createOp("d", "Delta"), createOp("e", "Epsilon"),
+				createOpWith(&daggerv1.CreateNodeOp{Alias: "c", Title: "Gamma", BlockedBy: []string{"a", "b", "d", "e"}}),
+			)
+			f.mustApply(ctx, completeOp("#1", "alpha"), completeOp("#2", "beta"))
+			f.mustApply(ctx, &daggerv1.PatchOp{Op: &daggerv1.PatchOp_DropNode{DropNode: &daggerv1.DropNodeOp{
+				Node: "#4", Reason: daggerv1.DropReason_DROP_REASON_NO_LONGER_RELEVANT,
+			}}})
+			return "#5"
+		}
+
+		Describe("Scenario: A downstream agent reads what it depends on", func() {
+			It("A downstream agent reads what it depends on", func(ctx SpecContext) {
+				By("given nodes A and B are done with results, and both block C")
+				f.project(ctx, "Platform")
+				f.mustApply(ctx,
+					createOp("a", "Alpha"), createOp("b", "Beta"),
+					createOpWith(&daggerv1.CreateNodeOp{Alias: "c", Title: "Gamma", BlockedBy: []string{"a", "b"}}),
+				)
+				f.mustApply(ctx, completeOp("#1", "alpha"), completeOp("#2", "beta"))
+
+				By("when an agent claims C and calls inputs on it")
+				claimed := f.claim(ctx, "platform", nil)
+				Expect(claimed.GetNode().GetReference()).To(Equal("platform#3"))
+				f.as(f.agent)
+				defer f.as(f.user)
+				res, err := f.graph().GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{Project: "platform", Node: "#3"}))
+				Expect(err).NotTo(HaveOccurred())
+
+				By("then it receives both results with the references they came from")
+				Expect(res.Msg.GetInputs()).To(HaveLen(2))
+				Expect(res.Msg.GetInputs()[0].GetNode().GetReference()).To(Equal("platform#1"))
+				Expect(res.Msg.GetInputs()[0].GetResult().GetBody()).To(Equal("alpha"))
+				Expect(res.Msg.GetInputs()[1].GetNode().GetReference()).To(Equal("platform#2"))
+				Expect(res.Msg.GetInputs()[1].GetResult().GetBody()).To(Equal("beta"))
+
+				By("and the claim that handed C over said the inputs were there")
+				Expect(claimed.GetInputs().GetCount()).To(Equal(int32(2)))
+				Expect(claimed.GetInputs().GetBytes()).To(Equal(int64(len("alpha") + len("beta"))))
+			})
+		})
+
+		Describe("Scenario: The hint is cheap and the body is on request", func() {
+			It("The hint is cheap and the body is on request", func(ctx SpecContext) {
+				By("given the same graph")
+				f.project(ctx, "Platform")
+				f.mustApply(ctx,
+					createOp("a", "Alpha"), createOp("b", "Beta"),
+					createOpWith(&daggerv1.CreateNodeOp{Alias: "c", Title: "Gamma", BlockedBy: []string{"a", "b"}}),
+				)
+				f.mustApply(ctx, completeOp("#1", "alpha"), completeOp("#2", "beta"))
+
+				By("when the agent calls show_node on C")
+				shown := f.getNode(ctx, "platform", "#3")
+
+				By("then the response says two inputs totalling N bytes")
+				Expect(shown.GetInputs().GetCount()).To(Equal(int32(2)))
+				Expect(shown.GetInputs().GetBytes()).To(Equal(int64(len("alpha") + len("beta"))))
+
+				By("and the response does not contain either result body")
+				raw, err := protojson.Marshal(shown)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(raw)).NotTo(ContainSubstring("alpha"))
+				Expect(string(raw)).NotTo(ContainSubstring("beta"))
+			})
+		})
+
+		Describe("Scenario: Only satisfied predecessors are inputs", func() {
+			It("Only satisfied predecessors are inputs", func(ctx SpecContext) {
+				By("given D blocks C and D is still open")
+				node := handoff(ctx)
+				Expect(f.getNode(ctx, "platform", "#3").GetNode().GetStatus()).To(Equal(daggerv1.Status_STATUS_OPEN))
+
+				By("when inputs is called on C")
+				res, err := f.graph().GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{Project: "platform", Node: node}))
+				Expect(err).NotTo(HaveOccurred())
+
+				By("then D is not in the response")
+				refs := make([]string, 0, len(res.Msg.GetInputs()))
+				for _, in := range res.Msg.GetInputs() {
+					refs = append(refs, in.GetNode().GetReference())
+				}
+				Expect(refs).NotTo(ContainElement("platform#3"))
+				Expect(refs).To(Equal([]string{"platform#1", "platform#2", "platform#4"}))
+			})
+		})
+
+		It("lists a dropped predecessor with no result", func(ctx SpecContext) {
+			node := handoff(ctx)
+			res, err := f.graph().GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{Project: "platform", Node: node}))
+			Expect(err).NotTo(HaveOccurred())
+			dropped := res.Msg.GetInputs()[2]
+			Expect(dropped.GetNode().GetReference()).To(Equal("platform#4"))
+			Expect(dropped.GetNode().GetStatus()).To(Equal(daggerv1.Status_STATUS_DROPPED))
+			Expect(dropped.GetResult()).To(BeNil())
+			Expect(dropped.GetBytes()).To(BeZero())
+		})
+
+		It("returns references, titles and sizes without bodies in the summary view", func(ctx SpecContext) {
+			node := handoff(ctx)
+			res, err := f.graph().GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{
+				Project: "platform", Node: node, View: daggerv1.View_VIEW_SUMMARY,
+			}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Msg.GetInputs()).To(HaveLen(3))
+			for i, title := range []string{"Alpha", "Beta", "Epsilon"} {
+				Expect(res.Msg.GetInputs()[i].GetNode().GetTitle()).To(Equal(title))
+				Expect(res.Msg.GetInputs()[i].GetNode().GetReference()).NotTo(BeEmpty())
+				Expect(res.Msg.GetInputs()[i].GetResult()).To(BeNil())
+			}
+			Expect(res.Msg.GetInputs()[0].GetBytes()).To(Equal(int64(len("alpha"))))
+			Expect(res.Msg.GetInputs()[1].GetBytes()).To(Equal(int64(len("beta"))))
+			raw, err := protojson.Marshal(res.Msg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(raw)).NotTo(ContainSubstring("alpha"))
+		})
+
+		It("reports a missing node as not found", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			_, err := f.graph().GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{Project: "platform", Node: "#9"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
 		})
 	})
 

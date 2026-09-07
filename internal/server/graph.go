@@ -66,7 +66,7 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[daggerv
 		return nil, connectError(err)
 	}
 	view := viewOr(req.Msg.GetView(), daggerv1.View_VIEW_FULL)
-	res := &daggerv1.GetNodeResponse{Node: projectNode(toNode(node.NodeState), view)}
+	res := &daggerv1.GetNodeResponse{Node: projectNode(toNode(node.NodeState), view), Inputs: toInputsHint(node.Inputs)}
 	for _, e := range node.Edges {
 		res.Edges = append(res.Edges, toEdge(e))
 	}
@@ -86,6 +86,32 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[daggerv
 	}
 	for _, c := range node.Comments {
 		res.Comments = append(res.Comments, toComment(c))
+	}
+	return connect.NewResponse(res), nil
+}
+
+// GetInputs implements daggerv1connect.GraphServiceHandler.
+func (g *GraphService) GetInputs(ctx context.Context, req *connect.Request[daggerv1.GetInputsRequest]) (*connect.Response[daggerv1.GetInputsResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	inputs, err := g.svc.GetInputs(ctx, orgID, actor, req.Msg.GetProject(), req.Msg.GetNode())
+	if err != nil {
+		return nil, connectError(err)
+	}
+	view := viewOr(req.Msg.GetView(), daggerv1.View_VIEW_FULL)
+	res := &daggerv1.GetInputsResponse{Inputs: make([]*daggerv1.Input, 0, len(inputs))}
+	for _, in := range inputs {
+		wire := &daggerv1.Input{Node: projectNode(toNode(in.NodeState), view), Bytes: resultBytes(in.Result)}
+		// The result is content, like a body: a narrower view says how
+		// big it is and leaves fetching it to the caller.
+		if view == daggerv1.View_VIEW_FULL {
+			if wire.Result, err = toResult(in.Result, in.Artifacts); err != nil {
+				return nil, connectError(err)
+			}
+		}
+		res.Inputs = append(res.Inputs, wire)
 	}
 	return connect.NewResponse(res), nil
 }

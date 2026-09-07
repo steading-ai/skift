@@ -172,6 +172,10 @@ status, priority, labels, edges, parent, result if completed, current
 lease if claimed, artifacts, and comments. Use it before starting work on
 a node and whenever you need what a node says rather than a summary.
 
+The response carries the node's own result and never its predecessors'.
+It reports how many inputs the node has and how many bytes they come to;
+the inputs tool returns them.
+
 ` + refSyntax,
 			schema: objectSchema(map[string]any{
 				"ref":  stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
@@ -194,6 +198,49 @@ a node and whenever you need what a node says rather than a summary.
 					return nil, err
 				}
 				return unwrap(c.Graph.GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref, View: view})))
+			},
+		},
+		{
+			name: "inputs",
+			description: `Read the results of the nodes this one depends on: what a predecessor
+produced, and where. Call it after claiming a node, before doing the work:
+this is the handoff, and show_node does not include it. show_node returns
+the node's own result, never its predecessors'; it reports only how many
+inputs there are and how many bytes they come to, and this tool is how you
+get the bodies.
+
+One entry per predecessor that satisfies the node, each with its
+reference, title, status, result and artifacts. A predecessor still open
+satisfies nothing and is not listed; explain says what a node is waiting
+on. A dropped one is listed with no result. Inputs are not transitive: a
+predecessor's result is the summary of its own inputs.
+
+When the hint says the total is more than you want at once, ask for
+view "summary" — references, titles and per-entry sizes, no bodies — and
+read the ones you need with show_node.
+
+` + refSyntax,
+			schema: objectSchema(map[string]any{
+				"ref":  stringProp(`Node reference of the node whose inputs to read: "#7", "slug#7", or "org/slug#7".`),
+				"view": viewProp(daggerv1.View_VIEW_FULL),
+			}, "ref"),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					Ref  string `json:"ref"`
+					View string `json:"view"`
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				project, ref, err := a.nodeArg(args.Ref)
+				if err != nil {
+					return nil, err
+				}
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_FULL)
+				if err != nil {
+					return nil, err
+				}
+				return unwrap(c.Graph.GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{Project: project, Node: ref, View: view})))
 			},
 		},
 		{
@@ -330,6 +377,10 @@ it when you are about to do the work: the lease makes the node yours and
 keeps others off it. The response carries the node and its lease; the
 lease id is the fencing token that complete, comment, and apply_patch must
 carry for that node (it is used by default when it is the only one held).
+
+The response also says how many inputs the node has and how many bytes
+they come to: call the inputs tool to read what the work depends on
+before starting it.
 
 The lease is renewed in the background for as long as this session runs,
 so there is no need to call heartbeat yourself. If the session ends before

@@ -1450,7 +1450,10 @@ type GetNodeResponse struct {
 	// Artifacts attached to the node, in attachment order.
 	Artifacts []*Artifact `protobuf:"bytes,5,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
 	// Comments on the node, oldest first.
-	Comments      []*Comment `protobuf:"bytes,6,rep,name=comments,proto3" json:"comments,omitempty"`
+	Comments []*Comment `protobuf:"bytes,6,rep,name=comments,proto3" json:"comments,omitempty"`
+	// How much the node's inputs come to. The bodies themselves are
+	// GetInputs's to return.
+	Inputs        *InputsHint `protobuf:"bytes,7,opt,name=inputs,proto3" json:"inputs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1527,6 +1530,256 @@ func (x *GetNodeResponse) GetComments() []*Comment {
 	return nil
 }
 
+func (x *GetNodeResponse) GetInputs() *InputsHint {
+	if x != nil {
+		return x.Inputs
+	}
+	return nil
+}
+
+// GetInputsRequest names the node whose inputs to read.
+type GetInputsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The project a bare "#7" reference resolves in, by slug, org/slug, or
+	// id. Optional when the node reference carries its own project.
+	Project string `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
+	// Node reference of the node whose inputs to read.
+	Node string `protobuf:"bytes,2,opt,name=node,proto3" json:"node,omitempty"`
+	// How much of each input to return. Defaults to VIEW_FULL: this is the
+	// read whose purpose is the predecessors' results. A narrower view
+	// leaves the result out and keeps each input's size, so a caller facing
+	// more than it wants at once can fetch one predecessor at a time
+	// through GetNode.
+	View          View `protobuf:"varint,3,opt,name=view,proto3,enum=dagger.v1.View" json:"view,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInputsRequest) Reset() {
+	*x = GetInputsRequest{}
+	mi := &file_dagger_v1_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInputsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInputsRequest) ProtoMessage() {}
+
+func (x *GetInputsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dagger_v1_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInputsRequest.ProtoReflect.Descriptor instead.
+func (*GetInputsRequest) Descriptor() ([]byte, []int) {
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetInputsRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+func (x *GetInputsRequest) GetNode() string {
+	if x != nil {
+		return x.Node
+	}
+	return ""
+}
+
+func (x *GetInputsRequest) GetView() View {
+	if x != nil {
+		return x.View
+	}
+	return View_VIEW_UNSPECIFIED
+}
+
+// GetInputsResponse is what a node depends on, ordered by project and then
+// number. Inputs are not transitive: a predecessor's own inputs were its
+// concern, and its result is the summary it owes whoever comes next.
+type GetInputsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One entry per predecessor that satisfies the node.
+	Inputs        []*Input `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInputsResponse) Reset() {
+	*x = GetInputsResponse{}
+	mi := &file_dagger_v1_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInputsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInputsResponse) ProtoMessage() {}
+
+func (x *GetInputsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dagger_v1_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInputsResponse.ProtoReflect.Descriptor instead.
+func (*GetInputsResponse) Descriptor() ([]byte, []int) {
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GetInputsResponse) GetInputs() []*Input {
+	if x != nil {
+		return x.Inputs
+	}
+	return nil
+}
+
+// Input is one satisfied blocking predecessor as a downstream agent reads
+// it. A predecessor still open does not satisfy anything and is not an
+// input; a dropped one is, carrying no result, because a drop satisfies
+// the dependency without producing anything.
+type Input struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The predecessor, projected through the request's view.
+	Node *Node `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	// What it completed with, and the artifacts it attached. Carried under
+	// VIEW_FULL alone.
+	Result *Result `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
+	// Size of the result body in bytes, whatever the view. Zero when the
+	// predecessor has no result.
+	Bytes         int64 `protobuf:"varint,3,opt,name=bytes,proto3" json:"bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Input) Reset() {
+	*x = Input{}
+	mi := &file_dagger_v1_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Input) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Input) ProtoMessage() {}
+
+func (x *Input) ProtoReflect() protoreflect.Message {
+	mi := &file_dagger_v1_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Input.ProtoReflect.Descriptor instead.
+func (*Input) Descriptor() ([]byte, []int) {
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *Input) GetNode() *Node {
+	if x != nil {
+		return x.Node
+	}
+	return nil
+}
+
+func (x *Input) GetResult() *Result {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *Input) GetBytes() int64 {
+	if x != nil {
+		return x.Bytes
+	}
+	return 0
+}
+
+// InputsHint is how much a node's inputs come to without carrying them:
+// two integers, enough to decide whether to spend a GetInputs call on
+// them. Responses that hand a node to whoever will work it carry one.
+type InputsHint struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// How many of the node's satisfied predecessors have a result.
+	Count int32 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
+	// Total size of those result bodies in bytes.
+	Bytes         int64 `protobuf:"varint,2,opt,name=bytes,proto3" json:"bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InputsHint) Reset() {
+	*x = InputsHint{}
+	mi := &file_dagger_v1_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InputsHint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InputsHint) ProtoMessage() {}
+
+func (x *InputsHint) ProtoReflect() protoreflect.Message {
+	mi := &file_dagger_v1_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InputsHint.ProtoReflect.Descriptor instead.
+func (*InputsHint) Descriptor() ([]byte, []int) {
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *InputsHint) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *InputsHint) GetBytes() int64 {
+	if x != nil {
+		return x.Bytes
+	}
+	return 0
+}
+
 // ListNodesRequest pages through one project's nodes.
 type ListNodesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1556,7 +1809,7 @@ type ListNodesRequest struct {
 
 func (x *ListNodesRequest) Reset() {
 	*x = ListNodesRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[17]
+	mi := &file_dagger_v1_service_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1568,7 +1821,7 @@ func (x *ListNodesRequest) String() string {
 func (*ListNodesRequest) ProtoMessage() {}
 
 func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[17]
+	mi := &file_dagger_v1_service_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1581,7 +1834,7 @@ func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesRequest.ProtoReflect.Descriptor instead.
 func (*ListNodesRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{17}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListNodesRequest) GetProject() string {
@@ -1660,7 +1913,7 @@ type ListNodesResponse struct {
 
 func (x *ListNodesResponse) Reset() {
 	*x = ListNodesResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[18]
+	mi := &file_dagger_v1_service_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1672,7 +1925,7 @@ func (x *ListNodesResponse) String() string {
 func (*ListNodesResponse) ProtoMessage() {}
 
 func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[18]
+	mi := &file_dagger_v1_service_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1685,7 +1938,7 @@ func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesResponse.ProtoReflect.Descriptor instead.
 func (*ListNodesResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{18}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListNodesResponse) GetNodes() []*Node {
@@ -1716,7 +1969,7 @@ type ExplainRequest struct {
 
 func (x *ExplainRequest) Reset() {
 	*x = ExplainRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[19]
+	mi := &file_dagger_v1_service_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1728,7 +1981,7 @@ func (x *ExplainRequest) String() string {
 func (*ExplainRequest) ProtoMessage() {}
 
 func (x *ExplainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[19]
+	mi := &file_dagger_v1_service_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1741,7 +1994,7 @@ func (x *ExplainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainRequest.ProtoReflect.Descriptor instead.
 func (*ExplainRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{19}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ExplainRequest) GetProject() string {
@@ -1773,7 +2026,7 @@ type ExplainResponse struct {
 
 func (x *ExplainResponse) Reset() {
 	*x = ExplainResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[20]
+	mi := &file_dagger_v1_service_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1785,7 +2038,7 @@ func (x *ExplainResponse) String() string {
 func (*ExplainResponse) ProtoMessage() {}
 
 func (x *ExplainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[20]
+	mi := &file_dagger_v1_service_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1798,7 +2051,7 @@ func (x *ExplainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainResponse.ProtoReflect.Descriptor instead.
 func (*ExplainResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{20}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ExplainResponse) GetNode() *Node {
@@ -1834,7 +2087,7 @@ type Reason struct {
 
 func (x *Reason) Reset() {
 	*x = Reason{}
-	mi := &file_dagger_v1_service_proto_msgTypes[21]
+	mi := &file_dagger_v1_service_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1846,7 +2099,7 @@ func (x *Reason) String() string {
 func (*Reason) ProtoMessage() {}
 
 func (x *Reason) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[21]
+	mi := &file_dagger_v1_service_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1859,7 +2112,7 @@ func (x *Reason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Reason.ProtoReflect.Descriptor instead.
 func (*Reason) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{21}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Reason) GetReason() isReason_Reason {
@@ -1964,7 +2217,7 @@ type NotOpenReason struct {
 
 func (x *NotOpenReason) Reset() {
 	*x = NotOpenReason{}
-	mi := &file_dagger_v1_service_proto_msgTypes[22]
+	mi := &file_dagger_v1_service_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2229,7 @@ func (x *NotOpenReason) String() string {
 func (*NotOpenReason) ProtoMessage() {}
 
 func (x *NotOpenReason) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[22]
+	mi := &file_dagger_v1_service_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2242,7 @@ func (x *NotOpenReason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotOpenReason.ProtoReflect.Descriptor instead.
 func (*NotOpenReason) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{22}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *NotOpenReason) GetStatus() Status {
@@ -2014,7 +2267,7 @@ type BlockedReason struct {
 
 func (x *BlockedReason) Reset() {
 	*x = BlockedReason{}
-	mi := &file_dagger_v1_service_proto_msgTypes[23]
+	mi := &file_dagger_v1_service_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2026,7 +2279,7 @@ func (x *BlockedReason) String() string {
 func (*BlockedReason) ProtoMessage() {}
 
 func (x *BlockedReason) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[23]
+	mi := &file_dagger_v1_service_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2039,7 +2292,7 @@ func (x *BlockedReason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockedReason.ProtoReflect.Descriptor instead.
 func (*BlockedReason) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{23}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *BlockedReason) GetBlocker() *Node {
@@ -2067,7 +2320,7 @@ type LeasedReason struct {
 
 func (x *LeasedReason) Reset() {
 	*x = LeasedReason{}
-	mi := &file_dagger_v1_service_proto_msgTypes[24]
+	mi := &file_dagger_v1_service_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2079,7 +2332,7 @@ func (x *LeasedReason) String() string {
 func (*LeasedReason) ProtoMessage() {}
 
 func (x *LeasedReason) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[24]
+	mi := &file_dagger_v1_service_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2092,7 +2345,7 @@ func (x *LeasedReason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeasedReason.ProtoReflect.Descriptor instead.
 func (*LeasedReason) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{24}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *LeasedReason) GetLease() *Lease {
@@ -2113,7 +2366,7 @@ type OpenChildReason struct {
 
 func (x *OpenChildReason) Reset() {
 	*x = OpenChildReason{}
-	mi := &file_dagger_v1_service_proto_msgTypes[25]
+	mi := &file_dagger_v1_service_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2125,7 +2378,7 @@ func (x *OpenChildReason) String() string {
 func (*OpenChildReason) ProtoMessage() {}
 
 func (x *OpenChildReason) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[25]
+	mi := &file_dagger_v1_service_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2138,7 +2391,7 @@ func (x *OpenChildReason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenChildReason.ProtoReflect.Descriptor instead.
 func (*OpenChildReason) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{25}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *OpenChildReason) GetChild() *Node {
@@ -2159,7 +2412,7 @@ type ArchivedReason struct {
 
 func (x *ArchivedReason) Reset() {
 	*x = ArchivedReason{}
-	mi := &file_dagger_v1_service_proto_msgTypes[26]
+	mi := &file_dagger_v1_service_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2171,7 +2424,7 @@ func (x *ArchivedReason) String() string {
 func (*ArchivedReason) ProtoMessage() {}
 
 func (x *ArchivedReason) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[26]
+	mi := &file_dagger_v1_service_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2184,7 +2437,7 @@ func (x *ArchivedReason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchivedReason.ProtoReflect.Descriptor instead.
 func (*ArchivedReason) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{26}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ArchivedReason) GetProject() *Project {
@@ -2217,7 +2470,7 @@ type SearchRequest struct {
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[27]
+	mi := &file_dagger_v1_service_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2229,7 +2482,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[27]
+	mi := &file_dagger_v1_service_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2242,7 +2495,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{27}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SearchRequest) GetQuery() string {
@@ -2300,7 +2553,7 @@ type SearchResponse struct {
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[28]
+	mi := &file_dagger_v1_service_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2312,7 +2565,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[28]
+	mi := &file_dagger_v1_service_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2325,7 +2578,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{28}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *SearchResponse) GetHits() []*SearchHit {
@@ -2355,7 +2608,7 @@ type SearchHit struct {
 
 func (x *SearchHit) Reset() {
 	*x = SearchHit{}
-	mi := &file_dagger_v1_service_proto_msgTypes[29]
+	mi := &file_dagger_v1_service_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2367,7 +2620,7 @@ func (x *SearchHit) String() string {
 func (*SearchHit) ProtoMessage() {}
 
 func (x *SearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[29]
+	mi := &file_dagger_v1_service_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2380,7 +2633,7 @@ func (x *SearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchHit.ProtoReflect.Descriptor instead.
 func (*SearchHit) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{29}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *SearchHit) GetNode() *Node {
@@ -2415,7 +2668,7 @@ type CreateProjectRequest struct {
 
 func (x *CreateProjectRequest) Reset() {
 	*x = CreateProjectRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[30]
+	mi := &file_dagger_v1_service_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2427,7 +2680,7 @@ func (x *CreateProjectRequest) String() string {
 func (*CreateProjectRequest) ProtoMessage() {}
 
 func (x *CreateProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[30]
+	mi := &file_dagger_v1_service_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2440,7 +2693,7 @@ func (x *CreateProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProjectRequest.ProtoReflect.Descriptor instead.
 func (*CreateProjectRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{30}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CreateProjectRequest) GetRequestId() string {
@@ -2482,7 +2735,7 @@ type CreateProjectResponse struct {
 
 func (x *CreateProjectResponse) Reset() {
 	*x = CreateProjectResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[31]
+	mi := &file_dagger_v1_service_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2494,7 +2747,7 @@ func (x *CreateProjectResponse) String() string {
 func (*CreateProjectResponse) ProtoMessage() {}
 
 func (x *CreateProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[31]
+	mi := &file_dagger_v1_service_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2507,7 +2760,7 @@ func (x *CreateProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProjectResponse.ProtoReflect.Descriptor instead.
 func (*CreateProjectResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{31}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CreateProjectResponse) GetProject() *Project {
@@ -2528,7 +2781,7 @@ type GetProjectRequest struct {
 
 func (x *GetProjectRequest) Reset() {
 	*x = GetProjectRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[32]
+	mi := &file_dagger_v1_service_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2540,7 +2793,7 @@ func (x *GetProjectRequest) String() string {
 func (*GetProjectRequest) ProtoMessage() {}
 
 func (x *GetProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[32]
+	mi := &file_dagger_v1_service_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2553,7 +2806,7 @@ func (x *GetProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProjectRequest.ProtoReflect.Descriptor instead.
 func (*GetProjectRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{32}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetProjectRequest) GetProject() string {
@@ -2574,7 +2827,7 @@ type GetProjectResponse struct {
 
 func (x *GetProjectResponse) Reset() {
 	*x = GetProjectResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[33]
+	mi := &file_dagger_v1_service_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2586,7 +2839,7 @@ func (x *GetProjectResponse) String() string {
 func (*GetProjectResponse) ProtoMessage() {}
 
 func (x *GetProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[33]
+	mi := &file_dagger_v1_service_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2599,7 +2852,7 @@ func (x *GetProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProjectResponse.ProtoReflect.Descriptor instead.
 func (*GetProjectResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{33}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetProjectResponse) GetProject() *Project {
@@ -2625,7 +2878,7 @@ type ListProjectsRequest struct {
 
 func (x *ListProjectsRequest) Reset() {
 	*x = ListProjectsRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[34]
+	mi := &file_dagger_v1_service_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2637,7 +2890,7 @@ func (x *ListProjectsRequest) String() string {
 func (*ListProjectsRequest) ProtoMessage() {}
 
 func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[34]
+	mi := &file_dagger_v1_service_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2650,7 +2903,7 @@ func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListProjectsRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{34}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListProjectsRequest) GetIncludeArchived() bool {
@@ -2688,7 +2941,7 @@ type ListProjectsResponse struct {
 
 func (x *ListProjectsResponse) Reset() {
 	*x = ListProjectsResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[35]
+	mi := &file_dagger_v1_service_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2700,7 +2953,7 @@ func (x *ListProjectsResponse) String() string {
 func (*ListProjectsResponse) ProtoMessage() {}
 
 func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[35]
+	mi := &file_dagger_v1_service_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2713,7 +2966,7 @@ func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListProjectsResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{35}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListProjectsResponse) GetProjects() []*Project {
@@ -2743,7 +2996,7 @@ type ArchiveProjectRequest struct {
 
 func (x *ArchiveProjectRequest) Reset() {
 	*x = ArchiveProjectRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[36]
+	mi := &file_dagger_v1_service_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2755,7 +3008,7 @@ func (x *ArchiveProjectRequest) String() string {
 func (*ArchiveProjectRequest) ProtoMessage() {}
 
 func (x *ArchiveProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[36]
+	mi := &file_dagger_v1_service_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2768,7 +3021,7 @@ func (x *ArchiveProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveProjectRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveProjectRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{36}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ArchiveProjectRequest) GetRequestId() string {
@@ -2796,7 +3049,7 @@ type ArchiveProjectResponse struct {
 
 func (x *ArchiveProjectResponse) Reset() {
 	*x = ArchiveProjectResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[37]
+	mi := &file_dagger_v1_service_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2808,7 +3061,7 @@ func (x *ArchiveProjectResponse) String() string {
 func (*ArchiveProjectResponse) ProtoMessage() {}
 
 func (x *ArchiveProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[37]
+	mi := &file_dagger_v1_service_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2821,7 +3074,7 @@ func (x *ArchiveProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveProjectResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveProjectResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{37}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ArchiveProjectResponse) GetProject() *Project {
@@ -2859,7 +3112,7 @@ type ReadyRequest struct {
 
 func (x *ReadyRequest) Reset() {
 	*x = ReadyRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[38]
+	mi := &file_dagger_v1_service_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2871,7 +3124,7 @@ func (x *ReadyRequest) String() string {
 func (*ReadyRequest) ProtoMessage() {}
 
 func (x *ReadyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[38]
+	mi := &file_dagger_v1_service_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2884,7 +3137,7 @@ func (x *ReadyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadyRequest.ProtoReflect.Descriptor instead.
 func (*ReadyRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{38}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ReadyRequest) GetProject() string {
@@ -2956,7 +3209,7 @@ type ReadyResponse struct {
 
 func (x *ReadyResponse) Reset() {
 	*x = ReadyResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[39]
+	mi := &file_dagger_v1_service_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2968,7 +3221,7 @@ func (x *ReadyResponse) String() string {
 func (*ReadyResponse) ProtoMessage() {}
 
 func (x *ReadyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[39]
+	mi := &file_dagger_v1_service_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2981,7 +3234,7 @@ func (x *ReadyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadyResponse.ProtoReflect.Descriptor instead.
 func (*ReadyResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{39}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ReadyResponse) GetNodes() []*Node {
@@ -3035,7 +3288,7 @@ type ClaimNextRequest struct {
 
 func (x *ClaimNextRequest) Reset() {
 	*x = ClaimNextRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[40]
+	mi := &file_dagger_v1_service_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3047,7 +3300,7 @@ func (x *ClaimNextRequest) String() string {
 func (*ClaimNextRequest) ProtoMessage() {}
 
 func (x *ClaimNextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[40]
+	mi := &file_dagger_v1_service_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3060,7 +3313,7 @@ func (x *ClaimNextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimNextRequest.ProtoReflect.Descriptor instead.
 func (*ClaimNextRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{40}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ClaimNextRequest) GetRequestId() string {
@@ -3148,14 +3401,17 @@ type ClaimNextResponse struct {
 	Node *Node `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
 	// The lease. Its id is the fencing token every later write to the node
 	// must carry.
-	Lease         *Lease `protobuf:"bytes,2,opt,name=lease,proto3" json:"lease,omitempty"`
+	Lease *Lease `protobuf:"bytes,2,opt,name=lease,proto3" json:"lease,omitempty"`
+	// How much the claimed node's inputs come to. Unset when nothing was
+	// claimed.
+	Inputs        *InputsHint `protobuf:"bytes,3,opt,name=inputs,proto3" json:"inputs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ClaimNextResponse) Reset() {
 	*x = ClaimNextResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[41]
+	mi := &file_dagger_v1_service_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3167,7 +3423,7 @@ func (x *ClaimNextResponse) String() string {
 func (*ClaimNextResponse) ProtoMessage() {}
 
 func (x *ClaimNextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[41]
+	mi := &file_dagger_v1_service_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3180,7 +3436,7 @@ func (x *ClaimNextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimNextResponse.ProtoReflect.Descriptor instead.
 func (*ClaimNextResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{41}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ClaimNextResponse) GetNode() *Node {
@@ -3193,6 +3449,13 @@ func (x *ClaimNextResponse) GetNode() *Node {
 func (x *ClaimNextResponse) GetLease() *Lease {
 	if x != nil {
 		return x.Lease
+	}
+	return nil
+}
+
+func (x *ClaimNextResponse) GetInputs() *InputsHint {
+	if x != nil {
+		return x.Inputs
 	}
 	return nil
 }
@@ -3213,7 +3476,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[42]
+	mi := &file_dagger_v1_service_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3225,7 +3488,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[42]
+	mi := &file_dagger_v1_service_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3238,7 +3501,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{42}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *HeartbeatRequest) GetRequestId() string {
@@ -3273,7 +3536,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[43]
+	mi := &file_dagger_v1_service_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3285,7 +3548,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[43]
+	mi := &file_dagger_v1_service_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3298,7 +3561,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{43}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *HeartbeatResponse) GetLease() *Lease {
@@ -3326,7 +3589,7 @@ type ReleaseRequest struct {
 
 func (x *ReleaseRequest) Reset() {
 	*x = ReleaseRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[44]
+	mi := &file_dagger_v1_service_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3338,7 +3601,7 @@ func (x *ReleaseRequest) String() string {
 func (*ReleaseRequest) ProtoMessage() {}
 
 func (x *ReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[44]
+	mi := &file_dagger_v1_service_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3351,7 +3614,7 @@ func (x *ReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{44}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ReleaseRequest) GetRequestId() string {
@@ -3393,7 +3656,7 @@ type ReleaseResponse struct {
 
 func (x *ReleaseResponse) Reset() {
 	*x = ReleaseResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[45]
+	mi := &file_dagger_v1_service_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3405,7 +3668,7 @@ func (x *ReleaseResponse) String() string {
 func (*ReleaseResponse) ProtoMessage() {}
 
 func (x *ReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[45]
+	mi := &file_dagger_v1_service_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3418,7 +3681,7 @@ func (x *ReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{45}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ReleaseResponse) GetLease() *Lease {
@@ -3447,7 +3710,7 @@ type WatchEventsRequest struct {
 
 func (x *WatchEventsRequest) Reset() {
 	*x = WatchEventsRequest{}
-	mi := &file_dagger_v1_service_proto_msgTypes[46]
+	mi := &file_dagger_v1_service_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3459,7 +3722,7 @@ func (x *WatchEventsRequest) String() string {
 func (*WatchEventsRequest) ProtoMessage() {}
 
 func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[46]
+	mi := &file_dagger_v1_service_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3472,7 +3735,7 @@ func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchEventsRequest) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{46}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *WatchEventsRequest) GetCursor() string {
@@ -3515,7 +3778,7 @@ type WatchEventsResponse struct {
 
 func (x *WatchEventsResponse) Reset() {
 	*x = WatchEventsResponse{}
-	mi := &file_dagger_v1_service_proto_msgTypes[47]
+	mi := &file_dagger_v1_service_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3527,7 +3790,7 @@ func (x *WatchEventsResponse) String() string {
 func (*WatchEventsResponse) ProtoMessage() {}
 
 func (x *WatchEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_service_proto_msgTypes[47]
+	mi := &file_dagger_v1_service_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3540,7 +3803,7 @@ func (x *WatchEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsResponse.ProtoReflect.Descriptor instead.
 func (*WatchEventsResponse) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_service_proto_rawDescGZIP(), []int{47}
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *WatchEventsResponse) GetEvent() *Event {
@@ -3668,14 +3931,29 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\x0eGetNodeRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
 	"\x04node\x18\x02 \x01(\tR\x04node\x12#\n" +
-	"\x04view\x18\x03 \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"\x93\x02\n" +
+	"\x04view\x18\x03 \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"\xc2\x02\n" +
 	"\x0fGetNodeResponse\x12#\n" +
 	"\x04node\x18\x01 \x01(\v2\x0f.dagger.v1.NodeR\x04node\x12%\n" +
 	"\x05edges\x18\x02 \x03(\v2\x0f.dagger.v1.EdgeR\x05edges\x12)\n" +
 	"\x06result\x18\x03 \x01(\v2\x11.dagger.v1.ResultR\x06result\x12&\n" +
 	"\x05lease\x18\x04 \x01(\v2\x10.dagger.v1.LeaseR\x05lease\x121\n" +
 	"\tartifacts\x18\x05 \x03(\v2\x13.dagger.v1.ArtifactR\tartifacts\x12.\n" +
-	"\bcomments\x18\x06 \x03(\v2\x12.dagger.v1.CommentR\bcomments\"\xba\x02\n" +
+	"\bcomments\x18\x06 \x03(\v2\x12.dagger.v1.CommentR\bcomments\x12-\n" +
+	"\x06inputs\x18\a \x01(\v2\x15.dagger.v1.InputsHintR\x06inputs\"e\n" +
+	"\x10GetInputsRequest\x12\x18\n" +
+	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
+	"\x04node\x18\x02 \x01(\tR\x04node\x12#\n" +
+	"\x04view\x18\x03 \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"=\n" +
+	"\x11GetInputsResponse\x12(\n" +
+	"\x06inputs\x18\x01 \x03(\v2\x10.dagger.v1.InputR\x06inputs\"m\n" +
+	"\x05Input\x12#\n" +
+	"\x04node\x18\x01 \x01(\v2\x0f.dagger.v1.NodeR\x04node\x12)\n" +
+	"\x06result\x18\x02 \x01(\v2\x11.dagger.v1.ResultR\x06result\x12\x14\n" +
+	"\x05bytes\x18\x03 \x01(\x03R\x05bytes\"8\n" +
+	"\n" +
+	"InputsHint\x12\x14\n" +
+	"\x05count\x18\x01 \x01(\x05R\x05count\x12\x14\n" +
+	"\x05bytes\x18\x02 \x01(\x03R\x05bytes\"\xba\x02\n" +
 	"\x10ListNodesRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12)\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x11.dagger.v1.StatusR\x06status\x12\x12\n" +
@@ -3782,10 +4060,11 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\tagent_ref\x18\n" +
 	" \x01(\tR\bagentRef\x12\x1f\n" +
 	"\vsession_ref\x18\v \x01(\tR\n" +
-	"sessionRef\"`\n" +
+	"sessionRef\"\x8f\x01\n" +
 	"\x11ClaimNextResponse\x12#\n" +
 	"\x04node\x18\x01 \x01(\v2\x0f.dagger.v1.NodeR\x04node\x12&\n" +
-	"\x05lease\x18\x02 \x01(\v2\x10.dagger.v1.LeaseR\x05lease\"y\n" +
+	"\x05lease\x18\x02 \x01(\v2\x10.dagger.v1.LeaseR\x05lease\x12-\n" +
+	"\x06inputs\x18\x03 \x01(\v2\x15.dagger.v1.InputsHintR\x06inputs\"y\n" +
 	"\x10HeartbeatRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
@@ -3812,11 +4091,12 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\x10VIEW_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tVIEW_REFS\x10\x01\x12\x10\n" +
 	"\fVIEW_SUMMARY\x10\x02\x12\r\n" +
-	"\tVIEW_FULL\x10\x032\xab\x05\n" +
+	"\tVIEW_FULL\x10\x032\xf3\x05\n" +
 	"\fGraphService\x12I\n" +
 	"\n" +
 	"ApplyPatch\x12\x1c.dagger.v1.ApplyPatchRequest\x1a\x1d.dagger.v1.ApplyPatchResponse\x12@\n" +
 	"\aGetNode\x12\x19.dagger.v1.GetNodeRequest\x1a\x1a.dagger.v1.GetNodeResponse\x12F\n" +
+	"\tGetInputs\x12\x1b.dagger.v1.GetInputsRequest\x1a\x1c.dagger.v1.GetInputsResponse\x12F\n" +
 	"\tListNodes\x12\x1b.dagger.v1.ListNodesRequest\x1a\x1c.dagger.v1.ListNodesResponse\x12@\n" +
 	"\aExplain\x12\x19.dagger.v1.ExplainRequest\x1a\x1a.dagger.v1.ExplainResponse\x12=\n" +
 	"\x06Search\x12\x18.dagger.v1.SearchRequest\x1a\x19.dagger.v1.SearchResponse\x12R\n" +
@@ -3846,7 +4126,7 @@ func file_dagger_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_dagger_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_dagger_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_dagger_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
 var file_dagger_v1_service_proto_goTypes = []any{
 	(View)(0),                      // 0: dagger.v1.View
 	(*ApplyPatchRequest)(nil),      // 1: dagger.v1.ApplyPatchRequest
@@ -3866,60 +4146,64 @@ var file_dagger_v1_service_proto_goTypes = []any{
 	(*ResolveCommentOp)(nil),       // 15: dagger.v1.ResolveCommentOp
 	(*GetNodeRequest)(nil),         // 16: dagger.v1.GetNodeRequest
 	(*GetNodeResponse)(nil),        // 17: dagger.v1.GetNodeResponse
-	(*ListNodesRequest)(nil),       // 18: dagger.v1.ListNodesRequest
-	(*ListNodesResponse)(nil),      // 19: dagger.v1.ListNodesResponse
-	(*ExplainRequest)(nil),         // 20: dagger.v1.ExplainRequest
-	(*ExplainResponse)(nil),        // 21: dagger.v1.ExplainResponse
-	(*Reason)(nil),                 // 22: dagger.v1.Reason
-	(*NotOpenReason)(nil),          // 23: dagger.v1.NotOpenReason
-	(*BlockedReason)(nil),          // 24: dagger.v1.BlockedReason
-	(*LeasedReason)(nil),           // 25: dagger.v1.LeasedReason
-	(*OpenChildReason)(nil),        // 26: dagger.v1.OpenChildReason
-	(*ArchivedReason)(nil),         // 27: dagger.v1.ArchivedReason
-	(*SearchRequest)(nil),          // 28: dagger.v1.SearchRequest
-	(*SearchResponse)(nil),         // 29: dagger.v1.SearchResponse
-	(*SearchHit)(nil),              // 30: dagger.v1.SearchHit
-	(*CreateProjectRequest)(nil),   // 31: dagger.v1.CreateProjectRequest
-	(*CreateProjectResponse)(nil),  // 32: dagger.v1.CreateProjectResponse
-	(*GetProjectRequest)(nil),      // 33: dagger.v1.GetProjectRequest
-	(*GetProjectResponse)(nil),     // 34: dagger.v1.GetProjectResponse
-	(*ListProjectsRequest)(nil),    // 35: dagger.v1.ListProjectsRequest
-	(*ListProjectsResponse)(nil),   // 36: dagger.v1.ListProjectsResponse
-	(*ArchiveProjectRequest)(nil),  // 37: dagger.v1.ArchiveProjectRequest
-	(*ArchiveProjectResponse)(nil), // 38: dagger.v1.ArchiveProjectResponse
-	(*ReadyRequest)(nil),           // 39: dagger.v1.ReadyRequest
-	(*ReadyResponse)(nil),          // 40: dagger.v1.ReadyResponse
-	(*ClaimNextRequest)(nil),       // 41: dagger.v1.ClaimNextRequest
-	(*ClaimNextResponse)(nil),      // 42: dagger.v1.ClaimNextResponse
-	(*HeartbeatRequest)(nil),       // 43: dagger.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),      // 44: dagger.v1.HeartbeatResponse
-	(*ReleaseRequest)(nil),         // 45: dagger.v1.ReleaseRequest
-	(*ReleaseResponse)(nil),        // 46: dagger.v1.ReleaseResponse
-	(*WatchEventsRequest)(nil),     // 47: dagger.v1.WatchEventsRequest
-	(*WatchEventsResponse)(nil),    // 48: dagger.v1.WatchEventsResponse
-	nil,                            // 49: dagger.v1.ApplyPatchResponse.AliasesEntry
-	(*Node)(nil),                   // 50: dagger.v1.Node
-	(*Event)(nil),                  // 51: dagger.v1.Event
-	(Priority)(0),                  // 52: dagger.v1.Priority
-	(AssigneeKind)(0),              // 53: dagger.v1.AssigneeKind
-	(DropReason)(0),                // 54: dagger.v1.DropReason
-	(*Result)(nil),                 // 55: dagger.v1.Result
-	(EdgeKind)(0),                  // 56: dagger.v1.EdgeKind
-	(*Artifact)(nil),               // 57: dagger.v1.Artifact
-	(*Edge)(nil),                   // 58: dagger.v1.Edge
-	(*Lease)(nil),                  // 59: dagger.v1.Lease
-	(*Comment)(nil),                // 60: dagger.v1.Comment
-	(Status)(0),                    // 61: dagger.v1.Status
-	(*Project)(nil),                // 62: dagger.v1.Project
-	(*durationpb.Duration)(nil),    // 63: google.protobuf.Duration
-	(ReleaseReason)(0),             // 64: dagger.v1.ReleaseReason
+	(*GetInputsRequest)(nil),       // 18: dagger.v1.GetInputsRequest
+	(*GetInputsResponse)(nil),      // 19: dagger.v1.GetInputsResponse
+	(*Input)(nil),                  // 20: dagger.v1.Input
+	(*InputsHint)(nil),             // 21: dagger.v1.InputsHint
+	(*ListNodesRequest)(nil),       // 22: dagger.v1.ListNodesRequest
+	(*ListNodesResponse)(nil),      // 23: dagger.v1.ListNodesResponse
+	(*ExplainRequest)(nil),         // 24: dagger.v1.ExplainRequest
+	(*ExplainResponse)(nil),        // 25: dagger.v1.ExplainResponse
+	(*Reason)(nil),                 // 26: dagger.v1.Reason
+	(*NotOpenReason)(nil),          // 27: dagger.v1.NotOpenReason
+	(*BlockedReason)(nil),          // 28: dagger.v1.BlockedReason
+	(*LeasedReason)(nil),           // 29: dagger.v1.LeasedReason
+	(*OpenChildReason)(nil),        // 30: dagger.v1.OpenChildReason
+	(*ArchivedReason)(nil),         // 31: dagger.v1.ArchivedReason
+	(*SearchRequest)(nil),          // 32: dagger.v1.SearchRequest
+	(*SearchResponse)(nil),         // 33: dagger.v1.SearchResponse
+	(*SearchHit)(nil),              // 34: dagger.v1.SearchHit
+	(*CreateProjectRequest)(nil),   // 35: dagger.v1.CreateProjectRequest
+	(*CreateProjectResponse)(nil),  // 36: dagger.v1.CreateProjectResponse
+	(*GetProjectRequest)(nil),      // 37: dagger.v1.GetProjectRequest
+	(*GetProjectResponse)(nil),     // 38: dagger.v1.GetProjectResponse
+	(*ListProjectsRequest)(nil),    // 39: dagger.v1.ListProjectsRequest
+	(*ListProjectsResponse)(nil),   // 40: dagger.v1.ListProjectsResponse
+	(*ArchiveProjectRequest)(nil),  // 41: dagger.v1.ArchiveProjectRequest
+	(*ArchiveProjectResponse)(nil), // 42: dagger.v1.ArchiveProjectResponse
+	(*ReadyRequest)(nil),           // 43: dagger.v1.ReadyRequest
+	(*ReadyResponse)(nil),          // 44: dagger.v1.ReadyResponse
+	(*ClaimNextRequest)(nil),       // 45: dagger.v1.ClaimNextRequest
+	(*ClaimNextResponse)(nil),      // 46: dagger.v1.ClaimNextResponse
+	(*HeartbeatRequest)(nil),       // 47: dagger.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),      // 48: dagger.v1.HeartbeatResponse
+	(*ReleaseRequest)(nil),         // 49: dagger.v1.ReleaseRequest
+	(*ReleaseResponse)(nil),        // 50: dagger.v1.ReleaseResponse
+	(*WatchEventsRequest)(nil),     // 51: dagger.v1.WatchEventsRequest
+	(*WatchEventsResponse)(nil),    // 52: dagger.v1.WatchEventsResponse
+	nil,                            // 53: dagger.v1.ApplyPatchResponse.AliasesEntry
+	(*Node)(nil),                   // 54: dagger.v1.Node
+	(*Event)(nil),                  // 55: dagger.v1.Event
+	(Priority)(0),                  // 56: dagger.v1.Priority
+	(AssigneeKind)(0),              // 57: dagger.v1.AssigneeKind
+	(DropReason)(0),                // 58: dagger.v1.DropReason
+	(*Result)(nil),                 // 59: dagger.v1.Result
+	(EdgeKind)(0),                  // 60: dagger.v1.EdgeKind
+	(*Artifact)(nil),               // 61: dagger.v1.Artifact
+	(*Edge)(nil),                   // 62: dagger.v1.Edge
+	(*Lease)(nil),                  // 63: dagger.v1.Lease
+	(*Comment)(nil),                // 64: dagger.v1.Comment
+	(Status)(0),                    // 65: dagger.v1.Status
+	(*Project)(nil),                // 66: dagger.v1.Project
+	(*durationpb.Duration)(nil),    // 67: google.protobuf.Duration
+	(ReleaseReason)(0),             // 68: dagger.v1.ReleaseReason
 }
 var file_dagger_v1_service_proto_depIdxs = []int32{
 	3,  // 0: dagger.v1.ApplyPatchRequest.ops:type_name -> dagger.v1.PatchOp
 	0,  // 1: dagger.v1.ApplyPatchRequest.view:type_name -> dagger.v1.View
-	50, // 2: dagger.v1.ApplyPatchResponse.nodes:type_name -> dagger.v1.Node
-	49, // 3: dagger.v1.ApplyPatchResponse.aliases:type_name -> dagger.v1.ApplyPatchResponse.AliasesEntry
-	51, // 4: dagger.v1.ApplyPatchResponse.events:type_name -> dagger.v1.Event
+	54, // 2: dagger.v1.ApplyPatchResponse.nodes:type_name -> dagger.v1.Node
+	53, // 3: dagger.v1.ApplyPatchResponse.aliases:type_name -> dagger.v1.ApplyPatchResponse.AliasesEntry
+	55, // 4: dagger.v1.ApplyPatchResponse.events:type_name -> dagger.v1.Event
 	4,  // 5: dagger.v1.PatchOp.create_node:type_name -> dagger.v1.CreateNodeOp
 	5,  // 6: dagger.v1.PatchOp.update_node:type_name -> dagger.v1.UpdateNodeOp
 	7,  // 7: dagger.v1.PatchOp.drop_node:type_name -> dagger.v1.DropNodeOp
@@ -3931,95 +4215,103 @@ var file_dagger_v1_service_proto_depIdxs = []int32{
 	13, // 13: dagger.v1.PatchOp.add_comment:type_name -> dagger.v1.AddCommentOp
 	14, // 14: dagger.v1.PatchOp.edit_comment:type_name -> dagger.v1.EditCommentOp
 	15, // 15: dagger.v1.PatchOp.resolve_comment:type_name -> dagger.v1.ResolveCommentOp
-	52, // 16: dagger.v1.CreateNodeOp.priority:type_name -> dagger.v1.Priority
-	53, // 17: dagger.v1.CreateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	52, // 18: dagger.v1.UpdateNodeOp.priority:type_name -> dagger.v1.Priority
-	53, // 19: dagger.v1.UpdateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	56, // 16: dagger.v1.CreateNodeOp.priority:type_name -> dagger.v1.Priority
+	57, // 17: dagger.v1.CreateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	56, // 18: dagger.v1.UpdateNodeOp.priority:type_name -> dagger.v1.Priority
+	57, // 19: dagger.v1.UpdateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
 	6,  // 20: dagger.v1.UpdateNodeOp.labels:type_name -> dagger.v1.Labels
-	54, // 21: dagger.v1.DropNodeOp.reason:type_name -> dagger.v1.DropReason
-	55, // 22: dagger.v1.CompleteNodeOp.result:type_name -> dagger.v1.Result
-	56, // 23: dagger.v1.AddEdgeOp.kind:type_name -> dagger.v1.EdgeKind
-	56, // 24: dagger.v1.RemoveEdgeOp.kind:type_name -> dagger.v1.EdgeKind
-	57, // 25: dagger.v1.AttachArtifactOp.artifact:type_name -> dagger.v1.Artifact
+	58, // 21: dagger.v1.DropNodeOp.reason:type_name -> dagger.v1.DropReason
+	59, // 22: dagger.v1.CompleteNodeOp.result:type_name -> dagger.v1.Result
+	60, // 23: dagger.v1.AddEdgeOp.kind:type_name -> dagger.v1.EdgeKind
+	60, // 24: dagger.v1.RemoveEdgeOp.kind:type_name -> dagger.v1.EdgeKind
+	61, // 25: dagger.v1.AttachArtifactOp.artifact:type_name -> dagger.v1.Artifact
 	0,  // 26: dagger.v1.GetNodeRequest.view:type_name -> dagger.v1.View
-	50, // 27: dagger.v1.GetNodeResponse.node:type_name -> dagger.v1.Node
-	58, // 28: dagger.v1.GetNodeResponse.edges:type_name -> dagger.v1.Edge
-	55, // 29: dagger.v1.GetNodeResponse.result:type_name -> dagger.v1.Result
-	59, // 30: dagger.v1.GetNodeResponse.lease:type_name -> dagger.v1.Lease
-	57, // 31: dagger.v1.GetNodeResponse.artifacts:type_name -> dagger.v1.Artifact
-	60, // 32: dagger.v1.GetNodeResponse.comments:type_name -> dagger.v1.Comment
-	61, // 33: dagger.v1.ListNodesRequest.status:type_name -> dagger.v1.Status
-	53, // 34: dagger.v1.ListNodesRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	0,  // 35: dagger.v1.ListNodesRequest.view:type_name -> dagger.v1.View
-	50, // 36: dagger.v1.ListNodesResponse.nodes:type_name -> dagger.v1.Node
-	50, // 37: dagger.v1.ExplainResponse.node:type_name -> dagger.v1.Node
-	22, // 38: dagger.v1.ExplainResponse.reasons:type_name -> dagger.v1.Reason
-	23, // 39: dagger.v1.Reason.not_open:type_name -> dagger.v1.NotOpenReason
-	24, // 40: dagger.v1.Reason.blocked:type_name -> dagger.v1.BlockedReason
-	25, // 41: dagger.v1.Reason.leased:type_name -> dagger.v1.LeasedReason
-	26, // 42: dagger.v1.Reason.open_child:type_name -> dagger.v1.OpenChildReason
-	27, // 43: dagger.v1.Reason.archived:type_name -> dagger.v1.ArchivedReason
-	61, // 44: dagger.v1.NotOpenReason.status:type_name -> dagger.v1.Status
-	50, // 45: dagger.v1.BlockedReason.blocker:type_name -> dagger.v1.Node
-	59, // 46: dagger.v1.LeasedReason.lease:type_name -> dagger.v1.Lease
-	50, // 47: dagger.v1.OpenChildReason.child:type_name -> dagger.v1.Node
-	62, // 48: dagger.v1.ArchivedReason.project:type_name -> dagger.v1.Project
-	0,  // 49: dagger.v1.SearchRequest.view:type_name -> dagger.v1.View
-	30, // 50: dagger.v1.SearchResponse.hits:type_name -> dagger.v1.SearchHit
-	50, // 51: dagger.v1.SearchHit.node:type_name -> dagger.v1.Node
-	52, // 52: dagger.v1.CreateProjectRequest.priority:type_name -> dagger.v1.Priority
-	62, // 53: dagger.v1.CreateProjectResponse.project:type_name -> dagger.v1.Project
-	62, // 54: dagger.v1.GetProjectResponse.project:type_name -> dagger.v1.Project
-	62, // 55: dagger.v1.ListProjectsResponse.projects:type_name -> dagger.v1.Project
-	62, // 56: dagger.v1.ArchiveProjectResponse.project:type_name -> dagger.v1.Project
-	53, // 57: dagger.v1.ReadyRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	52, // 58: dagger.v1.ReadyRequest.min_priority:type_name -> dagger.v1.Priority
-	0,  // 59: dagger.v1.ReadyRequest.view:type_name -> dagger.v1.View
-	50, // 60: dagger.v1.ReadyResponse.nodes:type_name -> dagger.v1.Node
-	53, // 61: dagger.v1.ClaimNextRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	52, // 62: dagger.v1.ClaimNextRequest.min_priority:type_name -> dagger.v1.Priority
-	63, // 63: dagger.v1.ClaimNextRequest.wait:type_name -> google.protobuf.Duration
-	63, // 64: dagger.v1.ClaimNextRequest.ttl:type_name -> google.protobuf.Duration
-	50, // 65: dagger.v1.ClaimNextResponse.node:type_name -> dagger.v1.Node
-	59, // 66: dagger.v1.ClaimNextResponse.lease:type_name -> dagger.v1.Lease
-	63, // 67: dagger.v1.HeartbeatRequest.ttl:type_name -> google.protobuf.Duration
-	59, // 68: dagger.v1.HeartbeatResponse.lease:type_name -> dagger.v1.Lease
-	64, // 69: dagger.v1.ReleaseRequest.reason:type_name -> dagger.v1.ReleaseReason
-	59, // 70: dagger.v1.ReleaseResponse.lease:type_name -> dagger.v1.Lease
-	51, // 71: dagger.v1.WatchEventsResponse.event:type_name -> dagger.v1.Event
-	1,  // 72: dagger.v1.GraphService.ApplyPatch:input_type -> dagger.v1.ApplyPatchRequest
-	16, // 73: dagger.v1.GraphService.GetNode:input_type -> dagger.v1.GetNodeRequest
-	18, // 74: dagger.v1.GraphService.ListNodes:input_type -> dagger.v1.ListNodesRequest
-	20, // 75: dagger.v1.GraphService.Explain:input_type -> dagger.v1.ExplainRequest
-	28, // 76: dagger.v1.GraphService.Search:input_type -> dagger.v1.SearchRequest
-	31, // 77: dagger.v1.GraphService.CreateProject:input_type -> dagger.v1.CreateProjectRequest
-	33, // 78: dagger.v1.GraphService.GetProject:input_type -> dagger.v1.GetProjectRequest
-	35, // 79: dagger.v1.GraphService.ListProjects:input_type -> dagger.v1.ListProjectsRequest
-	37, // 80: dagger.v1.GraphService.ArchiveProject:input_type -> dagger.v1.ArchiveProjectRequest
-	39, // 81: dagger.v1.WorkService.Ready:input_type -> dagger.v1.ReadyRequest
-	41, // 82: dagger.v1.WorkService.ClaimNext:input_type -> dagger.v1.ClaimNextRequest
-	43, // 83: dagger.v1.WorkService.Heartbeat:input_type -> dagger.v1.HeartbeatRequest
-	45, // 84: dagger.v1.WorkService.Release:input_type -> dagger.v1.ReleaseRequest
-	47, // 85: dagger.v1.EventService.WatchEvents:input_type -> dagger.v1.WatchEventsRequest
-	2,  // 86: dagger.v1.GraphService.ApplyPatch:output_type -> dagger.v1.ApplyPatchResponse
-	17, // 87: dagger.v1.GraphService.GetNode:output_type -> dagger.v1.GetNodeResponse
-	19, // 88: dagger.v1.GraphService.ListNodes:output_type -> dagger.v1.ListNodesResponse
-	21, // 89: dagger.v1.GraphService.Explain:output_type -> dagger.v1.ExplainResponse
-	29, // 90: dagger.v1.GraphService.Search:output_type -> dagger.v1.SearchResponse
-	32, // 91: dagger.v1.GraphService.CreateProject:output_type -> dagger.v1.CreateProjectResponse
-	34, // 92: dagger.v1.GraphService.GetProject:output_type -> dagger.v1.GetProjectResponse
-	36, // 93: dagger.v1.GraphService.ListProjects:output_type -> dagger.v1.ListProjectsResponse
-	38, // 94: dagger.v1.GraphService.ArchiveProject:output_type -> dagger.v1.ArchiveProjectResponse
-	40, // 95: dagger.v1.WorkService.Ready:output_type -> dagger.v1.ReadyResponse
-	42, // 96: dagger.v1.WorkService.ClaimNext:output_type -> dagger.v1.ClaimNextResponse
-	44, // 97: dagger.v1.WorkService.Heartbeat:output_type -> dagger.v1.HeartbeatResponse
-	46, // 98: dagger.v1.WorkService.Release:output_type -> dagger.v1.ReleaseResponse
-	48, // 99: dagger.v1.EventService.WatchEvents:output_type -> dagger.v1.WatchEventsResponse
-	86, // [86:100] is the sub-list for method output_type
-	72, // [72:86] is the sub-list for method input_type
-	72, // [72:72] is the sub-list for extension type_name
-	72, // [72:72] is the sub-list for extension extendee
-	0,  // [0:72] is the sub-list for field type_name
+	54, // 27: dagger.v1.GetNodeResponse.node:type_name -> dagger.v1.Node
+	62, // 28: dagger.v1.GetNodeResponse.edges:type_name -> dagger.v1.Edge
+	59, // 29: dagger.v1.GetNodeResponse.result:type_name -> dagger.v1.Result
+	63, // 30: dagger.v1.GetNodeResponse.lease:type_name -> dagger.v1.Lease
+	61, // 31: dagger.v1.GetNodeResponse.artifacts:type_name -> dagger.v1.Artifact
+	64, // 32: dagger.v1.GetNodeResponse.comments:type_name -> dagger.v1.Comment
+	21, // 33: dagger.v1.GetNodeResponse.inputs:type_name -> dagger.v1.InputsHint
+	0,  // 34: dagger.v1.GetInputsRequest.view:type_name -> dagger.v1.View
+	20, // 35: dagger.v1.GetInputsResponse.inputs:type_name -> dagger.v1.Input
+	54, // 36: dagger.v1.Input.node:type_name -> dagger.v1.Node
+	59, // 37: dagger.v1.Input.result:type_name -> dagger.v1.Result
+	65, // 38: dagger.v1.ListNodesRequest.status:type_name -> dagger.v1.Status
+	57, // 39: dagger.v1.ListNodesRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	0,  // 40: dagger.v1.ListNodesRequest.view:type_name -> dagger.v1.View
+	54, // 41: dagger.v1.ListNodesResponse.nodes:type_name -> dagger.v1.Node
+	54, // 42: dagger.v1.ExplainResponse.node:type_name -> dagger.v1.Node
+	26, // 43: dagger.v1.ExplainResponse.reasons:type_name -> dagger.v1.Reason
+	27, // 44: dagger.v1.Reason.not_open:type_name -> dagger.v1.NotOpenReason
+	28, // 45: dagger.v1.Reason.blocked:type_name -> dagger.v1.BlockedReason
+	29, // 46: dagger.v1.Reason.leased:type_name -> dagger.v1.LeasedReason
+	30, // 47: dagger.v1.Reason.open_child:type_name -> dagger.v1.OpenChildReason
+	31, // 48: dagger.v1.Reason.archived:type_name -> dagger.v1.ArchivedReason
+	65, // 49: dagger.v1.NotOpenReason.status:type_name -> dagger.v1.Status
+	54, // 50: dagger.v1.BlockedReason.blocker:type_name -> dagger.v1.Node
+	63, // 51: dagger.v1.LeasedReason.lease:type_name -> dagger.v1.Lease
+	54, // 52: dagger.v1.OpenChildReason.child:type_name -> dagger.v1.Node
+	66, // 53: dagger.v1.ArchivedReason.project:type_name -> dagger.v1.Project
+	0,  // 54: dagger.v1.SearchRequest.view:type_name -> dagger.v1.View
+	34, // 55: dagger.v1.SearchResponse.hits:type_name -> dagger.v1.SearchHit
+	54, // 56: dagger.v1.SearchHit.node:type_name -> dagger.v1.Node
+	56, // 57: dagger.v1.CreateProjectRequest.priority:type_name -> dagger.v1.Priority
+	66, // 58: dagger.v1.CreateProjectResponse.project:type_name -> dagger.v1.Project
+	66, // 59: dagger.v1.GetProjectResponse.project:type_name -> dagger.v1.Project
+	66, // 60: dagger.v1.ListProjectsResponse.projects:type_name -> dagger.v1.Project
+	66, // 61: dagger.v1.ArchiveProjectResponse.project:type_name -> dagger.v1.Project
+	57, // 62: dagger.v1.ReadyRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	56, // 63: dagger.v1.ReadyRequest.min_priority:type_name -> dagger.v1.Priority
+	0,  // 64: dagger.v1.ReadyRequest.view:type_name -> dagger.v1.View
+	54, // 65: dagger.v1.ReadyResponse.nodes:type_name -> dagger.v1.Node
+	57, // 66: dagger.v1.ClaimNextRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	56, // 67: dagger.v1.ClaimNextRequest.min_priority:type_name -> dagger.v1.Priority
+	67, // 68: dagger.v1.ClaimNextRequest.wait:type_name -> google.protobuf.Duration
+	67, // 69: dagger.v1.ClaimNextRequest.ttl:type_name -> google.protobuf.Duration
+	54, // 70: dagger.v1.ClaimNextResponse.node:type_name -> dagger.v1.Node
+	63, // 71: dagger.v1.ClaimNextResponse.lease:type_name -> dagger.v1.Lease
+	21, // 72: dagger.v1.ClaimNextResponse.inputs:type_name -> dagger.v1.InputsHint
+	67, // 73: dagger.v1.HeartbeatRequest.ttl:type_name -> google.protobuf.Duration
+	63, // 74: dagger.v1.HeartbeatResponse.lease:type_name -> dagger.v1.Lease
+	68, // 75: dagger.v1.ReleaseRequest.reason:type_name -> dagger.v1.ReleaseReason
+	63, // 76: dagger.v1.ReleaseResponse.lease:type_name -> dagger.v1.Lease
+	55, // 77: dagger.v1.WatchEventsResponse.event:type_name -> dagger.v1.Event
+	1,  // 78: dagger.v1.GraphService.ApplyPatch:input_type -> dagger.v1.ApplyPatchRequest
+	16, // 79: dagger.v1.GraphService.GetNode:input_type -> dagger.v1.GetNodeRequest
+	18, // 80: dagger.v1.GraphService.GetInputs:input_type -> dagger.v1.GetInputsRequest
+	22, // 81: dagger.v1.GraphService.ListNodes:input_type -> dagger.v1.ListNodesRequest
+	24, // 82: dagger.v1.GraphService.Explain:input_type -> dagger.v1.ExplainRequest
+	32, // 83: dagger.v1.GraphService.Search:input_type -> dagger.v1.SearchRequest
+	35, // 84: dagger.v1.GraphService.CreateProject:input_type -> dagger.v1.CreateProjectRequest
+	37, // 85: dagger.v1.GraphService.GetProject:input_type -> dagger.v1.GetProjectRequest
+	39, // 86: dagger.v1.GraphService.ListProjects:input_type -> dagger.v1.ListProjectsRequest
+	41, // 87: dagger.v1.GraphService.ArchiveProject:input_type -> dagger.v1.ArchiveProjectRequest
+	43, // 88: dagger.v1.WorkService.Ready:input_type -> dagger.v1.ReadyRequest
+	45, // 89: dagger.v1.WorkService.ClaimNext:input_type -> dagger.v1.ClaimNextRequest
+	47, // 90: dagger.v1.WorkService.Heartbeat:input_type -> dagger.v1.HeartbeatRequest
+	49, // 91: dagger.v1.WorkService.Release:input_type -> dagger.v1.ReleaseRequest
+	51, // 92: dagger.v1.EventService.WatchEvents:input_type -> dagger.v1.WatchEventsRequest
+	2,  // 93: dagger.v1.GraphService.ApplyPatch:output_type -> dagger.v1.ApplyPatchResponse
+	17, // 94: dagger.v1.GraphService.GetNode:output_type -> dagger.v1.GetNodeResponse
+	19, // 95: dagger.v1.GraphService.GetInputs:output_type -> dagger.v1.GetInputsResponse
+	23, // 96: dagger.v1.GraphService.ListNodes:output_type -> dagger.v1.ListNodesResponse
+	25, // 97: dagger.v1.GraphService.Explain:output_type -> dagger.v1.ExplainResponse
+	33, // 98: dagger.v1.GraphService.Search:output_type -> dagger.v1.SearchResponse
+	36, // 99: dagger.v1.GraphService.CreateProject:output_type -> dagger.v1.CreateProjectResponse
+	38, // 100: dagger.v1.GraphService.GetProject:output_type -> dagger.v1.GetProjectResponse
+	40, // 101: dagger.v1.GraphService.ListProjects:output_type -> dagger.v1.ListProjectsResponse
+	42, // 102: dagger.v1.GraphService.ArchiveProject:output_type -> dagger.v1.ArchiveProjectResponse
+	44, // 103: dagger.v1.WorkService.Ready:output_type -> dagger.v1.ReadyResponse
+	46, // 104: dagger.v1.WorkService.ClaimNext:output_type -> dagger.v1.ClaimNextResponse
+	48, // 105: dagger.v1.WorkService.Heartbeat:output_type -> dagger.v1.HeartbeatResponse
+	50, // 106: dagger.v1.WorkService.Release:output_type -> dagger.v1.ReleaseResponse
+	52, // 107: dagger.v1.EventService.WatchEvents:output_type -> dagger.v1.WatchEventsResponse
+	93, // [93:108] is the sub-list for method output_type
+	78, // [78:93] is the sub-list for method input_type
+	78, // [78:78] is the sub-list for extension type_name
+	78, // [78:78] is the sub-list for extension extendee
+	0,  // [0:78] is the sub-list for field type_name
 }
 
 func init() { file_dagger_v1_service_proto_init() }
@@ -4042,7 +4334,7 @@ func file_dagger_v1_service_proto_init() {
 		(*PatchOp_ResolveComment)(nil),
 	}
 	file_dagger_v1_service_proto_msgTypes[4].OneofWrappers = []any{}
-	file_dagger_v1_service_proto_msgTypes[21].OneofWrappers = []any{
+	file_dagger_v1_service_proto_msgTypes[25].OneofWrappers = []any{
 		(*Reason_NotOpen)(nil),
 		(*Reason_Blocked)(nil),
 		(*Reason_Leased)(nil),
@@ -4055,7 +4347,7 @@ func file_dagger_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dagger_v1_service_proto_rawDesc), len(file_dagger_v1_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   49,
+			NumMessages:   53,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

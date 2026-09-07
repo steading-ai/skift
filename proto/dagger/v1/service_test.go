@@ -30,7 +30,7 @@ var referenceFields = map[string][]string{
 // readOnly are the methods that write nothing and so need no idempotency
 // key. Every other method is a mutation.
 var readOnly = map[string]bool{
-	"GetNode": true, "ListNodes": true, "Explain": true, "Search": true,
+	"GetNode": true, "GetInputs": true, "ListNodes": true, "Explain": true, "Search": true,
 	"GetProject": true, "ListProjects": true, "Ready": true, "WatchEvents": true,
 }
 
@@ -212,7 +212,7 @@ var _ = Describe("service.proto", func() {
 
 	It("defines every service and RPC the work order names", func() {
 		want := map[string][]string{
-			"GraphService": {"ApplyPatch", "GetNode", "ListNodes", "Explain", "Search",
+			"GraphService": {"ApplyPatch", "GetNode", "GetInputs", "ListNodes", "Explain", "Search",
 				"CreateProject", "GetProject", "ListProjects", "ArchiveProject"},
 			"WorkService":  {"Ready", "ClaimNext", "Heartbeat", "Release"},
 			"EventService": {"WatchEvents"},

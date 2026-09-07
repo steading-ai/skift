@@ -62,6 +62,8 @@ const (
 	GraphServiceApplyPatchProcedure = "/dagger.v1.GraphService/ApplyPatch"
 	// GraphServiceGetNodeProcedure is the fully-qualified name of the GraphService's GetNode RPC.
 	GraphServiceGetNodeProcedure = "/dagger.v1.GraphService/GetNode"
+	// GraphServiceGetInputsProcedure is the fully-qualified name of the GraphService's GetInputs RPC.
+	GraphServiceGetInputsProcedure = "/dagger.v1.GraphService/GetInputs"
 	// GraphServiceListNodesProcedure is the fully-qualified name of the GraphService's ListNodes RPC.
 	GraphServiceListNodesProcedure = "/dagger.v1.GraphService/ListNodes"
 	// GraphServiceExplainProcedure is the fully-qualified name of the GraphService's Explain RPC.
@@ -100,6 +102,11 @@ type GraphServiceClient interface {
 	ApplyPatch(context.Context, *connect.Request[v1.ApplyPatchRequest]) (*connect.Response[v1.ApplyPatchResponse], error)
 	// GetNode returns one node with the relations and content attached to it.
 	GetNode(context.Context, *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error)
+	// GetInputs returns the results of the predecessors that satisfy a node:
+	// what a downstream agent assembles its context from. GetNode carries
+	// only a hint of their size, so a caller pays for them when it wants
+	// them.
+	GetInputs(context.Context, *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error)
 	// ListNodes pages through the nodes of one project, filtered.
 	ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error)
 	// Explain says why a node is not ready, as structured reasons. A node
@@ -142,6 +149,12 @@ func NewGraphServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+GraphServiceGetNodeProcedure,
 			connect.WithSchema(graphServiceMethods.ByName("GetNode")),
+			connect.WithClientOptions(opts...),
+		),
+		getInputs: connect.NewClient[v1.GetInputsRequest, v1.GetInputsResponse](
+			httpClient,
+			baseURL+GraphServiceGetInputsProcedure,
+			connect.WithSchema(graphServiceMethods.ByName("GetInputs")),
 			connect.WithClientOptions(opts...),
 		),
 		listNodes: connect.NewClient[v1.ListNodesRequest, v1.ListNodesResponse](
@@ -193,6 +206,7 @@ func NewGraphServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 type graphServiceClient struct {
 	applyPatch     *connect.Client[v1.ApplyPatchRequest, v1.ApplyPatchResponse]
 	getNode        *connect.Client[v1.GetNodeRequest, v1.GetNodeResponse]
+	getInputs      *connect.Client[v1.GetInputsRequest, v1.GetInputsResponse]
 	listNodes      *connect.Client[v1.ListNodesRequest, v1.ListNodesResponse]
 	explain        *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
 	search         *connect.Client[v1.SearchRequest, v1.SearchResponse]
@@ -210,6 +224,11 @@ func (c *graphServiceClient) ApplyPatch(ctx context.Context, req *connect.Reques
 // GetNode calls dagger.v1.GraphService.GetNode.
 func (c *graphServiceClient) GetNode(ctx context.Context, req *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error) {
 	return c.getNode.CallUnary(ctx, req)
+}
+
+// GetInputs calls dagger.v1.GraphService.GetInputs.
+func (c *graphServiceClient) GetInputs(ctx context.Context, req *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error) {
+	return c.getInputs.CallUnary(ctx, req)
 }
 
 // ListNodes calls dagger.v1.GraphService.ListNodes.
@@ -255,6 +274,11 @@ type GraphServiceHandler interface {
 	ApplyPatch(context.Context, *connect.Request[v1.ApplyPatchRequest]) (*connect.Response[v1.ApplyPatchResponse], error)
 	// GetNode returns one node with the relations and content attached to it.
 	GetNode(context.Context, *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error)
+	// GetInputs returns the results of the predecessors that satisfy a node:
+	// what a downstream agent assembles its context from. GetNode carries
+	// only a hint of their size, so a caller pays for them when it wants
+	// them.
+	GetInputs(context.Context, *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error)
 	// ListNodes pages through the nodes of one project, filtered.
 	ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error)
 	// Explain says why a node is not ready, as structured reasons. A node
@@ -293,6 +317,12 @@ func NewGraphServiceHandler(svc GraphServiceHandler, opts ...connect.HandlerOpti
 		GraphServiceGetNodeProcedure,
 		svc.GetNode,
 		connect.WithSchema(graphServiceMethods.ByName("GetNode")),
+		connect.WithHandlerOptions(opts...),
+	)
+	graphServiceGetInputsHandler := connect.NewUnaryHandler(
+		GraphServiceGetInputsProcedure,
+		svc.GetInputs,
+		connect.WithSchema(graphServiceMethods.ByName("GetInputs")),
 		connect.WithHandlerOptions(opts...),
 	)
 	graphServiceListNodesHandler := connect.NewUnaryHandler(
@@ -343,6 +373,8 @@ func NewGraphServiceHandler(svc GraphServiceHandler, opts ...connect.HandlerOpti
 			graphServiceApplyPatchHandler.ServeHTTP(w, r)
 		case GraphServiceGetNodeProcedure:
 			graphServiceGetNodeHandler.ServeHTTP(w, r)
+		case GraphServiceGetInputsProcedure:
+			graphServiceGetInputsHandler.ServeHTTP(w, r)
 		case GraphServiceListNodesProcedure:
 			graphServiceListNodesHandler.ServeHTTP(w, r)
 		case GraphServiceExplainProcedure:
@@ -372,6 +404,10 @@ func (UnimplementedGraphServiceHandler) ApplyPatch(context.Context, *connect.Req
 
 func (UnimplementedGraphServiceHandler) GetNode(context.Context, *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.GetNode is not implemented"))
+}
+
+func (UnimplementedGraphServiceHandler) GetInputs(context.Context, *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.GetInputs is not implemented"))
 }
 
 func (UnimplementedGraphServiceHandler) ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error) {

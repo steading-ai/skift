@@ -38,6 +38,11 @@ service GraphService {
   rpc ApplyPatch(ApplyPatchRequest) returns (ApplyPatchResponse);
   // GetNode returns one node with the relations and content attached to it.
   rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  // GetInputs returns the results of the predecessors that satisfy a node:
+  // what a downstream agent assembles its context from. GetNode carries
+  // only a hint of their size, so a caller pays for them when it wants
+  // them.
+  rpc GetInputs(GetInputsRequest) returns (GetInputsResponse);
   // ListNodes pages through the nodes of one project, filtered.
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   // Explain says why a node is not ready, as structured reasons. A node
@@ -360,6 +365,57 @@ message GetNodeResponse {
   repeated Artifact artifacts = 5;
   // Comments on the node, oldest first.
   repeated Comment comments = 6;
+  // How much the node's inputs come to. The bodies themselves are
+  // GetInputs's to return.
+  InputsHint inputs = 7;
+}
+
+// GetInputsRequest names the node whose inputs to read.
+message GetInputsRequest {
+  // The project a bare "#7" reference resolves in, by slug, org/slug, or
+  // id. Optional when the node reference carries its own project.
+  string project = 1;
+  // Node reference of the node whose inputs to read.
+  string node = 2;
+  // How much of each input to return. Defaults to VIEW_FULL: this is the
+  // read whose purpose is the predecessors' results. A narrower view
+  // leaves the result out and keeps each input's size, so a caller facing
+  // more than it wants at once can fetch one predecessor at a time
+  // through GetNode.
+  View view = 3;
+}
+
+// GetInputsResponse is what a node depends on, ordered by project and then
+// number. Inputs are not transitive: a predecessor's own inputs were its
+// concern, and its result is the summary it owes whoever comes next.
+message GetInputsResponse {
+  // One entry per predecessor that satisfies the node.
+  repeated Input inputs = 1;
+}
+
+// Input is one satisfied blocking predecessor as a downstream agent reads
+// it. A predecessor still open does not satisfy anything and is not an
+// input; a dropped one is, carrying no result, because a drop satisfies
+// the dependency without producing anything.
+message Input {
+  // The predecessor, projected through the request's view.
+  Node node = 1;
+  // What it completed with, and the artifacts it attached. Carried under
+  // VIEW_FULL alone.
+  Result result = 2;
+  // Size of the result body in bytes, whatever the view. Zero when the
+  // predecessor has no result.
+  int64 bytes = 3;
+}
+
+// InputsHint is how much a node's inputs come to without carrying them:
+// two integers, enough to decide whether to spend a GetInputs call on
+// them. Responses that hand a node to whoever will work it carry one.
+message InputsHint {
+  // How many of the node's satisfied predecessors have a result.
+  int32 count = 1;
+  // Total size of those result bodies in bytes.
+  int64 bytes = 2;
 }
 
 // ListNodesRequest pages through one project's nodes.
@@ -634,6 +690,9 @@ message ClaimNextResponse {
   // The lease. Its id is the fencing token every later write to the node
   // must carry.
   Lease lease = 2;
+  // How much the claimed node's inputs come to. Unset when nothing was
+  // claimed.
+  InputsHint inputs = 3;
 }
 
 // HeartbeatRequest renews a lease.

@@ -14,6 +14,7 @@ dg ready                          # what can be worked now, most urgent then old
 dg ready --assignee-kind user     # what is waiting on a human
 dg ready --kind bug --min-priority p1 --label backend
 dg node show '#7'                 # one node: body, edges, result, lease, artifacts, comments
+dg inputs '#7'                    # the results of the predecessors #7 depends on
 dg node list                      # the project's nodes, filtered
 dg explain '#7'                   # why it is not ready; no reasons means it is
 dg search 'socket "permission denied" -legacy'
@@ -31,6 +32,15 @@ references and flags alone.
 `-excluded`, and `OR`. It covers node titles, bodies, results and comments
 across every project you can read unless `--project` narrows it, and skips
 archived projects unless `--include-archived`.
+
+`inputs` is the handoff: one entry per predecessor that satisfies the node,
+with the result it completed with and the artifacts it attached. `node show`
+never returns it — a node's own result is not its predecessors' — and instead
+reports `inputs.count` and `inputs.bytes`, the same hint `claim` carries, so
+you can decide whether to fetch. `--view summary` gives references, titles and
+per-entry sizes with no bodies, for reading a large handoff one predecessor at
+a time. An open predecessor is not an input; a dropped one is listed with no
+result; inputs are not transitive.
 
 `explain` returns structured reasons — blocking nodes, a live lease and its
 expiry, waiting on a user — not prose. Prefer it over inferring from `show`.

@@ -377,6 +377,22 @@ func toStruct(raw []byte) (*structpb.Struct, error) {
 	return s, nil
 }
 
+// toInputsHint renders the two integers a response carries beside a node
+// so a caller knows its inputs exist and how much reading them would
+// cost.
+func toInputsHint(h domain.InputsHint) *daggerv1.InputsHint {
+	return &daggerv1.InputsHint{Count: int32(h.Count), Bytes: h.Bytes} //nolint:gosec // a node's predecessor count is bounded by the graph
+}
+
+// resultBytes is the size of a result body, and zero for a predecessor
+// that has none.
+func resultBytes(r *domain.StoredResult) int64 {
+	if r == nil {
+		return 0
+	}
+	return int64(len(r.Body))
+}
+
 func toResult(r *domain.StoredResult, artifacts []domain.StoredArtifact) (*daggerv1.Result, error) {
 	if r == nil {
 		return nil, nil

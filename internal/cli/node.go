@@ -46,6 +46,47 @@ func (a *app) nodeShow() *cobra.Command {
 	return cmd
 }
 
+func (a *app) inputsCommand() *cobra.Command {
+	view := viewFlag{def: daggerv1.View_VIEW_FULL}
+	cmd := &cobra.Command{
+		Use:   "inputs <ref>",
+		Short: "Show the results of the predecessors a node depends on",
+		Long: `Show what a node depends on: one entry per predecessor that satisfies it,
+with the result it completed with and the artifacts it attached. This is
+what a downstream agent assembles its context from, and "dg node show"
+never returns it: a node's own result is not its predecessors'.
+
+A predecessor still open satisfies nothing and is not an input; "dg
+explain" says what a node is waiting on. A dropped one is listed with no
+result. Inputs are not transitive.
+
+With --view summary each entry is its reference, title and the size of its
+result, so a large handoff can be read one predecessor at a time with "dg
+node show".`,
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, ref, err := a.nodeArg(args[0])
+			if err != nil {
+				return err
+			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
+			c, err := a.connect()
+			if err != nil {
+				return err
+			}
+			return send(a, cmd, func() (*daggerv1.GetInputsResponse, error) {
+				res, err := c.Graph.GetInputs(cmd.Context(), connect.NewRequest(&daggerv1.GetInputsRequest{Project: project, Node: ref, View: v}))
+				return unwrap(res, err)
+			})
+		},
+	}
+	view.bind(cmd)
+	return cmd
+}
+
 func (a *app) nodeList() *cobra.Command {
 	var f nodeFilters
 	var status, parent string

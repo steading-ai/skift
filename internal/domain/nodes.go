@@ -127,6 +127,9 @@ type NodeView struct {
 	Artifacts []StoredArtifact
 	// Comments are the node's comments, oldest first, with revisions.
 	Comments []CommentHistory
+	// Inputs is how much the node's inputs come to. The results
+	// themselves are [ReadInputs]'s to return.
+	Inputs InputsHint
 }
 
 // GetNode returns the node ref names with its relations and content.
@@ -189,6 +192,9 @@ func readNode(ctx context.Context, tx store.Tx, orgID, nodeID string) (*NodeView
 		return nil, err
 	}
 	if v.Comments, err = Comments(ctx, tx, orgID, nodeID, 0, 0); err != nil {
+		return nil, err
+	}
+	if v.Inputs, err = InputsSize(ctx, tx, orgID, nodeID); err != nil {
 		return nil, err
 	}
 	return v, nil

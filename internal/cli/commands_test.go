@@ -570,6 +570,41 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
+	Describe("dg inputs", func() {
+		It("prints the same JSON the RPC returned, and asks for the full view by default", func() {
+			s.newNode("Alpha")
+			s.newNode("Beta")
+			s.newNode("Gamma")
+
+			By(`when I run "dg inputs 'platform#3'"`)
+			r := run(nil, "inputs", "platform#3")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+
+			By("then the reference is sent as written, in the full view")
+			req := last[*daggerv1.GetInputsRequest](s)
+			Expect(req.GetNode()).To(Equal("platform#3"))
+			Expect(req.GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+
+			By("and stdout is the response the RPC gives for the same request")
+			c, err := client.New(client.Config{Socket: socket})
+			Expect(err).NotTo(HaveOccurred())
+			res, err := c.Graph.GetInputs(GinkgoT().Context(), connect.NewRequest(&daggerv1.GetInputsRequest{Node: "platform#3"}))
+			Expect(err).NotTo(HaveOccurred())
+			expected, err := codec.Marshal(res.Msg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(r.stdout.String())).To(Equal(string(expected)))
+			Expect(res.Msg.GetInputs()).To(HaveLen(2))
+			Expect(r.stdout.String()).To(ContainSubstring("result of Alpha"))
+
+			By("and --view summary is sent as asked")
+			Expect(run(nil, "inputs", "platform#3", "--view", "summary").code).To(Equal(0))
+			Expect(last[*daggerv1.GetInputsRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+
+			By("and a bare reference needs a project, as every other command does")
+			Expect(run(nil, "inputs", "#3").code).To(Equal(cli.ExitUsage))
+		})
+	})
+
 	Describe("configuration", func() {
 		It("reads the socket and project from the config file and the environment", func() {
 			s.newNode("Configured")

@@ -154,6 +154,17 @@ func (g *Service) Explain(ctx context.Context, orgID, project, ref string) (*Exp
 	return out, err
 }
 
+// GetInputs returns the predecessors that satisfy the node ref names, for
+// actor. See [ReadInputs].
+func (g *Service) GetInputs(ctx context.Context, orgID string, actor Actor, project, ref string) ([]InputState, error) {
+	var out []InputState
+	err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) (err error) {
+		out, err = ReadInputs(ctx, tx, g.pol, orgID, actor, project, ref)
+		return err
+	})
+	return out, err
+}
+
 // Search runs q for actor. See [Search].
 func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q SearchQuery) ([]Hit, error) {
 	var hits []Hit
@@ -193,6 +204,9 @@ func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery
 type ClaimOutcome struct {
 	*Claimed
 	Node *NodeState
+	// Inputs is how much the claimed node's inputs come to, so the
+	// claimant knows they exist without being handed them.
+	Inputs InputsHint
 }
 
 // ClaimNext claims the next ready node matching req, waiting up to
@@ -209,7 +223,8 @@ func (g *Service) ClaimNext(ctx context.Context, orgID string, actor Actor, req 
 			return err
 		}
 		out.Node = &states[0]
-		return nil
+		out.Inputs, err = InputsSize(ctx, tx, orgID, claimed.Node.ID)
+		return err
 	})
 	if err != nil {
 		return nil, err

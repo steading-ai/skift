@@ -67,6 +67,31 @@ func (r *recorder) authorize(ctx context.Context, op, nodeID, projectID string, 
 	return r.policy.Version(), nil
 }
 
+// authorizeRead asks the policy whether the actor may perform a read
+// action on node, and returns a [*Denial] when it refuses. A read writes
+// no event and rolls nothing back, so there is no transaction to audit the
+// refusal in; the caller is told, and that is the whole of it.
+func (r *recorder) authorizeRead(ctx context.Context, action string, node store.Node) error {
+	denial := &Denial{Op: action, NodeID: node.ID, ProjectID: node.ProjectID, PolicyVersion: r.policy.Version()}
+	info, err := r.nodeInfo(ctx, node)
+	if err != nil {
+		denial.Err = &policy.DeniedError{Action: action, Err: err}
+		return denial
+	}
+	in := policy.Input{
+		Principal: policy.Principal{ID: r.actor.PrincipalID, Kind: r.actor.PrincipalKind},
+		Action:    action,
+		Resource:  policy.Resource{Node: info},
+	}
+	if err := r.policy.Authorize(ctx, in); err != nil {
+		if !errors.As(err, &denial.Err) {
+			denial.Err = &policy.DeniedError{Action: action, Err: err}
+		}
+		return denial
+	}
+	return nil
+}
+
 // auditDenial records the denial err carries, if it carries one, in a
 // transaction of its own: the one it ended has rolled back, and a record
 // inside it would have gone with it. Any other error passes through. A
