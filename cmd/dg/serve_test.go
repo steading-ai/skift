@@ -3,6 +3,7 @@ package main_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -101,5 +102,49 @@ var _ = Describe("dg serve", Label("unit"), func() {
 		Expect(string(session.Err.Contents())).To(ContainSubstring("shutdown signal received"))
 		_, err := os.Lstat(socket)
 		Expect(err).To(MatchError(os.ErrNotExist))
+	})
+})
+
+// shutdownRuns is how many SIGTERM cycles the ordering scenario runs. The
+// missing log line was a race, so a single clean exit proves nothing.
+const shutdownRuns = 5
+
+var _ = Describe("dg serve shutdown", Label("unit"), func() {
+	It("The shutdown log line always precedes exit", func() {
+		binary, err := gexec.Build("github.com/ivy/dagger/cmd/dg")
+		Expect(err).NotTo(HaveOccurred())
+		dir := GinkgoT().TempDir()
+
+		for i := range shutdownRuns {
+			By("given dg serve is running with an unreachable database")
+			socket := filepath.Join(dir, fmt.Sprintf("dg%d.sock", i))
+			cmd := exec.Command(binary, "serve",
+				"--socket", socket,
+				"--database-url", unreachableDB,
+				"--shutdown-timeout", "10s")
+			session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				session.Kill().Wait(5 * time.Second)
+			})
+			Eventually(func() error {
+				_, err := os.Lstat(socket)
+				return err
+			}).Should(Succeed(), "run %d: the socket never appeared", i)
+
+			By("when it receives SIGTERM")
+			session.Signal(syscall.SIGTERM)
+
+			By("then it exits zero")
+			Eventually(session, 15*time.Second).Should(gexec.Exit(0), "run %d", i)
+
+			By("and its stderr contains the shutdown line, every time")
+			Expect(string(session.Err.Contents())).
+				To(ContainSubstring("shutdown signal received"), "run %d", i)
+
+			By("and its socket is removed")
+			_, err = os.Lstat(socket)
+			Expect(err).To(MatchError(os.ErrNotExist), "run %d", i)
+		}
 	})
 })

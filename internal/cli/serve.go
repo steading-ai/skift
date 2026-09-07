@@ -179,12 +179,22 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		return fmt.Errorf("dg serve: %w", err)
 	}
 	go announceReady(ctx, pool, log)
+
+	// The shutdown notice is on the shutdown path itself, not in a
+	// goroutine racing the return: the signal cancels serveCtx only once
+	// the line is logged and systemd has been told, and Serve drains only
+	// once serveCtx is cancelled. The order is therefore signal, log,
+	// notify, drain, return, with nothing outstanding when runServe
+	// returns.
+	serveCtx, drain := context.WithCancel(context.WithoutCancel(ctx))
+	defer drain()
 	go func() {
 		<-ctx.Done()
 		log.Info("shutdown signal received")
 		notify(log, sdnotify.Stopping)
+		drain()
 	}()
-	if err := srv.Serve(ctx); err != nil {
+	if err := srv.Serve(serveCtx); err != nil {
 		return fmt.Errorf("dg serve: %w", err)
 	}
 	return nil
