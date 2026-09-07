@@ -160,8 +160,8 @@ type nodeFilters struct {
 }
 
 func (f *nodeFilters) bind(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.kind, "kind", "", "only nodes of this kind")
-	cmd.Flags().StringVar(&f.assigneeKind_, "assignee-kind", "", "only nodes completable by this kind of principal: agent or user")
+	cmd.Flags().StringVar(&f.kind, "kind", "", "only nodes of this kind; free-form, conventionally task, bug, spike, or chore")
+	cmd.Flags().StringVar(&f.assigneeKind_, "assignee-kind", "", "only nodes completable by this kind of principal: agent or user; a user node is a gate")
 	cmd.Flags().StringArrayVarP(&f.labels, "label", "l", nil, "only nodes carrying this label; repeatable")
 }
 

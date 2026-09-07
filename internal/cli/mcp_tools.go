@@ -20,21 +20,24 @@ import (
 // arguments, described for the model that will call it: what the tool is
 // for, when to reach for it, and the syntax its inputs take.
 
-// refSyntax is the reference syntax, stated once and quoted by every tool
-// that takes a reference.
-const refSyntax = `A node reference is "#7" for node 7 of the current project, "slug#7" for
-node 7 of project "slug" in this organization, or "org/slug#7" fully
-qualified. A bare "#7" needs a current project; when none is configured,
-qualify the reference.`
+// priorityIdiom is what the p0-p4 scale means, stated once. Dagger derives
+// nothing from priority but the first sort key of the ready set; see
+// docs/domain-model.md.
+const priorityIdiom = `Priority is p0 to p4, p2 the default: advisory ordering within the ready
+set, not a gate. A backlog where everything is p1 orders by age.`
+
+// kindIdiom is what kind means, stated once.
+const kindIdiom = `kind is a free string dagger never interprets, task the default, bug,
+spike and chore the rest of a conventional, open vocabulary.`
 
 // filterSchema is the filter arguments ready and claim share.
 func filterSchema() map[string]any {
 	return map[string]any{
 		"project":       stringProp("Project to look in, by slug or org/slug. Defaults to the current project."),
-		"kind":          stringProp("Only nodes of this kind, such as task, bug, spike, or chore."),
-		"assignee_kind": enumProp("Only nodes completable by this kind of principal.", enumChoices[daggerv1.AssigneeKind]()),
+		"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
+		"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
 		"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
-		"min_priority":  enumProp("Only nodes at this priority or more urgent.", enumChoices[daggerv1.Priority]()),
+		"min_priority":  enumProp("Only nodes at this priority or more urgent. Advisory ordering, p2 the default: this filters the list, it does not decide what may be worked on.", enumChoices[daggerv1.Priority]()),
 	}
 }
 
@@ -120,13 +123,10 @@ func (s *mcpServer) toolset() []*mcpTool {
 	return []*mcpTool{
 		{
 			name: "search",
-			description: `Search node titles, bodies, results, and comments by text. Use it to find
-work by topic, to check whether something already exists before creating
-it, or to locate a node whose number you do not know. The query is
-PostgreSQL websearch syntax: words, "quoted phrases", -excluded words, and
-OR. Every project the caller may read is searched unless project narrows
-it. Each hit carries a summary of the node and a snippet with the match
-marked; show_node reads the body.`,
+			description: `Search node titles, bodies, results and comments by text, across every
+project you may read unless project narrows it. Hits rank by text match,
+never by priority or readiness: a hit may be blocked, leased or closed,
+and priority is only advisory ordering, p2 the default.`,
 			schema: objectSchema(pageSchema(map[string]any{
 				"query":            stringProp("Search text in websearch syntax, such as: parser \"error handling\" -legacy"),
 				"project":          stringProp("Narrow to one project, by slug or org/slug. Defaults to the current project, or every project when none is configured."),
@@ -168,15 +168,9 @@ marked; show_node reads the body.`,
 		{
 			name: "show_node",
 			description: `Show one node in full: title, body (the prompt for whoever works it),
-status, priority, labels, edges, parent, result if completed, current
-lease if claimed, artifacts, and comments. Use it before starting work on
-a node and whenever you need what a node says rather than a summary.
-
-The response carries the node's own result and never its predecessors'.
-It reports how many inputs the node has and how many bytes they come to;
-the inputs tool returns them.
-
-` + refSyntax,
+status, priority, labels, edges, parent, result, lease, artifacts and
+comments. It carries the node's own result and never its predecessors':
+it reports only how many inputs there are, and inputs returns them.`,
 			schema: objectSchema(map[string]any{
 				"ref":  stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
 				"view": viewProp(daggerv1.View_VIEW_FULL),
@@ -203,23 +197,10 @@ the inputs tool returns them.
 		{
 			name: "inputs",
 			description: `Read the results of the nodes this one depends on: what a predecessor
-produced, and where. Call it after claiming a node, before doing the work:
-this is the handoff, and show_node does not include it. show_node returns
-the node's own result, never its predecessors'; it reports only how many
-inputs there are and how many bytes they come to, and this tool is how you
-get the bodies.
-
-One entry per predecessor that satisfies the node, each with its
-reference, title, status, result and artifacts. A predecessor still open
-satisfies nothing and is not listed; explain says what a node is waiting
-on. A dropped one is listed with no result. Inputs are not transitive: a
-predecessor's result is the summary of its own inputs.
-
-When the hint says the total is more than you want at once, ask for
-view "summary" — references, titles and per-entry sizes, no bodies — and
-read the ones you need with show_node.
-
-` + refSyntax,
+produced, and where. This is the handoff, and show_node does not include it:
+call it after claiming a node and before doing the work. An open
+predecessor satisfies nothing and is not listed, and inputs are not
+transitive.`,
 			schema: objectSchema(map[string]any{
 				"ref":  stringProp(`Node reference of the node whose inputs to read: "#7", "slug#7", or "org/slug#7".`),
 				"view": viewProp(daggerv1.View_VIEW_FULL),
@@ -245,21 +226,16 @@ read the ones you need with show_node.
 		},
 		{
 			name: "node_list",
-			description: `List a project's nodes, filtered by status, kind, label, assignee kind and
-parent, by node number. Use it to triage and to report: what is still
-open, what is done, what a label covers, what hangs under a grouping
-node. It does not tell you what is ready — readiness is derived from
-blockers, leases and open children, and the ready tool answers it. A node
-missing from the ready set is explained by explain.
-
-Every node of the project is in scope, whatever its status, so filter or
-this is the whole backlog. Each node comes back as a summary (reference,
-title, kind, priority, status, labels) and no bodies; show_node reads one.`,
+			description: `List a project's nodes by number, filtered by status, kind, label,
+assignee kind and parent. It does not tell you what is ready: readiness
+is derived from blockers, leases and open children, and ready answers it.
+Every node is in scope whatever its status, so filter or this is the
+whole backlog. Summaries, no bodies.`,
 			schema: objectSchema(pageSchema(map[string]any{
 				"project":       stringProp("Project to list, by slug or org/slug. Defaults to the current project."),
 				"status":        enumProp("Only nodes in this status. Unset means every status, open and closed alike.", enumChoices[daggerv1.Status]()),
 				"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
-				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate.", enumChoices[daggerv1.AssigneeKind]()),
+				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
 				"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
 				"parent":        stringProp(`Only the children of this node, as a node reference such as "#7".`),
 				"view":          viewProp(daggerv1.View_VIEW_SUMMARY),
@@ -306,13 +282,10 @@ title, kind, priority, status, labels) and no bodies; show_node reads one.`,
 		},
 		{
 			name: "explain",
-			description: `Explain why a node is not ready. Each reason names what stands in the way:
-an unfinished blocker (possibly a gate waiting on a person), an open
+			description: `Explain why a node is not ready. Each reason names what stands in the
+way: an unfinished blocker (possibly a gate waiting on a person), an open
 child, a live lease held by someone else, a status other than open, or an
-archived project. No reasons means the node is ready. Use it when a node
-you expected in the ready set is missing, or before waiting on one.
-
-` + refSyntax,
+archived project. No reasons means it is ready.`,
 			schema: objectSchema(map[string]any{
 				"ref": stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
 			}, "ref"),
@@ -332,38 +305,33 @@ you expected in the ready set is missing, or before waiting on one.
 		},
 		{
 			name: "apply_patch",
-			description: `Apply a patch: a list of operations applied in one transaction and
-cycle-checked as a whole. This is the one way to change the graph, and the
-tool to use when decomposing work into several nodes and linking them, or
-for any change the single-purpose tools (complete, comment) do not cover.
+			description: `Apply a patch: operations applied in one transaction, cycle-checked as a
+whole, all or none. The one way to change the graph.
 
-The ops schema gives the shape of every operation: create_node,
-update_node, drop_node, complete_node, reopen_node, add_edge, remove_edge,
-attach_artifact, add_comment, edit_comment, resolve_comment. Wherever one
-names a node, that is an existing node by reference (` + "`#7`, `slug#7`, `org/slug#7`" + `),
-or a node created earlier in the same patch by the alias its create_node
-declared. Aliases are what let one patch build a whole subgraph atomically;
-either every operation applies or none does. Example, creating two nodes
-where the second waits on the first and both hang under existing node #3:
+Operations, each shaped by the ops schema: create_node, update_node,
+drop_node, complete_node, reopen_node, add_edge, remove_edge,
+attach_artifact, add_comment, edit_comment, resolve_comment. Name a node
+by reference (` + "`#7`, `slug#7`, `org/slug#7`" + `) or by an alias a create_node
+declared earlier:
 
   {"ops": [
-    {"create_node": {"alias": "spike", "title": "Spike the parser", "parent": "#3"}},
-    {"create_node": {"alias": "impl", "title": "Implement the parser", "parent": "#3", "blocked_by": ["spike"]}},
+    {"create_node": {"alias": "spike", "title": "Spike it"}},
+    {"create_node": {"alias": "impl", "title": "Do it", "blocked_by": ["spike"]}},
     {"add_edge": {"from": "spike", "to": "impl"}}
   ]}
 
-An add_edge from A to B means A must finish before B is ready. A
-drop_node cascade states the blast radius it accepts, as
-{"cascade": {"max_nodes": 5}}: the server counts the subtree the drop
-would take, counting the node named, and refuses the patch naming the
-real count when it is larger. Read the graph before choosing the number.
+add_edge from A to B means A must finish before B is ready; reverse it and
+nothing errors, you just have the wrong graph. A parent is containment,
+not dependency: a child takes its parent out of the ready set until every
+child closes.
 
-The response lists every node created or changed with its number,
-reference, status, and readiness flags, maps each alias to the reference
-it became, lists under "dropped" the reference of every node a drop took,
-and counts the events written. It never echoes the bodies you sent; ask
-for view "full" to get everything back, events included. A patch touching
-a node you hold a lease on must carry that lease_id.`,
+On create_node and update_node:
+` + kindIdiom + `
+` + priorityIdiom + `
+
+drop_node takes a cascade, {"cascade": {"max_nodes": 5}}, refused naming
+the real count when the subtree is larger. A patch touching a node you
+hold a lease on must carry that lease_id.`,
 			schema: objectSchema(map[string]any{
 				"ops":        opsProperty(),
 				"project":    stringProp("Project the patch applies to and bare references resolve in. Defaults to the current project."),
@@ -398,11 +366,13 @@ a node you hold a lease on must carry that lease_id.`,
 		},
 		{
 			name: "ready",
-			description: `List the ready set: nodes that are open, unblocked, unleased, and have no
-open children, most urgent first and then oldest. Nothing is claimed. Use
-it to see what could be worked on next; use claim to take one. Each node
-is a summary (reference, title, kind, priority, labels); show_node reads
-the body.`,
+			description: `List the ready set: nodes open, unblocked, unleased and with no open
+children, most urgent first and then oldest. Nothing is claimed. Use it
+to see what could be worked on next; use claim to take one. Summaries,
+no bodies.
+
+` + priorityIdiom + `
+It is the first sort key here, and the only thing dagger does with it.`,
 			schema: objectSchema(pageSchema(func() map[string]any {
 				props := filterSchema()
 				props["view"] = viewProp(daggerv1.View_VIEW_SUMMARY)
@@ -433,21 +403,17 @@ the body.`,
 		},
 		{
 			name: "claim",
-			description: `Claim the most urgent ready node matching the filters, under a lease. Use
-it when you are about to do the work: the lease makes the node yours and
-keeps others off it. The response carries the node and its lease; the
-lease id is the fencing token that complete, comment, and apply_patch must
-carry for that node (it is used by default when it is the only one held).
+			description: `Claim the most urgent ready node matching the filters, under a lease
+that makes it yours and keeps others off it. The lease id it
+returns is the fencing token every later write to that node must carry —
+complete, comment and apply_patch alike. Most urgent is priority order,
+which is advisory: p2 is the default, and min_priority filters candidates
+rather than gating them. A node whose assignee_kind is user is a gate,
+satisfied only by a user completing it; the dagger skill says what an
+agent may do with one.
 
-The response also says how many inputs the node has and how many bytes
-they come to: call the inputs tool to read what the work depends on
-before starting it.
-
-The lease is renewed in the background for as long as this session runs,
-so there is no need to call heartbeat yourself. If the session ends before
-you complete the node, the lease is released with reason "crash" and the
-node returns to the ready set. The response is empty when nothing matches;
-wait blocks until something does, up to that long.`,
+The lease is renewed while this session runs, and released as "crash" if
+it ends first.`,
 			schema: objectSchema(func() map[string]any {
 				props := filterSchema()
 				props["wait"] = stringProp(`How long to block for matching work, such as "30s" or "5m". Defaults to returning at once.`)
@@ -502,9 +468,8 @@ wait blocks until something does, up to that long.`,
 		{
 			name: "heartbeat",
 			description: `Renew a lease explicitly. Leases claimed in this session are renewed
-automatically, so this is only needed for a lease claimed elsewhere, or to
-ask for a different TTL. A renewal that fails because the lease is no
-longer live means the node has been reclaimed or expired: claim again
+automatically, so this is only for a lease claimed elsewhere, or a
+different TTL. A renewal that fails means the lease is gone: claim again
 rather than continuing.`,
 			schema: objectSchema(map[string]any{
 				"lease_id": stringProp("The lease to renew. Defaults to the one lease this session holds, if exactly one."),
@@ -536,12 +501,10 @@ rather than continuing.`,
 		{
 			name: "release",
 			description: `End a lease without completing its node, returning the node to the ready
-set for someone else. Give the reason an orchestrator should see: "gate"
-when you filed a gate node and are stepping back to wait on a person,
-"budget" when you stopped at a spending limit, "crash" when the attempt
-failed, "preempted" when told to stop. Do not release a node you have
-finished; complete it instead. Leases still held when this session ends
-are released as "crash" automatically.`,
+set. Give the reason an orchestrator should see: "gate" when you filed a
+gate node and are waiting on a person, "budget" at a limit, "crash" on
+failure, "preempted" when told to stop. Complete a node you finished
+instead.`,
 			schema: objectSchema(map[string]any{
 				"lease_id": stringProp("The lease to release. Defaults to the one lease this session holds, if exactly one."),
 				"reason": enumProp("Why the attempt ended.", shortNames(
@@ -585,12 +548,9 @@ are released as "crash" automatically.`,
 		{
 			name: "complete",
 			description: `Complete a node with a result, under the lease that holds it. The result
-is what downstream agents and people read to build on the work, so say
-what was produced and where: files, commits, decisions, anything left
-undone. The lease is released as part of the same change. Use this when
-the work is done; use release when it is not.
-
-` + refSyntax,
+is what downstream agents read to build on the work, so say what was
+produced and where: files, commits, decisions, what is left undone. The
+lease is released with it; use release when the work is not done.`,
 			schema: objectSchema(map[string]any{
 				"ref":      stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
 				"result":   stringProp("Result body in markdown: what was produced and where."),
@@ -631,11 +591,8 @@ the work is done; use release when it is not.
 		{
 			name: "comment",
 			description: `Add a comment to a node: progress, a question for a person, a finding
-worth keeping on the record. Comments live on the node so any later
-attempt, by any agent or person, can read them. Use it for anything worth
-saying that is not the final result.
-
-` + refSyntax,
+worth keeping. Comments live on the node, so any later attempt by any
+agent or person reads them. Use it for anything that is not the result.`,
 			schema: objectSchema(map[string]any{
 				"ref":         stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
 				"body":        stringProp("Comment body in markdown."),
@@ -677,15 +634,11 @@ saying that is not the final result.
 		},
 		{
 			name: "project_list",
-			description: `List the projects this caller may read, most recently active first, each
-with its slug, title, advisory priority, and node counter (the next node
-number the project will hand out). Use it to find the slug a reference
-needs — "slug#7" is node 7 of project "slug" — and whenever no current
-project is configured, which is when a bare "#7" cannot resolve.
-
-It lists projects, not work: node_list is a project's nodes and ready is
-what could be worked on next. Archived projects, which are read-only, are
-left out unless you ask for them.`,
+			description: `List the projects this caller may read, most recently active first, with
+slug, title, advisory priority and node counter. Use it to find the slug
+a reference needs, and whenever a bare "#7" cannot resolve for want of a
+current project. It lists projects, not work; archived ones are read-only
+and left out unless asked for.`,
 			schema: objectSchema(pageSchema(map[string]any{
 				"include_archived": map[string]any{"type": "boolean", "description": "Also list archived projects, which are read-only."},
 			})),
@@ -704,15 +657,10 @@ left out unless you ask for them.`,
 		},
 		{
 			name: "project_show",
-			description: `Show one project: its slug, title, advisory priority, node counter, and
-when it was archived if it was. Use it to confirm a slug before writing a
-cross-project reference, or to read a project's title and priority.
-
-It returns the project and never its nodes; node_list lists those and
-ready says which are workable. A project is named by slug ("platform"), by
-"org/slug", or by id, and a retired slug still resolves. An unknown one is
-a not-found error naming the slug that did not resolve; project_list shows
-every slug that does.`,
+			description: `Show one project: slug, title, advisory priority, node counter, and when
+it was archived if it was. Use it to confirm a slug before writing a
+cross-project reference. It never returns the project's nodes. A project
+is named by slug, "org/slug", or id, and a retired slug still resolves.`,
 			schema: objectSchema(map[string]any{
 				"project": stringProp(`The project, by slug, org/slug, or id. Defaults to the current project.`),
 			}),
@@ -735,16 +683,14 @@ every slug that does.`,
 		},
 		{
 			name: "project_create",
-			description: `Create a project: a namespace of nodes with its own numbering, starting at
-1. Use it when work belongs to nothing that exists yet; call project_list
-first, because a second project for work that belongs in an existing one
-splits a graph, and edges do not join them back.
+			description: `Create a project: a namespace of nodes numbered from 1. Call
+project_list first: a second project for work that belongs in an existing
+one splits a graph that edges cannot rejoin.
 
-The slug is derived from the title unless you give one, and either way it
-is lowercased and disambiguated on collision — so the slug in the response
-is the one references must use, and assuming it from the title is how a
-cross-project reference silently addresses the wrong project. Priority is
-advisory: dagger never orders projects by it.`,
+The slug is derived from the title unless you give one, then lowercased
+and disambiguated on collision, so the slug in the response is the one
+references must use; assuming it from the title silently addresses the
+wrong project.`,
 			schema: objectSchema(map[string]any{
 				"title":      stringProp("Human-readable name of the project. The slug is derived from it."),
 				"slug":       stringProp("Requested slug. Defaults to one derived from the title; lowercased and disambiguated either way."),

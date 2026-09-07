@@ -394,7 +394,12 @@ claimed here are renewed automatically and released with reason "crash"
 if this session ends before completing; a hard kill leaves them to expire.
 Node references are "#7" in the current project, "slug#7" in another
 project, or "org/slug#7" fully qualified; project_list names the projects
-you may read and the slugs they take.`, project, s.sessionRef),
+you may read and the slugs they take.
+
+Priority is p0 to p4, p2 the default: advisory ordering within a project's
+ready set, never a gate on what may be worked.
+kind is a free string dagger never interprets, task the default and bug,
+spike and chore the rest of the conventional vocabulary.`, project, s.sessionRef),
 	}, nil
 }
 

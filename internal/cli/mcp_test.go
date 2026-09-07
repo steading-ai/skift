@@ -30,6 +30,15 @@ import (
 	"github.com/ivy/dagger/internal/codec"
 )
 
+// toolDescriptionBudget is the ceiling on the tool descriptions taken
+// together. Every one of them is sent on tools/list and sits in the
+// context window for the whole session, so the descriptions carry intent
+// -- what a value means, what a tool does not do -- and the dagger skill
+// carries reference material. The ceiling keeps them a briefing rather
+// than a manual: a description that needs more room is a sign the room
+// belongs in the skill.
+const toolDescriptionBudget = 6000
+
 // mcpSession drives one dg mcp server over its stdio: JSON-RPC requests
 // in, responses matched by id out. The server runs either in-process
 // through cli.Run, or as the built binary when a spec needs to kill it.
@@ -654,6 +663,90 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			By("then name, description, and schema together stay under 12 KB")
 			Expect(len(serialised)).To(BeNumerically("<", 12*1024),
 				"the apply_patch tool definition is %d bytes; it is in every context window that loads dagger", len(serialised))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
+	Describe("Scenario: Tool descriptions say what a value means", func() {
+		It("Tool descriptions say what a value means", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			initialized := m.initialize()
+
+			By("given the tools as the client receives them")
+			tools := m.tools()
+			description := func(tool string) string {
+				GinkgoHelper()
+				Expect(tools).To(HaveKey(tool))
+				return tools[tool]["description"].(string)
+			}
+			property := func(tool, name string) string {
+				GinkgoHelper()
+				props := tools[tool]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+				Expect(props).To(HaveKey(name))
+				return props[name].(map[string]any)["description"].(string)
+			}
+
+			By("then every tool that carries priority calls it advisory, names p2 as the default, and says it does not gate")
+			for _, tool := range []string{"apply_patch", "ready", "claim", "search"} {
+				Expect(description(tool)).To(ContainSubstring("advisory"), "%s does not say priority is advisory", tool)
+				Expect(description(tool)).To(ContainSubstring("p2"), "%s does not name the default priority", tool)
+			}
+			Expect(description("apply_patch")).To(ContainSubstring("not a gate"))
+			Expect(description("ready")).To(ContainSubstring("not a gate"))
+			Expect(property("ready", "min_priority")).To(ContainSubstring("Advisory"))
+			Expect(property("claim", "min_priority")).To(ContainSubstring("Advisory"))
+
+			By("and kind is named free-form with its vocabulary called conventional")
+			Expect(description("apply_patch")).To(ContainSubstring("free string"))
+			Expect(description("apply_patch")).To(ContainSubstring("conventional"))
+			for _, tool := range []string{"ready", "claim", "node_list"} {
+				Expect(property(tool, "kind")).To(ContainSubstring("Free-form"), "%s does not say kind is free-form", tool)
+				Expect(property(tool, "kind")).To(ContainSubstring("conventionally"), "%s does not call the vocabulary conventional", tool)
+			}
+
+			By("and assignee_kind user is named a gate, satisfied only by a user, pointing at the skill")
+			for _, tool := range []string{"ready", "claim", "node_list"} {
+				prop := property(tool, "assignee_kind")
+				Expect(prop).To(ContainSubstring("gate"), "%s does not call a user node a gate", tool)
+				Expect(prop).To(ContainSubstring("only by a user completing it"), "%s does not say how a gate is satisfied", tool)
+				Expect(prop).To(ContainSubstring("skill"), "%s does not point at the gate guidance", tool)
+			}
+			Expect(description("claim")).To(ContainSubstring("gate"))
+			Expect(description("claim")).To(ContainSubstring("skill"))
+
+			By("and apply_patch says which way an edge points and what a child costs the parent")
+			Expect(description("apply_patch")).To(ContainSubstring("must finish before"))
+			Expect(description("apply_patch")).To(ContainSubstring("out of the ready set"))
+
+			By("and claim says the lease id is carried by every later write")
+			Expect(description("claim")).To(ContainSubstring("every later write to that node must carry"))
+
+			By("and the instructions say the same about priority and kind in a line each")
+			instructions := initialized["instructions"].(string)
+			Expect(instructions).To(ContainSubstring("advisory"))
+			Expect(instructions).To(ContainSubstring("p2 the default"))
+			Expect(instructions).To(ContainSubstring("free string"))
+			Expect(instructions).To(ContainSubstring("conventional"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
+	Describe("Scenario: The tool descriptions stay a briefing rather than a manual", func() {
+		It("The tool descriptions stay a briefing rather than a manual", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given every tool description the server advertises")
+			total := 0
+			for name, tool := range m.tools() {
+				Expect(tool["description"]).To(BeAssignableToTypeOf(""), name)
+				total += len(tool["description"].(string))
+			}
+
+			By("then they come to less than the ceiling together")
+			Expect(total).To(BeNumerically("<", toolDescriptionBudget),
+				"the tool descriptions total %d characters against a budget of %d; they are in every context window that loads dagger, so intent belongs here and reference material belongs in the dagger skill",
+				total, toolDescriptionBudget)
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})

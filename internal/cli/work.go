@@ -53,7 +53,7 @@ func (f *claimFlags) bindClaim(cmd *cobra.Command) {
 
 func (f *claimFlags) bindFilters(cmd *cobra.Command) {
 	f.bind(cmd)
-	cmd.Flags().StringVar(&f.minPriority, "min-priority", "", "only nodes at this priority or more urgent: p0 to p4")
+	cmd.Flags().StringVar(&f.minPriority, "min-priority", "", "only nodes at this priority or more urgent: p0 to p4; advisory ordering, so this filters rather than gates")
 }
 
 // waitDuration parses --wait. ok is false when the flag was not given.
