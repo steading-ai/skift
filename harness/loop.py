@@ -466,7 +466,7 @@ class Tail:
         for f in self.files:
             f.write(s)
             f.flush()
-        say(s, end="")
+        print(s, end="", flush=True)
 
     def section(self, title):
         self._emit(f"\n===== {title} =====\n")
