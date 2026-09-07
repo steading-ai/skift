@@ -91,7 +91,7 @@ func readPatch(cmd *cobra.Command, path string) (*daggerv1.ApplyPatchRequest, er
 	}
 	req := &daggerv1.ApplyPatchRequest{}
 	if err := codec.Unmarshal(raw, req); err != nil {
-		return nil, usage("patch is not a dagger.v1.ApplyPatchRequest: %w", err)
+		return nil, decodeUsage(err)
 	}
 	return req, nil
 }

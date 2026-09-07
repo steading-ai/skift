@@ -497,6 +497,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res = m.call("ready", map[string]any{"priority": "p1"})
 			Expect(res.isError).To(BeTrue())
 			Expect(res.text).To(ContainSubstring(`unknown field "priority"`))
+			Expect(res.text).To(ContainSubstring("fields are"))
+			Expect(res.text).To(ContainSubstring("min_priority"))
 
 			res = m.call("release", map[string]any{"lease_id": "01JX", "reason": "bored"})
 			Expect(res.isError).To(BeTrue())
@@ -505,6 +507,30 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res = m.call("release", map[string]any{"reason": "gate"})
 			Expect(res.isError).To(BeTrue())
 			Expect(res.text).To(ContainSubstring("holds no lease"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("teaches a patch the legal values and the legal fields", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			res := m.call("apply_patch", map[string]any{"ops": []any{
+				map[string]any{"create_node": map[string]any{"title": "First"}},
+				map[string]any{"create_node": map[string]any{"title": "Second", "priority": "urgent"}},
+			}})
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring("ops[1]"))
+			legal := strings.Join(codec.EnumNames(daggerv1.Priority(0).Descriptor()), ", ")
+			Expect(legal).NotTo(BeEmpty())
+			Expect(res.text).To(ContainSubstring(`"urgent" is not one of ` + legal))
+
+			res = m.call("apply_patch", map[string]any{"ops": []any{
+				map[string]any{"update_node": map[string]any{"ref": "#1"}},
+			}})
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring("ops[0].update_node"))
+			Expect(res.text).To(ContainSubstring(`unknown field "ref"`))
+			Expect(res.text).To(ContainSubstring("node"))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 

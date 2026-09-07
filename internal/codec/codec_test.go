@@ -165,6 +165,46 @@ var _ = Describe("The JSON enum codec", Label("unit"), func() {
 	})
 })
 
+var _ = Describe("A decode error", Label("unit"), func() {
+	// What the caller needs is the path to the value at fault and the
+	// values or fields the schema allows there. Both come from the
+	// descriptor, so the spec reads them from the descriptor too.
+	decode := func(raw string) error {
+		return codec.Unmarshal([]byte(raw), &daggerv1.ApplyPatchRequest{})
+	}
+
+	It("names the operation, the field, and every legal value of the enum", func() {
+		err := decode(`{"ops": [{"create_node": {"title": "A"}}, {"create_node": {"priority": "high"}}]}`)
+		legal := strings.Join(codec.EnumNames(daggerv1.Priority(0).Descriptor()), ", ")
+		Expect(err).To(MatchError(`ops[1].create_node.priority: "high" is not one of ` + legal))
+	})
+
+	It("names an unknown field and lists the fields of the message it was written on", func() {
+		err := decode(`{"ops": [{"update_node": {"ref": "#1"}}]}`)
+		Expect(err).To(HaveOccurred())
+		fields := (&daggerv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
+		names := make([]string, 0, fields.Len())
+		for i := range fields.Len() {
+			names = append(names, string(fields.Get(i).Name()))
+		}
+		Expect(err).To(MatchError(`ops[0].update_node: unknown field "ref"; fields are ` + strings.Join(names, ", ")))
+	})
+
+	It("says what a field of the wrong type takes", func() {
+		Expect(decode(`{"ops": [{"create_node": {"blocked_by": "#1"}}]}`)).
+			To(MatchError("ops[0].create_node.blocked_by: expected an array of strings"))
+		Expect(decode(`{"ops": [{"create_node": {"title": 7}}]}`)).
+			To(MatchError("ops[0].create_node.title: expected a string"))
+		Expect(decode(`{"ops": {"create_node": {}}}`)).
+			To(MatchError("ops: expected an array of objects"))
+	})
+
+	It("leaves a document that is not JSON to the decoder", func() {
+		Expect(decode(`{"ops": [`)).To(HaveOccurred())
+		Expect(decode(`nonsense`)).To(HaveOccurred())
+	})
+})
+
 // dynamicEnum is one value of an enum known only by its descriptor, so
 // that EnumName can be asked about an enum the spec does not name.
 type dynamicEnum struct {

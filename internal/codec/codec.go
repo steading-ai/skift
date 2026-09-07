@@ -22,6 +22,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // indent is what MarshalIndent indents nested objects by.
@@ -62,7 +63,8 @@ func Unmarshal(raw []byte, m proto.Message) error {
 }
 
 func unmarshal(raw []byte, m proto.Message, opts protojson.UnmarshalOptions) error {
-	canonical, err := rewriteMessage(raw, m.ProtoReflect().Descriptor(), toCanonical)
+	md := m.ProtoReflect().Descriptor()
+	canonical, err := rewriteMessage(raw, md, toCanonical)
 	switch {
 	case err == nil:
 	case !json.Valid(raw):
@@ -72,9 +74,22 @@ func unmarshal(raw []byte, m proto.Message, opts protojson.UnmarshalOptions) err
 	default:
 		// A spelling that names no value of its enum. protojson would
 		// treat it as an absent field and hand back the default.
-		return err
+		return explain(raw, md, opts.DiscardUnknown, err)
 	}
-	return opts.Unmarshal(canonical, m)
+	if err := opts.Unmarshal(canonical, m); err != nil {
+		return explain(raw, md, opts.DiscardUnknown, err)
+	}
+	return nil
+}
+
+// explain replaces a decoder's error with one that names the field at
+// fault and what it takes, when [Diagnose] can find it. What the decoder
+// said stands when nothing in the document explains itself better.
+func explain(raw []byte, md protoreflect.MessageDescriptor, allowUnknown bool, err error) error {
+	if found := (diagnosis{allowUnknown: allowUnknown}).message(raw, md, ""); found != nil {
+		return found
+	}
+	return err
 }
 
 // Name is the codec name Connect negotiates JSON under.

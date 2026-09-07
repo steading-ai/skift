@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/internal/cli"
@@ -133,6 +135,75 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(r.code).To(Equal(cli.ExitUsage))
 			Expect(r.stderrError().Code).To(Equal("invalid_argument"))
 			Expect(r.stderrError().Message).To(ContainSubstring("--project"))
+		})
+	})
+
+	// A decode failure is the caller's next prompt, so it names the
+	// operation at fault and what that field will take. The legal values
+	// and the legal fields come from the descriptor here as they do in the
+	// code, so neither side of the spec is a table that can go stale.
+	Describe("Scenario: An enum error teaches the values", func() {
+		It("An enum error teaches the values", func() {
+			By(`given a patch whose second op has priority "high"`)
+			patch := strings.NewReader(`{"ops": [
+			  {"create_node": {"title": "First"}},
+			  {"create_node": {"title": "Second", "priority": "high"}}
+			]}`)
+
+			By("when it is applied")
+			r := run(patch, "-p", "platform", "patch", "apply", "-")
+
+			By("then the error names ops[1], the field priority, and lists p0 through p4")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			msg := r.stderrError().Message
+			Expect(msg).To(ContainSubstring("ops[1]"))
+			Expect(msg).To(ContainSubstring("priority"))
+			legal := codec.EnumNames(daggerv1.Priority(0).Descriptor())
+			Expect(legal).NotTo(BeEmpty())
+			Expect(msg).To(ContainSubstring(strings.Join(legal, ", ")))
+			for _, value := range legal {
+				Expect(msg).To(ContainSubstring(value))
+			}
+		})
+
+		It("names the operation at fault in a long patch", func() {
+			ops := make([]string, 28)
+			for i := range ops {
+				ops[i] = fmt.Sprintf(`{"update_node": {"node": "#%d", "body": "rewritten"}}`, i+1)
+			}
+			ops[3] = `{"update_node": {"node": "#4", "priority": "urgent"}}`
+			r := run(strings.NewReader(`{"ops": [`+strings.Join(ops, ",")+`]}`), "-p", "platform", "patch", "apply", "-")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(HavePrefix("ops[3].update_node.priority: "))
+		})
+	})
+
+	Describe("Scenario: An unknown field error teaches the fields", func() {
+		It("An unknown field error teaches the fields", func() {
+			By(`given a patch whose op uses "ref" where update_node expects "node"`)
+			patch := strings.NewReader(`{"ops": [{"update_node": {"ref": "#1", "title": "Renamed"}}]}`)
+
+			By("when it is applied")
+			r := run(patch, "-p", "platform", "patch", "apply", "-")
+
+			By(`then the error names "ref" as unknown and lists node, title, body and priority among the legal fields`)
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			msg := r.stderrError().Message
+			Expect(msg).To(ContainSubstring("ops[0].update_node"))
+			Expect(msg).To(ContainSubstring(`unknown field "ref"`))
+			fields := (&daggerv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
+			_, listed, found := strings.Cut(msg, "fields are ")
+			Expect(found).To(BeTrue(), "the error lists the legal fields: %s", msg)
+			for _, name := range []string{"node", "title", "body", "priority"} {
+				Expect(fields.ByName(protoreflect.Name(name))).NotTo(BeNil(), "%s is a field of UpdateNodeOp", name)
+				Expect(listed).To(ContainSubstring(name))
+			}
+		})
+
+		It("says what a mistyped field takes", func() {
+			r := run(strings.NewReader(`{"ops": [{"create_node": {"title": "A", "blocked_by": "#1"}}]}`), "-p", "platform", "patch", "apply", "-")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(Equal("ops[0].create_node.blocked_by: expected an array of strings"))
 		})
 	})
 

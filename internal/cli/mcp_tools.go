@@ -60,7 +60,7 @@ func decodeArgs(raw json.RawMessage, into any) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
-		return usage("arguments: %v", err)
+		return argsError(err, into)
 	}
 	return nil
 }
@@ -270,7 +270,7 @@ a node you hold a lease on must carry that lease_id.`,
 				}
 				req := &daggerv1.ApplyPatchRequest{}
 				if err := codec.Unmarshal(rest, req); err != nil {
-					return nil, usage("arguments are not a dagger.v1.ApplyPatchRequest: %v", err)
+					return nil, decodeUsage(err)
 				}
 				req.View = view
 				if len(req.GetOps()) == 0 {
