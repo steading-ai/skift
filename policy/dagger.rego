@@ -232,36 +232,53 @@ permitted if {
 	input.action == "expire_lease"
 }
 
-# Vetoes apply to every principal, whatever permitted it.
+# Vetoes apply to every principal, whatever permitted it. A veto over a
+# gate says what the refused principal should do instead: a refusal an
+# agent reads is the next move it will make.
 
-# Only a user may complete a gate.
-vetoes contains "only a user principal may complete a gate" if {
+# Only a user may complete a gate. That is the whole of the mechanism:
+# without it, assignee_kind = user is a label.
+vetoes contains msg if {
 	input.action == "complete_node"
 	gate(input.resource.node)
 	input.principal.kind != "user"
+	msg := sprintf("only a user may complete gate %s: a person completes it; comment your recommendation on it and release your lease with reason gate", [input.resource.node.id])
 }
 
-# The principal that filed a gate may not dispose of it: approval must come
-# from someone else, or the gate is theatre.
+# A gate asks a person to do something only a person can do: sign up for a
+# service, mint a token, pay. An agent that filed one may not dispose of it,
+# reclassify it, or unlink it, because each of those routes around the
+# person the gate asks, and the last two do it silently.
+#
+# A user principal is not held to this. A trust zone is the delegation: an
+# agent running under a user's uid is that user principal and acts with the
+# user's authority, so refusing it would refuse the user, and in a
+# one-person organization that is a deadlock rather than a safeguard. An
+# organization wanting approval separated between two humans re-adds these
+# rules unscoped in its own Rego. See
+# docs/adrs/009-the-default-gate-policy-is-notification.md.
 vetoes contains msg if {
 	input.action in {"drop_node", "complete_node"}
 	filed_gate(input.resource.node)
-	msg := sprintf("the principal that filed gate %s may not %s it", [input.resource.node.id, verb[input.action]])
+	input.principal.kind != "user"
+	msg := sprintf("the principal that filed gate %s may not %s it: a person decides it; comment what you found on it and release your lease with reason gate", [input.resource.node.id, verb[input.action]])
 }
 
 vetoes contains msg if {
 	input.action == "update_node"
 	filed_gate(input.resource.node)
+	input.principal.kind != "user"
 	some field in {"assignee", "assignee_kind", "kind"}
 	object.get(input.resource.node, field, null) != object.get(input.after.node, field, null)
-	msg := sprintf("the principal that filed gate %s may not change its %s", [input.resource.node.id, field])
+	msg := sprintf("the principal that filed gate %s may not change its %s: that would take the gate away from the person it asks; comment what you need on it and release your lease with reason gate", [input.resource.node.id, field])
 }
 
 vetoes contains msg if {
 	input.action == "remove_edge"
 	some end in {input.resource.edge.from, input.resource.edge.to}
 	filed_gate(end)
-	msg := sprintf("the principal that filed gate %s may not unlink it", [end.id])
+	input.principal.kind != "user"
+	msg := sprintf("the principal that filed gate %s may not unlink it: your work waits on it until a person completes it; comment what you need on it and release your lease with reason gate", [end.id])
 }
 
 # A comment has one author, and its revisions are that author's words.
@@ -273,11 +290,14 @@ vetoes contains msg if {
 	msg := sprintf("only the author of comment %s may edit it", [input.resource.comment.id])
 }
 
-# A gate is a person's to complete, so it is not an agent's to take.
-vetoes contains "an agent may not claim a gate" if {
+# A gate is a person's to perform, so it is not an agent's to take. A
+# claimed gate leaves the ready set and its lease renews itself, so an
+# agent holding one hides it from the person it is waiting for.
+vetoes contains msg if {
 	input.action == "claim_node"
 	input.principal.kind == "agent"
 	gate(input.resource.node)
+	msg := sprintf("an agent may not claim gate %s: a person performs it; do the preparation in a node of your own that the gate depends on, and leave the gate ready for a person", [input.resource.node.id])
 }
 
 verb := {"drop_node": "drop", "complete_node": "complete"}

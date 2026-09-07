@@ -209,10 +209,12 @@ test_filer_cannot_unlink_its_gate if {
 	not authz.allow with input as remove_edge(agent_a, edge(node9, node7), lease_a)
 }
 
-test_user_filer_cannot_dispose_of_its_gate_either if {
+test_user_filer_disposes_of_its_own_gate if {
 	gate := object.union(node("n14", "n1", "U", node1.lineage), {"assignee_kind": "user"})
-	not authz.allow with input as node_op(user, "drop_node", gate, object.union(gate, {"status": "dropped"}), null)
-	not authz.allow with input as node_op(user, "complete_node", gate, object.union(gate, {"status": "done"}), null)
+	authz.allow with input as node_op(user, "drop_node", gate, object.union(gate, {"status": "dropped"}), null)
+	authz.allow with input as node_op(user, "complete_node", gate, object.union(gate, {"status": "done"}), null)
+	authz.allow with input as node_op(user, "update_node", gate, object.union(gate, {"assignee_kind": "agent"}), null)
+	authz.allow with input as remove_edge(user, edge(gate, node7), null)
 }
 
 test_another_user_disposes_of_a_gate if {
@@ -223,6 +225,25 @@ test_another_user_disposes_of_a_gate if {
 test_agent_cannot_claim_a_gate if {
 	not authz.allow with input as patch(agent_b, "claim_node", {"node": node9, "lease": {"id": "L9", "node_id": "n9", "holder": "B"}}, null, null)
 	authz.allow with input as patch(agent_b, "claim_node", {"node": node8, "lease": {"id": "L8", "node_id": "n8", "holder": "B"}}, null, null)
+}
+
+# Every veto over a gate names the gate and the next move.
+
+test_gate_vetoes_say_what_to_do_instead if {
+	completion := authz.decision with input as node_op(agent_b, "complete_node", node9, object.union(node9, {"status": "done"}), {"id": "L9", "node_id": "n9", "holder": "B"})
+	"only a user may complete gate n9: a person completes it; comment your recommendation on it and release your lease with reason gate" in completion.reasons
+
+	dropped := authz.decision with input as node_op(agent_a, "drop_node", node9, object.union(node9, {"status": "dropped"}), lease_a)
+	"the principal that filed gate n9 may not drop it: a person decides it; comment what you found on it and release your lease with reason gate" in dropped.reasons
+
+	reclassified := authz.decision with input as node_op(agent_a, "update_node", node9, object.union(node9, {"assignee_kind": "agent"}), lease_a)
+	"the principal that filed gate n9 may not change its assignee_kind: that would take the gate away from the person it asks; comment what you need on it and release your lease with reason gate" in reclassified.reasons
+
+	unlinked := authz.decision with input as remove_edge(agent_a, edge(node9, node7), lease_a)
+	"the principal that filed gate n9 may not unlink it: your work waits on it until a person completes it; comment what you need on it and release your lease with reason gate" in unlinked.reasons
+
+	claimed := authz.decision with input as patch(agent_b, "claim_node", {"node": node9, "lease": {"id": "L9", "node_id": "n9", "holder": "B"}}, null, null)
+	"an agent may not claim gate n9: a person performs it; do the preparation in a node of your own that the gate depends on, and leave the gate ready for a person" in claimed.reasons
 }
 
 # Leases.
@@ -303,7 +324,7 @@ test_unknown_action_is_denied if {
 test_decision_carries_reasons if {
 	d := authz.decision with input as node_op(agent_a, "drop_node", node9, object.union(node9, {"status": "dropped"}), lease_a)
 	d.allow == false
-	"the principal that filed gate n9 may not drop it" in d.reasons
+	"the principal that filed gate n9 may not drop it: a person decides it; comment what you found on it and release your lease with reason gate" in d.reasons
 	allowed := authz.decision with input as node_op(agent_a, "update_node", node7, node7, lease_a)
 	allowed == {"allow": true, "reasons": set()}
 }

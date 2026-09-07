@@ -105,8 +105,24 @@ is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
   The server refuses the patch and names the real count when the subtree is
   larger, so read the graph before choosing the number. The response lists every
   reference dropped, which is what a `reopen_node` undoing it works from.
-- **Never claim a node whose `assignee_kind` is `user`.** That is a gate — a
-  decision a human owes, deliberately blocking something.
+- **A node whose `assignee_kind` is `user` is a gate**, and policy refuses an
+  agent that claims one: `an agent may not claim gate 01J…`. A gate is work
+  only a person can perform — signing up for a service, minting a token,
+  paying — and claiming it would take it out of the ready set and hide the ask
+  from the person waiting for it. Completing one is refused for the same
+  reason, as is reclassifying or unlinking a gate you filed yourself.
+  Prepare it instead: the agent work that makes the gate easy is a **separate
+  node the gate depends on**.
+
+  ```
+  "Recommend a hosting provider"   →   "Sign up with the chosen provider"
+     assignee_kind: agent               assignee_kind: user
+  ```
+
+  Two nodes and one `blocks` edge. Claim the recommendation, complete it with
+  what you found, and the person arrives at the gate with your recommendation
+  as its inputs. If you are already holding the work the gate blocks, comment
+  your recommendation on the gate and release with reason `gate`.
 
 ## References
 

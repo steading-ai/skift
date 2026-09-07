@@ -57,6 +57,14 @@ func addEdge(p policy.Principal, from, to policy.Node, lease *policy.Lease) poli
 	return policy.Input{Principal: p, Action: "add_edge", Resource: policy.Resource{Edge: e}, After: &policy.Resource{Edge: e}, Lease: lease}
 }
 
+// claim is a claim_node action on a node, with the lease it would take.
+func claim(p policy.Principal, n policy.Node) policy.Input {
+	return policy.Input{
+		Principal: p, Action: "claim_node",
+		Resource: policy.Resource{Node: &n, Lease: &policy.Lease{ID: "L" + n.ID, NodeID: n.ID, Holder: p.ID}},
+	}
+}
+
 func removeEdge(p policy.Principal, from, to policy.Node, lease *policy.Lease) policy.Input {
 	e := &policy.Edge{From: from, To: to, Kind: "blocks"}
 	return policy.Input{Principal: p, Action: "remove_edge", Resource: policy.Resource{Edge: e}, Lease: lease}
@@ -109,14 +117,14 @@ var _ = Describe("Policy", Label("unit"), func() {
 
 			By("then the operation is denied")
 			Expect(err).To(BeDenied())
-			Expect(err).To(MatchError(ContainSubstring("filed gate n9 may not drop it")))
+			Expect(err).To(MatchError(ContainSubstring("filed gate n9 may not drop it: a person decides it; comment what you found on it and release your lease with reason gate")))
 
 			By("and when agent A completes node 9")
 			err = bundle.Authorize(ctx, nodeOp(agentA, "complete_node", &node9, ptr(withStatus(node9, "done")), leaseA))
 
 			By("then the operation is denied")
 			Expect(err).To(BeDenied())
-			Expect(err).To(MatchError(ContainSubstring("filed gate n9 may not complete it")))
+			Expect(err).To(MatchError(ContainSubstring("filed gate n9 may not complete it: a person decides it; comment what you found on it and release your lease with reason gate")))
 		})
 
 		It("Policy failure is closed", func(ctx SpecContext) {
@@ -209,32 +217,76 @@ var _ = Describe("Policy", Label("unit"), func() {
 			leaseB := &policy.Lease{ID: "L9", NodeID: "n9", Holder: "B"}
 			err := bundle.Authorize(ctx, nodeOp(agentB, "complete_node", &node9, done, leaseB))
 			Expect(err).To(BeDenied())
-			Expect(err).To(MatchError(ContainSubstring("only a user principal may complete a gate")))
+			Expect(err).To(MatchError(ContainSubstring("only a user may complete gate n9: a person completes it; comment your recommendation on it and release your lease with reason gate")))
 			Expect(bundle.Authorize(ctx, nodeOp(policy.Principal{ID: "S", Kind: "service"}, "complete_node", &node9, done, nil))).To(BeDenied())
 		})
 
-		It("The principal that filed a gate may not drop, complete, reassign, reclassify, or unlink it", func(ctx SpecContext) {
-			filer := policy.Principal{ID: "A", Kind: "user"}
-			Expect(bundle.Authorize(ctx, nodeOp(filer, "drop_node", &node9, ptr(withStatus(node9, "dropped")), nil))).To(BeDenied())
-			Expect(bundle.Authorize(ctx, nodeOp(filer, "complete_node", &node9, done, nil))).To(BeDenied())
+		It("An agent may not claim a gate", func(ctx SpecContext) {
+			Expect(bundle.Authorize(ctx, claim(agentB, node9))).To(BeDenied())
+			Expect(bundle.Authorize(ctx, claim(agentB, node8))).To(Succeed(), "an ordinary node is claimable")
+			Expect(bundle.Authorize(ctx, claim(user, node9))).To(Succeed(), "a person may take the gate it will perform")
+		})
+
+		It("An agent that filed a gate may not drop, complete, reassign, reclassify, or unlink it", func(ctx SpecContext) {
+			filer := agentA
+			Expect(bundle.Authorize(ctx, nodeOp(filer, "drop_node", &node9, ptr(withStatus(node9, "dropped")), leaseA))).To(BeDenied())
+			Expect(bundle.Authorize(ctx, nodeOp(filer, "complete_node", &node9, done, leaseA))).To(BeDenied())
 
 			reassigned := node9
 			reassigned.Assignee = ptr("U")
-			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &reassigned, nil))).To(BeDenied())
+			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &reassigned, leaseA))).To(BeDenied())
 			reclassified := node9
 			reclassified.AssigneeKind = ptr("agent")
-			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &reclassified, nil))).To(BeDenied())
+			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &reclassified, leaseA))).To(BeDenied())
 			relabelled := node9
 			relabelled.Kind = "chore"
-			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &relabelled, nil))).To(BeDenied())
-			Expect(bundle.Authorize(ctx, removeEdge(filer, node9, node7, nil))).To(BeDenied())
+			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &relabelled, leaseA))).To(BeDenied())
+			Expect(bundle.Authorize(ctx, removeEdge(filer, node9, node7, leaseA))).To(BeDenied())
 
-			By("while it may still reword it, and another user may dispose of it")
+			By("while it may still reword it, and a user may dispose of it")
 			reworded := node9
 			reworded.Kind = "task"
-			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &reworded, nil))).To(Succeed())
+			Expect(bundle.Authorize(ctx, nodeOp(filer, "update_node", &node9, &reworded, leaseA))).To(Succeed())
 			Expect(bundle.Authorize(ctx, nodeOp(user, "drop_node", &node9, ptr(withStatus(node9, "dropped")), nil))).To(Succeed())
 			Expect(bundle.Authorize(ctx, removeEdge(user, node9, node7, nil))).To(Succeed())
+		})
+
+		It("A user disposes of the gate it filed itself", func(ctx SpecContext) {
+			filed := gate(childOf("n14", node1, user.ID))
+			Expect(bundle.Authorize(ctx, nodeOp(user, "complete_node", &filed, ptr(withStatus(filed, "done")), nil))).To(Succeed())
+			Expect(bundle.Authorize(ctx, nodeOp(user, "drop_node", &filed, ptr(withStatus(filed, "dropped")), nil))).To(Succeed())
+			reclassified := filed
+			reclassified.AssigneeKind = ptr("agent")
+			Expect(bundle.Authorize(ctx, nodeOp(user, "update_node", &filed, &reclassified, nil))).To(Succeed())
+			Expect(bundle.Authorize(ctx, removeEdge(user, filed, node7, nil))).To(Succeed())
+		})
+
+		It("Every veto over a gate names the gate and the next move", func(ctx SpecContext) {
+			leaseB := &policy.Lease{ID: "L9", NodeID: "n9", Holder: "B"}
+			reclassified := node9
+			reclassified.AssigneeKind = ptr("agent")
+			for _, c := range []struct {
+				in     policy.Input
+				reason string
+			}{
+				{nodeOp(agentB, "complete_node", &node9, done, leaseB),
+					"only a user may complete gate n9: a person completes it; comment your recommendation on it and release your lease with reason gate"},
+				{nodeOp(agentA, "complete_node", &node9, done, leaseA),
+					"the principal that filed gate n9 may not complete it: a person decides it; comment what you found on it and release your lease with reason gate"},
+				{nodeOp(agentA, "drop_node", &node9, ptr(withStatus(node9, "dropped")), leaseA),
+					"the principal that filed gate n9 may not drop it: a person decides it; comment what you found on it and release your lease with reason gate"},
+				{nodeOp(agentA, "update_node", &node9, &reclassified, leaseA),
+					"the principal that filed gate n9 may not change its assignee_kind: that would take the gate away from the person it asks; comment what you need on it and release your lease with reason gate"},
+				{removeEdge(agentA, node9, node7, leaseA),
+					"the principal that filed gate n9 may not unlink it: your work waits on it until a person completes it; comment what you need on it and release your lease with reason gate"},
+				{claim(agentB, node9), "an agent may not claim gate n9: a person performs it; do the preparation in a node of your own that the gate depends on, and leave the gate ready for a person"},
+			} {
+				err := bundle.Authorize(ctx, c.in)
+				Expect(err).To(BeDenied(), c.reason)
+				var denied *policy.DeniedError
+				Expect(errors.As(err, &denied)).To(BeTrue())
+				Expect(denied.Reasons).To(ContainElement(c.reason))
+			}
 		})
 	})
 

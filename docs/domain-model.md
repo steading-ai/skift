@@ -255,7 +255,18 @@ A node with `assignee_kind = user`. Policy permits only user principals to compl
 
 **A gate is satisfied only by completion.** Dropping a gate never satisfies the edge out of it, unlike an ordinary node. Without that rule an agent blocked by its own gate could drop it and proceed, which turns the whole mechanism into a formality.
 
-**The requester cannot dispose of its own gate.** Policy forbids the principal that filed a gate from dropping, completing, reassigning, reclassifying, or unlinking it. Approval must come from someone else, or the gate is theatre.
+**An agent cannot dispose of the gate it filed.** Policy forbids a non-user principal that filed a gate from dropping, completing, reassigning, reclassifying, or unlinking it. The last three are what make it hold: flipping `assignee_kind` or removing the edge would route around the gate with no error. Every one of these refusals names the gate and the next move, because a refusal an agent reads is the next thing it acts on.
+
+**A user disposes of its own gates.** The filer rules are scoped to non-user principals. Identity is resolved by the transport, so an agent running under a person's uid is that person's principal and acts with their authority; refusing it would refuse the person, and in a one-person organization that is a deadlock rather than a safeguard. A trust zone is the delegation: running the agent there is the grant, killing it is the revocation. An organization wanting approval separated between two humans re-adds the unscoped filer rules in its own Rego. See [ADR-009](adrs/009-the-default-gate-policy-is-notification.md) and [ADR-006](adrs/006-provenance-not-authority.md).
+
+**Preparation is a separate node the gate depends on.** A gate is a node a human must perform: signing up for a service, minting a token, paying an invoice. The agent work that makes it easy is its own node, and the gate waits on it:
+
+```
+"Recommend a hosting provider"   →   "Sign up with the chosen provider"
+   assignee_kind: agent               assignee_kind: user
+```
+
+Two nodes and one `blocks` edge. The agent claims the recommendation, completes it with its findings, and the gate becomes ready for the person with the recommendation as its inputs. The person arrives at a decision already researched instead of a bare ask. Claiming the gate itself would achieve nothing: an agent may not claim one, because a claimed gate leaves the ready set and its lease renews itself, hiding the ask from the person waiting for it.
 
 Filing a gate and releasing the lease is one atomic operation. Doing it in two calls can strand a lease on a node whose graph has already changed.
 

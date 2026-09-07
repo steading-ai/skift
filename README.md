@@ -21,7 +21,17 @@ scripts/ready.py --all      what cannot, and why
 scripts/ready.py --show 18  the full work order for one node
 ```
 
-An agent works one node at a time from an empty context window: read the work order, read the documents it references, build it, leave `make lint && make test` green. Never claim a node whose assignee is a user.
+An agent works one node at a time from an empty context window: read the work
+order, read the documents it references, build it, leave `make lint && make
+test` green.
+
+A node whose `assignee_kind` is `user` is a gate: work only a person can
+perform, such as minting a token or paying for something. Policy refuses an
+agent principal that claims one, and refuses any non-user principal that
+completes one; a claimed gate would leave the ready set and hide the ask from
+the person waiting for it. The way to help is a node of your own that the gate
+depends on — do the research there, complete it, and the person arrives at the
+gate with your recommendation already in its inputs.
 
 ## Developing
 

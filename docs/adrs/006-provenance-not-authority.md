@@ -57,6 +57,16 @@ Also adopted, and free: node bodies, comments, and results are agent-authored te
 - **Bad**: The trust story depends on consumers reading provenance. An orchestrator that dispatches agent-created nodes without looking is outside dagger's control.
 - **Neutral**: Rate limits are deferred because realistic limits cannot be set across diverse workloads before observing them.
 
+## A trust zone is the delegation mechanism
+
+Delegation requires a server-known grant. The trust zone the agent runs in is that grant, and the transport already resolves it.
+
+Identity is resolved from the connection: a peer uid over the unix socket, a node identity over the tailnet. Every process one unix user runs is therefore one principal. An agent working interactively under a user's uid **is** that user principal, with the user's authority over the whole organization; running it there is the grant, and killing it is the revocation. Its writes are `human_touched` because the user vouches for them by running it under their own identity. Nothing about this is client-assertable: no request can claim it, and the field the proto reserves for delegation (`on_behalf_of`) is still not honoured.
+
+A headless agent runs in its own trust zone — its own unix user or its own tailnet identity — and so has its own principal of kind `agent`. Every gate veto holds against it: it may not complete a gate, claim one, reclassify one, or unlink one, whether or not it filed it. The isolation that makes this true is the consumer's to provide; dagger only reads what the transport gives it. An agent that shares a uid with a person is inside that person's zone by construction, and that is a deployment decision, not a policy bug.
+
+The consequence is that the boundary between what a person may do and what an agent may do is drawn where the process is run, not by a field in a request. Stored delegation grants — a revocable, expiring record permitting a named agent principal to act on a user's authority — remain deferred; see [the roadmap](../roadmap.md) and [ADR-009](009-the-default-gate-policy-is-notification.md) for the gate policy this supports.
+
 ## Responsibility boundary
 
 | Dagger owns | Someone else owns |

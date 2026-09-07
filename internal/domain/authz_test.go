@@ -33,6 +33,27 @@ func gateOf(alias, title, parent string) domain.Op {
 	return domain.Op{CreateNode: &domain.CreateNode{Alias: alias, Title: title, Parent: parent, AssigneeKind: domain.AssigneeUser}}
 }
 
+// rootGate is a create_node operation filing a gate at the root of the
+// project.
+func rootGate(alias, title string) domain.Op {
+	return domain.Op{CreateNode: &domain.CreateNode{Alias: alias, Title: title, AssigneeKind: domain.AssigneeUser}}
+}
+
+// assignedToAgent is a create_node operation filing agent-assigned work at
+// the root of the project.
+func assignedToAgent(alias, title string) domain.Op {
+	return domain.Op{CreateNode: &domain.CreateNode{Alias: alias, Title: title, AssigneeKind: domain.AssigneeAgent}}
+}
+
+// tellsWhatToDo matches a refusal that names the gate and the next move.
+func tellsWhatToDo(gateID string) OmegaMatcher {
+	return SatisfyAll(
+		MatchError(ContainSubstring("gate "+gateID)),
+		MatchError(ContainSubstring("comment")),
+		MatchError(ContainSubstring("release your lease with reason gate")),
+	)
+}
+
 // BeDeniedAt matches a patch refused by policy at the given operation.
 func BeDeniedAt(index int) OmegaMatcher {
 	return SatisfyAll(
@@ -160,6 +181,111 @@ var _ = Describe("Authorization", Label(testsupport.DBLabel), func() {
 			Expect(g.explain(ctx, "#7").Reasons).To(ContainElement(SatisfyAll(
 				BeReason(domain.ReasonBlocked, 9), HaveField("Gate", true), HaveField("Permanent", true),
 			)))
+		})
+
+		It("A user completes the gate it filed", func(ctx SpecContext) {
+			By("given a gate filed by user principal U")
+			g.setCounter(ctx, 9)
+			g.mustApply(ctx, user, "file", rootGate("gate", "Mint the deploy token"), addEdge("gate", "#8"))
+			Expect(g.explain(ctx, "#8").Reasons).To(ContainElement(BeReason(domain.ReasonBlocked, 9)))
+
+			By("when U completes it")
+			r, err := g.apply(ctx, user, "close", complete("#9", "Token minted and placed in the agent's environment"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.Events).To(HaveLen(1))
+
+			By("then the node is done and the edges out of it are satisfied")
+			Expect(g.getNode(ctx, "#9").Status).To(Equal("done"))
+			Expect(g.hasEdge(ctx, "#9", "#8")).To(BeTrue())
+			Expect(g.explain(ctx, "#8").Reasons).NotTo(ContainElement(BeReason(domain.ReasonBlocked, 9)))
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{}))).To(ContainElement(int64(8)))
+
+			By("and U may equally drop, reclassify, and unlink a gate of its own")
+			g.mustApply(ctx, user, "second", rootGate("two", "Pay the invoice"), addEdge("two", "#8"))
+			agent := domain.AssigneeAgent
+			_, err = g.apply(ctx, user, "reclassify", domain.Op{UpdateNode: &domain.UpdateNode{Node: "#10", AssigneeKind: &agent}})
+			Expect(err).NotTo(HaveOccurred())
+			kind := "chore"
+			_, err = g.apply(ctx, user, "kind", domain.Op{UpdateNode: &domain.UpdateNode{Node: "#10", Kind: &kind}})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = g.apply(ctx, user, "unlink", domain.Op{RemoveEdge: &domain.RemoveEdge{From: "#10", To: "#8"}})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = g.apply(ctx, user, "drop", drop("#10", domain.DropNoLongerRelevant))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.getNode(ctx, "#10").Status).To(Equal("dropped"))
+		})
+
+		It("An agent cannot escape a gate it filed", func(ctx SpecContext) {
+			By("given a gate filed by agent principal A blocking A's own work")
+			fileGate(ctx)
+			id := g.id("#9")
+
+			By("when A attempts to complete it, drop it, change its assignee_kind, or remove the edge")
+			agent := domain.AssigneeAgent
+			attempts := map[string]domain.Op{
+				"escape-complete":   complete("#9", "I decided it myself"),
+				"escape-drop":       drop("#9", domain.DropNoLongerRelevant),
+				"escape-reclassify": {UpdateNode: &domain.UpdateNode{Node: "#9", AssigneeKind: &agent}},
+				"escape-unlink":     {RemoveEdge: &domain.RemoveEdge{From: "#9", To: "#7"}},
+			}
+
+			By("then each attempt is refused with a message naming the gate and what to do instead")
+			for request, op := range attempts {
+				_, err := g.applyWithLease(ctx, agentA, request, lease.ID, op)
+				Expect(err).To(BeDeniedAt(0), request)
+				Expect(err).To(tellsWhatToDo(id), request)
+			}
+			Expect(g.getNode(ctx, "#9").Status).To(Equal("open"))
+			Expect(g.getNode(ctx, "#9").AssigneeKind).To(HaveValue(Equal(domain.AssigneeUser)))
+			Expect(g.hasEdge(ctx, "#9", "#7")).To(BeTrue())
+
+			By("and it may not claim any gate, nor complete one it did not file")
+			_, err := g.claim(ctx, agentA, domain.ClaimRequest{
+				RequestID: "claim-gate", Project: "platform", AssigneeKind: domain.AssigneeUser, Harness: "spec", AgentRef: "spec",
+			})
+			Expect(err).To(MatchError(policy.ErrDenied))
+			Expect(err).To(MatchError(ContainSubstring("an agent may not claim gate " + id)))
+
+			g.mustApply(ctx, user, "another-gate", rootGate("theirs", "Pay the invoice"))
+			_, err = g.apply(ctx, agentA, "outsider", complete("#10", "Done for you"))
+			Expect(err).To(BeDeniedAt(0))
+			Expect(err).To(MatchError(ContainSubstring("only a user may complete gate " + g.id("#10"))))
+		})
+
+		It("Human work depends on agent preparation", func(ctx SpecContext) {
+			By(`given "Recommend a hosting provider" assigned to an agent`)
+			g.setCounter(ctx, 9)
+			g.mustApply(ctx, user, "prepare",
+				assignedToAgent("recommend", "Recommend a hosting provider"),
+				rootGate("signup", "Sign up with the chosen provider"),
+				addEdge("recommend", "signup"))
+			// The recommendation is the only p0 node, so the claim below
+			// takes it rather than whatever else the project has ready.
+			p0 := "p0"
+			g.mustApply(ctx, user, "urgent", domain.Op{UpdateNode: &domain.UpdateNode{Node: "#9", Priority: &p0}})
+
+			By(`and gate "Sign up with the chosen provider" blocked by it`)
+			Expect(g.getNode(ctx, "#10").AssigneeKind).To(HaveValue(Equal(domain.AssigneeUser)))
+			Expect(g.explain(ctx, "#10").Reasons).To(ContainElement(BeReason(domain.ReasonBlocked, 9)))
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{AssigneeKind: domain.AssigneeUser}))).NotTo(ContainElement(int64(10)))
+
+			By("when the agent completes the recommendation")
+			worker := g.agent(ctx)
+			held := g.mustClaim(ctx, worker, domain.ClaimRequest{
+				RequestID: "claim-9", Project: "platform", AssigneeKind: domain.AssigneeAgent,
+				MinPriority: "p0", Harness: "spec", AgentRef: "spec",
+			})
+			Expect(held.Node.Number).To(Equal(int64(9)))
+			const recommendation = "Use grove: cheapest at this size, and it already has the tailnet"
+			_, err := g.applyWithLease(ctx, worker, "recommended", held.Lease.ID, complete("#9", recommendation))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then the gate is ready for the user and its inputs carry the recommendation")
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{AssigneeKind: domain.AssigneeUser}))).To(ContainElement(int64(10)))
+			Expect(g.explain(ctx, "#10").Reasons).To(BeEmpty())
+			in := g.inputs(ctx, "#10")
+			Expect(in).To(HaveLen(1))
+			Expect(in[0].Result.Body).To(Equal(recommendation))
 		})
 
 		It("Policy failure is closed", func(ctx SpecContext) {
