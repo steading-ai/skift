@@ -53,7 +53,8 @@ waiting on a person.
 
 Status, leases, results and comments live in dagger. `harness/state.json`
 holds only what dagger cannot take yet: attempt counts per node and the usage
-history behind `--report`. Delete it to reset attempts; nothing in the graph
+history behind `--report`. It also keeps the last review of a node that failed, so a
+relaunch resumes with it. Delete it to reset attempts; nothing in the graph
 changes.
 
 `harness/STOP` is written on exit: `DONE:` when every child is closed,
@@ -62,8 +63,12 @@ exhausted their attempts or the budget was reached.
 
 ## Defaults
 
-Fable 5.1 at medium effort, three attempts per node, one hour per agent,
+Opus 5 at medium effort, three attempts per node, one hour per agent,
 permission mode `auto`.
+
+An agent's session outlives its turn while a background command, subagent, or
+monitor it started is still running; the CLI wakes it when the task finishes.
+The session ends at the first turn that ends with nothing running.
 
 ## Watching a run
 

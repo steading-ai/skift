@@ -31,14 +31,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from claude_agent_sdk import (
+    TERMINAL_TASK_STATUSES,
     AssistantMessage,
     ClaudeAgentOptions,
+    ClaudeSDKClient,
     ResultMessage,
+    TaskNotificationMessage,
+    TaskStartedMessage,
+    TaskUpdatedMessage,
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
-    query,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -389,7 +393,16 @@ def commit_and_push(ref, node, summary, args):
 
 
 async def run_agent(kind, system_prompt, prompt, log_path, args):
-    """Run one agent to completion. Returns (final_text, cost, turns, usage)."""
+    """Run one agent to completion. Returns (final_text, cost, turns, usage).
+
+    Completion is not the first result message. An agent may background a
+    command, spawn a subagent, or set a monitor and end its turn to wait; the
+    CLI wakes it when the task finishes and it takes another turn. So the
+    session stays open until a turn ends with no task the CLI reported as
+    started still running. A single-shot query would return at the first turn
+    and lose everything after it, which is how the first live run lost an
+    implementer mid-`make test`.
+    """
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         cwd=str(ROOT),
@@ -404,38 +417,58 @@ async def run_agent(kind, system_prompt, prompt, log_path, args):
         options.disallowed_tools = ["Write", "Edit", "NotebookEdit"]
 
     texts, cost, turns, usage = [], 0.0, 0, []
+    active = {}  # task id -> description, for tasks the CLI will wake the agent for
     with Tail(log_path, kind) as log:
         log.section(f"{kind} @ {now()}")
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, ToolUseBlock):
-                        for line in describe_tool(block):
-                            log.line(line)
-                    elif isinstance(block, TextBlock):
-                        texts.append(block.text)
-                        log.text(block.text)
-            elif isinstance(message, UserMessage) and not isinstance(message.content, str):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock):
-                        log.line(describe_result(block))
-            elif isinstance(message, ResultMessage):
-                cost = message.total_cost_usd or 0.0
-                turns = message.num_turns or 0
-                # Recorded in the shape of dagger's own Usage entity: counts per
-                # model, never currency. Cost is derived from a rate table.
-                for model_name, mu in (message.model_usage or {}).items():
-                    usage.append({
-                        "model": model_name,
-                        "input_tokens": mu.get("inputTokens", 0),
-                        "output_tokens": mu.get("outputTokens", 0),
-                        "cache_read_tokens": mu.get("cacheReadInputTokens", 0),
-                        "cache_write_tokens": mu.get("cacheCreationInputTokens", 0),
-                        "cost_usd": round(mu.get("costUSD", 0.0), 4),
-                    })
-                if message.is_error:
-                    log.line(f"ERROR: {message.result}")
-                log.line(f"done: {turns} turns, ${cost:.2f}")
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(prompt)
+            async for message in client.receive_messages():
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, ToolUseBlock):
+                            for line in describe_tool(block):
+                                log.line(line)
+                        elif isinstance(block, TextBlock):
+                            texts.append(block.text)
+                            log.text(block.text)
+                elif isinstance(message, UserMessage) and not isinstance(message.content, str):
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock):
+                            log.line(describe_result(block))
+                elif isinstance(message, TaskStartedMessage):
+                    active[message.task_id] = message.description
+                    log.line(f"task started: {message.description}")
+                elif isinstance(message, TaskNotificationMessage):
+                    active.pop(message.task_id, None)
+                    log.line(f"task {message.status}: {message.summary}")
+                elif isinstance(message, TaskUpdatedMessage):
+                    if (message.patch or {}).get("status") in TERMINAL_TASK_STATUSES:
+                        log.line(f"task ended: {active.pop(message.task_id, message.task_id)}")
+                elif isinstance(message, ResultMessage):
+                    # Totals are cumulative across the session's turns, so the
+                    # latest result message carries the whole session.
+                    cost = message.total_cost_usd or 0.0
+                    turns += message.num_turns or 0
+                    usage = []
+                    # Recorded in the shape of dagger's own Usage entity: counts per
+                    # model, never currency. Cost is derived from a rate table.
+                    for model_name, mu in (message.model_usage or {}).items():
+                        usage.append({
+                            "model": model_name,
+                            "input_tokens": mu.get("inputTokens", 0),
+                            "output_tokens": mu.get("outputTokens", 0),
+                            "cache_read_tokens": mu.get("cacheReadInputTokens", 0),
+                            "cache_write_tokens": mu.get("cacheCreationInputTokens", 0),
+                            "cost_usd": round(mu.get("costUSD", 0.0), 4),
+                        })
+                    if message.is_error:
+                        log.line(f"ERROR: {message.result}")
+                    if active:
+                        log.line(f"turn ended; waiting on {len(active)} task(s): "
+                                 + "; ".join(active.values()))
+                        continue
+                    log.line(f"done: {turns} turns, ${cost:.2f}")
+                    break
         final = texts[-1].strip() if texts else ""
         log.section("final")
         log.text(final)
@@ -560,7 +593,7 @@ async def do_node(dg, node, lease, label, state, args):
 
     say(f"\n{'=' * 70}\n  {ref}  {node['title']}\n{'=' * 70}")
 
-    feedback = None
+    feedback = ns.get("feedback")
     summary = ""
     for attempt in range(ns["attempts"] + 1, args.attempts + 1):
         ns["attempts"] = attempt
@@ -634,11 +667,13 @@ async def do_node(dg, node, lease, label, state, args):
             result = f"{summary.rstrip()}\n\nCommit: {sha}\nFiles:\n{diff}\n"
             dg.complete(ref, lease_id, result)
             ns["status"] = "done"
+            ns.pop("feedback", None)
             save_state(state)
             say(f"  ++ completed {ref}")
             return True
 
         say(f"  == FAIL\n{feedback}")
+        ns["feedback"] = feedback
         save_state(state)
 
     # Out of attempts. Leave the findings on the node, take it out of scope,
@@ -713,7 +748,7 @@ async def main():
                    help="the grouping node whose open children are the scope, as #N")
     p.add_argument("--max", type=int, default=100, help="max nodes this run")
     p.add_argument("--attempts", type=int, default=3, help="review attempts per node")
-    p.add_argument("--model", default="claude-fable-5-1", help="model (default: Fable 5.1)")
+    p.add_argument("--model", default="claude-opus-5", help="model (default: Opus 5)")
     p.add_argument("--effort", default="medium",
                    choices=["low", "medium", "high", "xhigh", "max"],
                    help="reasoning effort (default: medium)")
