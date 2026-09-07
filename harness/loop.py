@@ -125,6 +125,9 @@ How to judge:
 - A criterion you cannot verify is a fail, not a pass with a caveat. A
   criterion that requires a deployed service or a person is out of your reach;
   say so and judge the rest.
+- A failure in a suite the diff does not touch gets one isolated rerun. If
+  that passes, it is a flake: name it as friction in your response and move
+  on. Do not spend further runs establishing it was not the work's doing.
 
 Reasons to fail:
 
@@ -377,10 +380,19 @@ def commit_and_push(ref, node, summary, args):
         "Reviewed against the node's acceptance criteria and scenarios.\n\n"
         f"Claude-Session: {SESSION_URL}"
     )
-    subprocess.run(
-        ["git", "commit", "-m", subject, "-m", body], cwd=ROOT, check=True,
-        capture_output=True, text=True,
-    )
+    # The pre-commit hooks have failed once on a transient, so one retry, and
+    # the hook's own words on the second failure rather than a bare exit code.
+    for attempt in (1, 2):
+        r = subprocess.run(
+            ["git", "commit", "-m", subject, "-m", body], cwd=ROOT,
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            break
+        say(f"  !! git commit failed (attempt {attempt}):\n{r.stderr.strip()}\n{r.stdout.strip()}")
+        if attempt == 2:
+            raise RuntimeError(f"git commit failed for {ref}; the work is staged in the tree")
+        time.sleep(5)
     sha = head()
     say(f"  ++ committed: {sha[:10]} {subject}")
     if not args.no_push:
