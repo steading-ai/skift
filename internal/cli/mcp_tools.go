@@ -216,13 +216,16 @@ cycle-checked as a whole. This is the one way to change the graph, and the
 tool to use when decomposing work into several nodes and linking them, or
 for any change the single-purpose tools (complete, comment) do not cover.
 
-Operations: create_node, add_edge, drop_edge, complete_node, reopen_node,
-drop_node, reparent_node, set_priority, add_comment, and the rest of
-dagger.v1.PatchOp. An operation refers to an existing node by reference
-(` + "`#7`, `slug#7`, `org/slug#7`" + `), and to a node created earlier in
-the same patch by the alias its create_node declared. Aliases are what let
-one patch build a whole subgraph atomically. Example, creating two nodes
-where the second waits on the first and both hang under existing node #3:
+Operations (the dagger.v1.PatchOp forms): create_node, update_node,
+drop_node, complete_node, reopen_node, add_edge, remove_edge,
+attach_artifact, add_comment, edit_comment, resolve_comment. Each names its
+target in a field called "node", except add_edge and remove_edge, which use
+"from" and "to". Reparenting and reprioritising are update_node fields
+("parent", "priority"). A target is an existing node by reference
+(` + "`#7`, `slug#7`, `org/slug#7`" + `), or a node created earlier in the
+same patch by the alias its create_node declared. Aliases are what let one
+patch build a whole subgraph atomically. Example, creating two nodes where
+the second waits on the first and both hang under existing node #3:
 
   {"ops": [
     {"create_node": {"alias": "spike", "title": "Spike the parser", "parent": "#3"}},

@@ -82,7 +82,8 @@ dg patch apply -            # from stdin
 ```
 
 Field names differ per operation. Most name their target `node`; `add_edge`
-uses `from` and `to`:
+and `remove_edge` use `from` and `to`. Reparenting and reprioritising are
+`update_node` fields (`parent`, `priority`):
 
 ```json
 {"update_node":   {"node": "#7", "body": "…", "priority": "PRIORITY_P0"}}

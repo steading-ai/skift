@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -245,6 +246,34 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(description).To(ContainSubstring("#7"), "and the reference forms")
 			Expect(description).To(ContainSubstring("slug#7"))
 			Expect(description).To(ContainSubstring("org/slug#7"))
+		})
+	})
+
+	Describe("Scenario: The apply_patch description names exactly the PatchOp operations", func() {
+		It("The apply_patch description names exactly the PatchOp operations", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the operations the PatchOp oneof declares")
+			fields := daggerv1.File_dagger_v1_service_proto.Messages().ByName("PatchOp").Oneofs().ByName("op").Fields()
+			ops := map[string]bool{}
+			for i := 0; i < fields.Len(); i++ {
+				ops[string(fields.Get(i).Name())] = true
+			}
+			Expect(ops).NotTo(BeEmpty())
+
+			By("when the client lists tools")
+			description := m.tools()["apply_patch"]["description"].(string)
+
+			By("then every operation appears in the description")
+			for op := range ops {
+				Expect(description).To(ContainSubstring(op))
+			}
+
+			By("and no word ending in _node or _edge in the description is absent from the oneof")
+			for _, word := range regexp.MustCompile(`\b\w+_(?:node|edge)\b`).FindAllString(description, -1) {
+				Expect(ops).To(HaveKey(word), "the description names %q, which is not a PatchOp operation", word)
+			}
 		})
 	})
 
