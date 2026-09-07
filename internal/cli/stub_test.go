@@ -250,7 +250,7 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[daggerv1.Apply
 				res.Dropped = append(res.Dropped, n.GetReference())
 				res.Nodes = append(res.Nodes, &daggerv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus()})
 			}
-		case *daggerv1.PatchOp_AddEdge, *daggerv1.PatchOp_AddComment:
+		case *daggerv1.PatchOp_AddEdge, *daggerv1.PatchOp_AddComment, *daggerv1.PatchOp_EstimateNode:
 			// Recorded; nothing to return.
 		default:
 			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("stub: %T", o))
@@ -266,10 +266,23 @@ func (s *stub) GetNode(_ context.Context, req *connect.Request[daggerv1.GetNodeR
 	if len(s.nodes) == 0 {
 		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
 	}
-	return connect.NewResponse(&daggerv1.GetNodeResponse{
+	res := &daggerv1.GetNodeResponse{
 		Node:   s.nodes[0],
 		Inputs: &daggerv1.InputsHint{Count: int32(len(s.nodes) - 1), Bytes: 42}, //nolint:gosec // a spec's node count
-	}), nil
+	}
+	// The full view is the one that carries content, and cost is content:
+	// the node's current estimate and the rollup over its subtree.
+	if req.Msg.GetView() == daggerv1.View_VIEW_FULL || req.Msg.GetView() == daggerv1.View_VIEW_UNSPECIFIED {
+		res.Estimate = &daggerv1.Usage{
+			Kind: daggerv1.UsageKind_USAGE_KIND_ESTIMATE, Model: "claude-opus-5",
+			InputTokens: 120000, OutputTokens: 8000, Basis: "two nodes of the same shape",
+		}
+		res.Usage = &daggerv1.Rollup{
+			Actual:   []*daggerv1.ModelTotals{{Model: "claude-opus-5", Records: 2, InputTokens: 2000, OutputTokens: 400}},
+			Estimate: []*daggerv1.ModelTotals{{Model: "claude-opus-5", Records: 1, InputTokens: 120000, OutputTokens: 8000}},
+		}
+	}
+	return connect.NewResponse(res), nil
 }
 
 // GetInputs answers with every node but the last as an input of the last,
@@ -502,6 +515,23 @@ func (s *stub) Release(_ context.Context, req *connect.Request[daggerv1.ReleaseR
 	l := s.lease(req.Msg.GetLeaseId())
 	l.ReleaseReason = req.Msg.GetReason()
 	return connect.NewResponse(&daggerv1.ReleaseResponse{Lease: l}), nil
+}
+
+// ReportUsage records the report and answers with the record the service
+// would have stored, so a spec can check what the command sent.
+func (s *stub) ReportUsage(_ context.Context, req *connect.Request[daggerv1.ReportUsageRequest]) (*connect.Response[daggerv1.ReportUsageResponse], error) {
+	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if req.Msg.GetLeaseId() == expiredLease {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+	}
+	return connect.NewResponse(&daggerv1.ReportUsageResponse{Usage: &daggerv1.Usage{
+		LeaseId: req.Msg.GetLeaseId(), Model: req.Msg.GetModel(), Kind: daggerv1.UsageKind_USAGE_KIND_ACTUAL,
+		InputTokens: req.Msg.GetInputTokens(), OutputTokens: req.Msg.GetOutputTokens(),
+		CacheReadTokens: req.Msg.GetCacheReadTokens(), CacheWriteTokens: req.Msg.GetCacheWriteTokens(),
+		CreatedAt: timestamppb.Now(),
+	}}), nil
 }
 
 // EventService.

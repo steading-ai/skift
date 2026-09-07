@@ -310,7 +310,8 @@ whole, all or none. The one way to change the graph.
 
 Operations, each shaped by the ops schema: create_node, update_node,
 drop_node, complete_node, reopen_node, add_edge, remove_edge,
-attach_artifact, add_comment, edit_comment, resolve_comment. Name a node
+attach_artifact, add_comment, edit_comment, resolve_comment,
+estimate_node. Name a node
 by reference (` + "`#7`, `slug#7`, `org/slug#7`" + `) or by an alias a create_node
 declared earlier:
 
@@ -331,7 +332,10 @@ On create_node and update_node:
 
 drop_node takes a cascade, {"cascade": {"max_nodes": 5}}, refused naming
 the real count when the subtree is larger. A patch touching a node you
-hold a lease on must carry that lease_id.`,
+hold a lease on must carry that lease_id.
+
+estimate_node records an expected cost with a basis; the orchestrator
+reports actuals, so no tool here does.`,
 			schema: objectSchema(map[string]any{
 				"ops":        opsProperty(),
 				"project":    stringProp("Project the patch applies to and bare references resolve in. Defaults to the current project."),

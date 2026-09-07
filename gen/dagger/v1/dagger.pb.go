@@ -1881,6 +1881,159 @@ func (x *Usage) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// ModelTotals is one group of a rollup: every record naming one model,
+// summed. Counts, never currency: a rate table is applied by whoever
+// wants money.
+type ModelTotals struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Output only. The model the records named, empty for records naming
+	// none.
+	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
+	// Output only. How many records the totals sum. For actuals one per
+	// report, for estimates one per node with a current estimate.
+	Records int64 `protobuf:"varint,2,opt,name=records,proto3" json:"records,omitempty"`
+	// Output only. Tokens sent to the model.
+	InputTokens int64 `protobuf:"varint,3,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
+	// Output only. Tokens produced by the model.
+	OutputTokens int64 `protobuf:"varint,4,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
+	// Output only. Tokens served from the model's prompt cache.
+	CacheReadTokens int64 `protobuf:"varint,5,opt,name=cache_read_tokens,json=cacheReadTokens,proto3" json:"cache_read_tokens,omitempty"`
+	// Output only. Tokens written to the model's prompt cache.
+	CacheWriteTokens int64 `protobuf:"varint,6,opt,name=cache_write_tokens,json=cacheWriteTokens,proto3" json:"cache_write_tokens,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ModelTotals) Reset() {
+	*x = ModelTotals{}
+	mi := &file_dagger_v1_dagger_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModelTotals) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModelTotals) ProtoMessage() {}
+
+func (x *ModelTotals) ProtoReflect() protoreflect.Message {
+	mi := &file_dagger_v1_dagger_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModelTotals.ProtoReflect.Descriptor instead.
+func (*ModelTotals) Descriptor() ([]byte, []int) {
+	return file_dagger_v1_dagger_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ModelTotals) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ModelTotals) GetRecords() int64 {
+	if x != nil {
+		return x.Records
+	}
+	return 0
+}
+
+func (x *ModelTotals) GetInputTokens() int64 {
+	if x != nil {
+		return x.InputTokens
+	}
+	return 0
+}
+
+func (x *ModelTotals) GetOutputTokens() int64 {
+	if x != nil {
+		return x.OutputTokens
+	}
+	return 0
+}
+
+func (x *ModelTotals) GetCacheReadTokens() int64 {
+	if x != nil {
+		return x.CacheReadTokens
+	}
+	return 0
+}
+
+func (x *ModelTotals) GetCacheWriteTokens() int64 {
+	if x != nil {
+		return x.CacheWriteTokens
+	}
+	return 0
+}
+
+// Rollup is what a node and its descendants cost and are expected to
+// cost, grouped by model. Nothing stores a total; both sides are computed
+// on every read.
+type Rollup struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Output only. Every actual reported on the node or a descendant.
+	Actual []*ModelTotals `protobuf:"bytes,1,rep,name=actual,proto3" json:"actual,omitempty"`
+	// Output only. The current estimate of the node and of each descendant
+	// that has one. An estimate a later one superseded counts for nothing.
+	Estimate      []*ModelTotals `protobuf:"bytes,2,rep,name=estimate,proto3" json:"estimate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Rollup) Reset() {
+	*x = Rollup{}
+	mi := &file_dagger_v1_dagger_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Rollup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Rollup) ProtoMessage() {}
+
+func (x *Rollup) ProtoReflect() protoreflect.Message {
+	mi := &file_dagger_v1_dagger_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Rollup.ProtoReflect.Descriptor instead.
+func (*Rollup) Descriptor() ([]byte, []int) {
+	return file_dagger_v1_dagger_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *Rollup) GetActual() []*ModelTotals {
+	if x != nil {
+		return x.Actual
+	}
+	return nil
+}
+
+func (x *Rollup) GetEstimate() []*ModelTotals {
+	if x != nil {
+		return x.Estimate
+	}
+	return nil
+}
+
 // Event is the immutable record of one mutation. Every write produces one;
 // together they are the audit log and the change stream.
 type Event struct {
@@ -1923,7 +2076,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_dagger_v1_dagger_proto_msgTypes[14]
+	mi := &file_dagger_v1_dagger_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1935,7 +2088,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_dagger_v1_dagger_proto_msgTypes[14]
+	mi := &file_dagger_v1_dagger_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1948,7 +2101,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_dagger_v1_dagger_proto_rawDescGZIP(), []int{14}
+	return file_dagger_v1_dagger_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Event) GetId() string {
@@ -2170,7 +2323,17 @@ const file_dagger_v1_dagger_proto_rawDesc = "" +
 	"\x05basis\x18\n" +
 	" \x01(\tR\x05basis\x129\n" +
 	"\n" +
-	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xf4\x03\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xdf\x01\n" +
+	"\vModelTotals\x12\x14\n" +
+	"\x05model\x18\x01 \x01(\tR\x05model\x12\x18\n" +
+	"\arecords\x18\x02 \x01(\x03R\arecords\x12!\n" +
+	"\finput_tokens\x18\x03 \x01(\x03R\vinputTokens\x12#\n" +
+	"\routput_tokens\x18\x04 \x01(\x03R\foutputTokens\x12*\n" +
+	"\x11cache_read_tokens\x18\x05 \x01(\x03R\x0fcacheReadTokens\x12,\n" +
+	"\x12cache_write_tokens\x18\x06 \x01(\x03R\x10cacheWriteTokens\"l\n" +
+	"\x06Rollup\x12.\n" +
+	"\x06actual\x18\x01 \x03(\v2\x16.dagger.v1.ModelTotalsR\x06actual\x122\n" +
+	"\bestimate\x18\x02 \x03(\v2\x16.dagger.v1.ModelTotalsR\bestimate\"\xf4\x03\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06org_id\x18\x02 \x01(\tR\x05orgId\x12\x1d\n" +
@@ -2248,7 +2411,7 @@ func file_dagger_v1_dagger_proto_rawDescGZIP() []byte {
 }
 
 var file_dagger_v1_dagger_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_dagger_v1_dagger_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_dagger_v1_dagger_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_dagger_v1_dagger_proto_goTypes = []any{
 	(Status)(0),                   // 0: dagger.v1.Status
 	(Priority)(0),                 // 1: dagger.v1.Priority
@@ -2272,42 +2435,46 @@ var file_dagger_v1_dagger_proto_goTypes = []any{
 	(*Comment)(nil),               // 19: dagger.v1.Comment
 	(*CommentRevision)(nil),       // 20: dagger.v1.CommentRevision
 	(*Usage)(nil),                 // 21: dagger.v1.Usage
-	(*Event)(nil),                 // 22: dagger.v1.Event
-	(*timestamppb.Timestamp)(nil), // 23: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),       // 24: google.protobuf.Struct
+	(*ModelTotals)(nil),           // 22: dagger.v1.ModelTotals
+	(*Rollup)(nil),                // 23: dagger.v1.Rollup
+	(*Event)(nil),                 // 24: dagger.v1.Event
+	(*timestamppb.Timestamp)(nil), // 25: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),       // 26: google.protobuf.Struct
 }
 var file_dagger_v1_dagger_proto_depIdxs = []int32{
 	1,  // 0: dagger.v1.Project.priority:type_name -> dagger.v1.Priority
-	23, // 1: dagger.v1.Project.archived_at:type_name -> google.protobuf.Timestamp
-	23, // 2: dagger.v1.Project.created_at:type_name -> google.protobuf.Timestamp
+	25, // 1: dagger.v1.Project.archived_at:type_name -> google.protobuf.Timestamp
+	25, // 2: dagger.v1.Project.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: dagger.v1.Node.status:type_name -> dagger.v1.Status
 	1,  // 4: dagger.v1.Node.priority:type_name -> dagger.v1.Priority
 	2,  // 5: dagger.v1.Node.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	23, // 6: dagger.v1.Node.created_at:type_name -> google.protobuf.Timestamp
+	25, // 6: dagger.v1.Node.created_at:type_name -> google.protobuf.Timestamp
 	4,  // 7: dagger.v1.Edge.kind:type_name -> dagger.v1.EdgeKind
-	23, // 8: dagger.v1.Lease.expires_at:type_name -> google.protobuf.Timestamp
+	25, // 8: dagger.v1.Lease.expires_at:type_name -> google.protobuf.Timestamp
 	5,  // 9: dagger.v1.Lease.release_reason:type_name -> dagger.v1.ReleaseReason
 	3,  // 10: dagger.v1.Principal.kind:type_name -> dagger.v1.PrincipalKind
 	14, // 11: dagger.v1.Result.artifacts:type_name -> dagger.v1.Artifact
 	15, // 12: dagger.v1.Artifact.parts:type_name -> dagger.v1.Part
-	24, // 13: dagger.v1.Artifact.metadata:type_name -> google.protobuf.Struct
+	26, // 13: dagger.v1.Artifact.metadata:type_name -> google.protobuf.Struct
 	16, // 14: dagger.v1.Part.text:type_name -> dagger.v1.TextPart
 	17, // 15: dagger.v1.Part.blob:type_name -> dagger.v1.BlobPart
 	18, // 16: dagger.v1.Part.reference:type_name -> dagger.v1.ReferencePart
-	23, // 17: dagger.v1.Comment.resolved_at:type_name -> google.protobuf.Timestamp
+	25, // 17: dagger.v1.Comment.resolved_at:type_name -> google.protobuf.Timestamp
 	20, // 18: dagger.v1.Comment.revisions:type_name -> dagger.v1.CommentRevision
-	23, // 19: dagger.v1.CommentRevision.created_at:type_name -> google.protobuf.Timestamp
+	25, // 19: dagger.v1.CommentRevision.created_at:type_name -> google.protobuf.Timestamp
 	7,  // 20: dagger.v1.Usage.kind:type_name -> dagger.v1.UsageKind
-	23, // 21: dagger.v1.Usage.created_at:type_name -> google.protobuf.Timestamp
-	3,  // 22: dagger.v1.Event.principal_kind:type_name -> dagger.v1.PrincipalKind
-	24, // 23: dagger.v1.Event.before:type_name -> google.protobuf.Struct
-	24, // 24: dagger.v1.Event.after:type_name -> google.protobuf.Struct
-	23, // 25: dagger.v1.Event.occurred_at:type_name -> google.protobuf.Timestamp
-	26, // [26:26] is the sub-list for method output_type
-	26, // [26:26] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	25, // 21: dagger.v1.Usage.created_at:type_name -> google.protobuf.Timestamp
+	22, // 22: dagger.v1.Rollup.actual:type_name -> dagger.v1.ModelTotals
+	22, // 23: dagger.v1.Rollup.estimate:type_name -> dagger.v1.ModelTotals
+	3,  // 24: dagger.v1.Event.principal_kind:type_name -> dagger.v1.PrincipalKind
+	26, // 25: dagger.v1.Event.before:type_name -> google.protobuf.Struct
+	26, // 26: dagger.v1.Event.after:type_name -> google.protobuf.Struct
+	25, // 27: dagger.v1.Event.occurred_at:type_name -> google.protobuf.Timestamp
+	28, // [28:28] is the sub-list for method output_type
+	28, // [28:28] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_dagger_v1_dagger_proto_init() }
@@ -2326,7 +2493,7 @@ func file_dagger_v1_dagger_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dagger_v1_dagger_proto_rawDesc), len(file_dagger_v1_dagger_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -89,6 +89,8 @@ const (
 	WorkServiceHeartbeatProcedure = "/dagger.v1.WorkService/Heartbeat"
 	// WorkServiceReleaseProcedure is the fully-qualified name of the WorkService's Release RPC.
 	WorkServiceReleaseProcedure = "/dagger.v1.WorkService/Release"
+	// WorkServiceReportUsageProcedure is the fully-qualified name of the WorkService's ReportUsage RPC.
+	WorkServiceReportUsageProcedure = "/dagger.v1.WorkService/ReportUsage"
 	// EventServiceWatchEventsProcedure is the fully-qualified name of the EventService's WatchEvents
 	// RPC.
 	EventServiceWatchEventsProcedure = "/dagger.v1.EventService/WatchEvents"
@@ -453,6 +455,12 @@ type WorkServiceClient interface {
 	// Release ends a lease with a reason, returning the node to the ready set
 	// if nothing else holds it back.
 	Release(context.Context, *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error)
+	// ReportUsage records what one attempt cost, attributed to the lease
+	// that attempt runs under. It is the orchestrator's call: the process
+	// that runs an agent is the one that can count its tokens, and an agent
+	// principal is refused. An agent says what work is expected to cost
+	// instead, with the estimate_node operation of a patch.
+	ReportUsage(context.Context, *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error)
 }
 
 // NewWorkServiceClient constructs a client for the dagger.v1.WorkService service. By default, it
@@ -490,15 +498,22 @@ func NewWorkServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(workServiceMethods.ByName("Release")),
 			connect.WithClientOptions(opts...),
 		),
+		reportUsage: connect.NewClient[v1.ReportUsageRequest, v1.ReportUsageResponse](
+			httpClient,
+			baseURL+WorkServiceReportUsageProcedure,
+			connect.WithSchema(workServiceMethods.ByName("ReportUsage")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // workServiceClient implements WorkServiceClient.
 type workServiceClient struct {
-	ready     *connect.Client[v1.ReadyRequest, v1.ReadyResponse]
-	claimNext *connect.Client[v1.ClaimNextRequest, v1.ClaimNextResponse]
-	heartbeat *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
-	release   *connect.Client[v1.ReleaseRequest, v1.ReleaseResponse]
+	ready       *connect.Client[v1.ReadyRequest, v1.ReadyResponse]
+	claimNext   *connect.Client[v1.ClaimNextRequest, v1.ClaimNextResponse]
+	heartbeat   *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
+	release     *connect.Client[v1.ReleaseRequest, v1.ReleaseResponse]
+	reportUsage *connect.Client[v1.ReportUsageRequest, v1.ReportUsageResponse]
 }
 
 // Ready calls dagger.v1.WorkService.Ready.
@@ -521,6 +536,11 @@ func (c *workServiceClient) Release(ctx context.Context, req *connect.Request[v1
 	return c.release.CallUnary(ctx, req)
 }
 
+// ReportUsage calls dagger.v1.WorkService.ReportUsage.
+func (c *workServiceClient) ReportUsage(ctx context.Context, req *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error) {
+	return c.reportUsage.CallUnary(ctx, req)
+}
+
 // WorkServiceHandler is an implementation of the dagger.v1.WorkService service.
 type WorkServiceHandler interface {
 	// Ready returns the ready set of one project, ordered by priority then
@@ -536,6 +556,12 @@ type WorkServiceHandler interface {
 	// Release ends a lease with a reason, returning the node to the ready set
 	// if nothing else holds it back.
 	Release(context.Context, *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error)
+	// ReportUsage records what one attempt cost, attributed to the lease
+	// that attempt runs under. It is the orchestrator's call: the process
+	// that runs an agent is the one that can count its tokens, and an agent
+	// principal is refused. An agent says what work is expected to cost
+	// instead, with the estimate_node operation of a patch.
+	ReportUsage(context.Context, *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error)
 }
 
 // NewWorkServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -569,6 +595,12 @@ func NewWorkServiceHandler(svc WorkServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(workServiceMethods.ByName("Release")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workServiceReportUsageHandler := connect.NewUnaryHandler(
+		WorkServiceReportUsageProcedure,
+		svc.ReportUsage,
+		connect.WithSchema(workServiceMethods.ByName("ReportUsage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/dagger.v1.WorkService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WorkServiceReadyProcedure:
@@ -579,6 +611,8 @@ func NewWorkServiceHandler(svc WorkServiceHandler, opts ...connect.HandlerOption
 			workServiceHeartbeatHandler.ServeHTTP(w, r)
 		case WorkServiceReleaseProcedure:
 			workServiceReleaseHandler.ServeHTTP(w, r)
+		case WorkServiceReportUsageProcedure:
+			workServiceReportUsageHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -602,6 +636,10 @@ func (UnimplementedWorkServiceHandler) Heartbeat(context.Context, *connect.Reque
 
 func (UnimplementedWorkServiceHandler) Release(context.Context, *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.WorkService.Release is not implemented"))
+}
+
+func (UnimplementedWorkServiceHandler) ReportUsage(context.Context, *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.WorkService.ReportUsage is not implemented"))
 }
 
 // EventServiceClient is a client for the dagger.v1.EventService service.

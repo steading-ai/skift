@@ -90,6 +90,13 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[daggerv
 	for _, c := range node.Comments {
 		res.Comments = append(res.Comments, toComment(c))
 	}
+	// What the node is expected to cost and what it has cost: an
+	// estimate an agent recorded, and the rollup over the node and its
+	// descendants the domain computes on every read.
+	if node.Estimate != nil {
+		res.Estimate = toUsage(*node.Estimate)
+	}
+	res.Usage = toRollup(node.Usage)
 	return connect.NewResponse(res), nil
 }
 

@@ -161,10 +161,27 @@ func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Dur
 	return res.Msg
 }
 
+// claimAsUser claims the next ready node of project as the user
+// principal: the shape an orchestrator takes work in, holding the lease
+// itself while it dispatches an agent under it.
+func (f *fixture) claimAsUser(ctx context.Context, project string) *daggerv1.ClaimNextResponse {
+	GinkgoHelper()
+	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
+		RequestId: newID(), Project: project, Harness: "spec", AgentRef: "spec",
+	}))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(res.Msg.GetNode()).NotTo(BeNil())
+	return res.Msg
+}
+
 // Operation builders.
 
 func createOp(alias, title string) *daggerv1.PatchOp {
 	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_CreateNode{CreateNode: &daggerv1.CreateNodeOp{Alias: alias, Title: title}}}
+}
+
+func estimateOp(e *daggerv1.EstimateNodeOp) *daggerv1.PatchOp {
+	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_EstimateNode{EstimateNode: e}}
 }
 
 func createOpWith(c *daggerv1.CreateNodeOp) *daggerv1.PatchOp {

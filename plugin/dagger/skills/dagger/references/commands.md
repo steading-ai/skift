@@ -75,7 +75,7 @@ nothing in the patch happened.
 
 Operations: `create_node`, `update_node`, `drop_node`, `complete_node`,
 `reopen_node`, `add_edge`, `remove_edge`, `attach_artifact`, `add_comment`,
-`edit_comment`, `resolve_comment`.
+`edit_comment`, `resolve_comment`, `estimate_node`.
 
 **Aliases make one patch a whole subgraph.** A `create_node` declares an
 `alias`; any later operation in the same patch refers to the new node by it,
@@ -116,6 +116,8 @@ and `remove_edge` use `from` and `to`. Reparenting and reprioritising are
                    "cascade": {"max_nodes": 5}}}
 {"complete_node": {"node": "#7", "result": {"body": "…"}}}
 {"add_comment":   {"node": "#7", "body": "…", "in_reply_to": "<comment id>"}}
+{"estimate_node": {"node": "#7", "model": "claude-opus-5", "basis": "…",
+                   "input_tokens": 120000, "output_tokens": 8000}}
 ```
 
 A patch touching a node you hold a lease on must carry that `lease_id`.
@@ -133,6 +135,7 @@ dg link '#3' '#7'                                              # #3 before #7
 dg drop '#7' --reason superseded --detail 'folded into #9'
 dg drop '#7' --reason not_viable --cascade 5   # and the subtree, up to 5 nodes
 dg comment '#7' 'note' --in-reply-to '<id>'
+dg estimate '#7' --input 120000 --output 8000 --basis 'two nodes of the same shape'
 ```
 
 `dg update` sends only the flags you pass, so everything else is left alone. An
@@ -168,6 +171,18 @@ file. A bare `#7` with no current project is an error, so qualify it.
 
 Priorities `p0` (most urgent) to `p4`, default `p2`. Statuses `open`, `done`,
 `dropped`. Drop reasons `superseded`, `not_viable`, `no_longer_relevant`.
+
+## What work costs
+
+An estimate says what a node is expected to cost, in tokens and with a basis.
+It needs no lease and changes neither the node nor its readiness, so estimate
+the work you file as you file it. Estimating again adds a record; the node's
+current estimate is the most recent, and `dg node show` carries it beside the
+rollup of what the node and everything under it has actually cost.
+
+Reporting what an attempt *did* cost is the orchestrator's — the process
+running you counts your tokens, and the service refuses a report from an agent
+principal. There is no MCP tool for it.
 
 ## Identity
 

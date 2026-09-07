@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -727,6 +729,39 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(instructions).To(ContainSubstring("p2 the default"))
 			Expect(instructions).To(ContainSubstring("free string"))
 			Expect(instructions).To(ContainSubstring("conventional"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
+	Describe("estimates and usage", func() {
+		It("offers estimate_node as a patch operation and no usage-reporting tool", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the tools the server advertises")
+			tools := m.tools()
+
+			By("then the tool names are exactly these, and none of them reports usage")
+			Expect(slices.Sorted(maps.Keys(tools))).To(HaveExactElements(
+				"apply_patch", "claim", "comment", "complete", "explain", "heartbeat",
+				"inputs", "node_list", "project_create", "project_list", "project_show",
+				"ready", "release", "search", "show_node",
+			), "the tool list changed; usage is the orchestrator's to report, so no tool here reports it")
+			for name := range tools {
+				Expect(name).NotTo(ContainSubstring("usage"), "%s reports usage, which is the orchestrator's", name)
+			}
+
+			By("and apply_patch offers estimate_node, with its basis and its counts")
+			branches := patchOpsBranches(tools["apply_patch"])
+			Expect(branches).To(HaveKey("estimate_node"))
+			properties := branches["estimate_node"]["properties"].(map[string]any)
+			Expect(properties).To(HaveKey("basis"))
+			Expect(properties).To(HaveKey("input_tokens"))
+			Expect(branches["estimate_node"]["required"]).To(ContainElement("node"))
+			Expect(branches["estimate_node"]["description"]).To(ContainSubstring("expected to cost"))
+
+			By("and the tool says who reports what an attempt actually cost")
+			Expect(tools["apply_patch"]["description"]).To(ContainSubstring("the orchestrator\nreports actuals"))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})

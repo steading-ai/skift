@@ -82,6 +82,12 @@ service WorkService {
   // Release ends a lease with a reason, returning the node to the ready set
   // if nothing else holds it back.
   rpc Release(ReleaseRequest) returns (ReleaseResponse);
+  // ReportUsage records what one attempt cost, attributed to the lease
+  // that attempt runs under. It is the orchestrator's call: the process
+  // that runs an agent is the one that can count its tokens, and an agent
+  // principal is refused. An agent says what work is expected to cost
+  // instead, with the estimate_node operation of a patch.
+  rpc ReportUsage(ReportUsageRequest) returns (ReportUsageResponse);
 }
 
 // EventService serves the change stream every reactive consumer reads:
@@ -185,6 +191,8 @@ message PatchOp {
     EditCommentOp edit_comment = 10;
     // Mark a comment resolved.
     ResolveCommentOp resolve_comment = 11;
+    // Record what a node is expected to cost, and why.
+    EstimateNodeOp estimate_node = 12;
   }
 }
 
@@ -357,6 +365,31 @@ message ResolveCommentOp {
   string comment_id = 1;
 }
 
+// EstimateNodeOp records what a node is expected to cost, and why. An
+// estimate needs no lease and changes neither the node nor its readiness:
+// it precedes any attempt, so an agent planning work records one in the
+// same patch that files it. Estimating again adds a record rather than
+// replacing one, and the node's current estimate is the most recent.
+// Reporting what an attempt actually cost is ReportUsage's, and the
+// orchestrator's.
+message EstimateNodeOp {
+  // Node reference of the node being estimated.
+  string node = 1;
+  // Free string naming the model the estimate assumes. Optional.
+  string model = 2;
+  // Tokens the work is expected to send to the model.
+  int64 input_tokens = 3;
+  // Tokens the work is expected to produce.
+  int64 output_tokens = 4;
+  // Tokens expected to be served from the model's prompt cache.
+  int64 cache_read_tokens = 5;
+  // Tokens expected to be written to the model's prompt cache.
+  int64 cache_write_tokens = 6;
+  // What the estimate was reasoned from. Required: a number nobody can
+  // revisit is not worth storing.
+  string basis = 7;
+}
+
 // GetNodeRequest names one node.
 message GetNodeRequest {
   // The project a bare "#7" reference resolves in, by slug, org/slug, or
@@ -387,6 +420,12 @@ message GetNodeResponse {
   // How much the node's inputs come to. The bodies themselves are
   // GetInputs's to return.
   InputsHint inputs = 7;
+  // The node's current estimate: the most recent estimate_node operation
+  // recorded on it, if any. Only under VIEW_FULL.
+  Usage estimate = 8;
+  // What the node and everything under it cost and are expected to cost,
+  // by model, computed on this read. Only under VIEW_FULL.
+  Rollup usage = 9;
 }
 
 // GetInputsRequest names the node whose inputs to read.
@@ -748,6 +787,42 @@ message ReleaseRequest {
 message ReleaseResponse {
   // The lease, with its release reason set.
   Lease lease = 1;
+}
+
+// ReportUsageRequest records what one attempt on a node has cost so far.
+// It is a write to the node's attempt, so it carries that attempt's lease
+// and renews it, as any write by the holder does. Reporting again adds a
+// record rather than replacing one: the attempt's cost is their sum.
+message ReportUsageRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project a bare "#7" reference resolves in, by slug, org/slug, or
+  // id. Optional when the node reference carries its own project.
+  string project = 2;
+  // The fencing token of the lease the cost is attributed to. Required,
+  // and it must be the node's current lease and the caller's own: an
+  // orchestrator reports for the attempts it dispatched under its own
+  // claim. A retry is a second attempt with records of its own rather
+  // than more tokens on the first.
+  string lease_id = 3;
+  // Node reference of the node the lease is held on.
+  string node = 4;
+  // Free string naming the model the tokens were spent on. Optional.
+  string model = 5;
+  // Tokens sent to the model.
+  int64 input_tokens = 6;
+  // Tokens produced by the model.
+  int64 output_tokens = 7;
+  // Tokens served from the model's prompt cache.
+  int64 cache_read_tokens = 8;
+  // Tokens written to the model's prompt cache.
+  int64 cache_write_tokens = 9;
+}
+
+// ReportUsageResponse is the record that was stored.
+message ReportUsageResponse {
+  // The usage record, as it stands.
+  Usage usage = 1;
 }
 
 // WatchEventsRequest opens the change stream from a position.

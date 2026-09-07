@@ -835,6 +835,107 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
+	Describe("dg estimate", func() {
+		BeforeEach(func() { s.newNode("Target") })
+
+		It("builds one estimate_node op carrying the counts and the basis", func() {
+			By(`when I run "dg estimate dagger#7" with counts, a model and a basis`)
+			r := run(nil, "estimate", "dagger#7", "--basis", "two nodes of the same shape",
+				"--model", "claude-opus-5", "--input", "120000", "--output", "8000",
+				"--cache-read", "500", "--cache-write", "250")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+
+			By("then the patch carries the operation as its only one, and no lease")
+			sent := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(sent.GetProject()).To(Equal("dagger"))
+			Expect(sent.GetLeaseId()).To(BeEmpty())
+			Expect(sent.GetOps()).To(HaveLen(1))
+			op := sent.GetOps()[0].GetEstimateNode()
+			Expect(op).NotTo(BeNil())
+			Expect(op.GetNode()).To(Equal("dagger#7"))
+			Expect(op.GetModel()).To(Equal("claude-opus-5"))
+			Expect(op.GetBasis()).To(Equal("two nodes of the same shape"))
+			Expect(op.GetInputTokens()).To(BeEquivalentTo(120000))
+			Expect(op.GetOutputTokens()).To(BeEquivalentTo(8000))
+			Expect(op.GetCacheReadTokens()).To(BeEquivalentTo(500))
+			Expect(op.GetCacheWriteTokens()).To(BeEquivalentTo(250))
+
+			By("and it is the same operation the hand-written patch sends")
+			r = run(strings.NewReader(`{"project": "dagger", "ops": [{"estimate_node": {"node": "dagger#7", "model": "claude-opus-5", "basis": "two nodes of the same shape", "input_tokens": 120000, "output_tokens": 8000, "cache_read_tokens": 500, "cache_write_tokens": 250}}]}`), "patch", "apply", "-")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(proto.Equal(op, last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetEstimateNode())).To(BeTrue())
+		})
+
+		It("refuses a malformed reference before any round trip", func() {
+			r := run(nil, "-p", "platform", "estimate", "seven", "--basis", "a guess", "--input", "10")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(s.requests).To(BeEmpty())
+		})
+	})
+
+	Describe("dg node show", func() {
+		It("shows the estimate and the usage rollup beside the node", func() {
+			s.newNode("Target")
+
+			By(`when I run "dg node show platform#1" as JSON`)
+			r := run(nil, "node", "show", "platform#1")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+
+			By("then the response carries the node's estimate and its rollup")
+			out := r.decode()
+			Expect(out["estimate"]).To(HaveKeyWithValue("basis", "two nodes of the same shape"))
+			Expect(out["usage"]).To(HaveKey("actual"))
+			Expect(out["usage"]).To(HaveKey("estimate"))
+
+			By("and the text rendering names what it is expected to cost and what it has cost")
+			r = run(nil, "node", "show", "platform#1", "--output", "text")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(r.stdout.String()).To(SatisfyAll(
+				ContainSubstring("estimate claude-opus-5"),
+				ContainSubstring("basis: two nodes of the same shape"),
+				ContainSubstring("cost     claude-opus-5"),
+				ContainSubstring("2000 in, 400 out"),
+				ContainSubstring("expected claude-opus-5"),
+			))
+		})
+	})
+
+	Describe("dg usage report", func() {
+		BeforeEach(func() { s.newNode("Target") })
+
+		It("sends a ReportUsage keyed by the lease, not a patch", func() {
+			By(`when I run "dg usage report #7 --lease ..."`)
+			r := run(nil, "-p", "platform", "usage", "report", "#7", "--lease", "01JLEASE0000000000000000001",
+				"--model", "claude-opus-5", "--input", "1200", "--output", "340", "--cache-read", "60", "--cache-write", "20")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+
+			By("then the request names the attempt and carries the counts")
+			sent := last[*daggerv1.ReportUsageRequest](s)
+			Expect(sent.GetProject()).To(Equal("platform"))
+			Expect(sent.GetNode()).To(Equal("#7"))
+			Expect(sent.GetLeaseId()).To(Equal("01JLEASE0000000000000000001"))
+			Expect(sent.GetModel()).To(Equal("claude-opus-5"))
+			Expect(sent.GetInputTokens()).To(BeEquivalentTo(1200))
+			Expect(sent.GetOutputTokens()).To(BeEquivalentTo(340))
+			Expect(sent.GetCacheReadTokens()).To(BeEquivalentTo(60))
+			Expect(sent.GetCacheWriteTokens()).To(BeEquivalentTo(20))
+			Expect(sent.GetRequestId()).NotTo(BeEmpty())
+
+			By("and no patch was applied: reporting is not a graph mutation")
+			Expect(count[*daggerv1.ApplyPatchRequest](s)).To(Equal(0))
+
+			By("and the response is the record that was stored")
+			Expect(r.decode()["usage"]).To(HaveKeyWithValue("kind", "actual"))
+		})
+
+		It("refuses a report with no lease, before any round trip", func() {
+			r := run(nil, "-p", "platform", "usage", "report", "#7", "--input", "1200")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("--lease"))
+			Expect(s.requests).To(BeEmpty())
+		})
+	})
+
 	Describe("configuration", func() {
 		It("reads the socket and project from the config file and the environment", func() {
 			s.newNode("Configured")

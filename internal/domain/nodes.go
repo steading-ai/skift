@@ -130,6 +130,11 @@ type NodeView struct {
 	// Inputs is how much the node's inputs come to. The results
 	// themselves are [ReadInputs]'s to return.
 	Inputs InputsHint
+	// Estimate is the node's current estimate, else nil.
+	Estimate *Usage
+	// Usage is what the node and its descendants cost and are expected
+	// to cost, computed on this read.
+	Usage *Rollup
 }
 
 // GetNode returns the node ref names with its relations and content.
@@ -195,6 +200,12 @@ func readNode(ctx context.Context, tx store.Tx, orgID, nodeID string) (*NodeView
 		return nil, err
 	}
 	if v.Inputs, err = InputsSize(ctx, tx, orgID, nodeID); err != nil {
+		return nil, err
+	}
+	if v.Estimate, err = CurrentEstimate(ctx, tx, orgID, nodeID); err != nil {
+		return nil, err
+	}
+	if v.Usage, err = SubtreeRollup(ctx, tx, orgID, nodeID); err != nil {
 		return nil, err
 	}
 	return v, nil

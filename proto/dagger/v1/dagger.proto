@@ -407,6 +407,37 @@ message Usage {
   google.protobuf.Timestamp created_at = 11;
 }
 
+// ModelTotals is one group of a rollup: every record naming one model,
+// summed. Counts, never currency: a rate table is applied by whoever
+// wants money.
+message ModelTotals {
+  // Output only. The model the records named, empty for records naming
+  // none.
+  string model = 1;
+  // Output only. How many records the totals sum. For actuals one per
+  // report, for estimates one per node with a current estimate.
+  int64 records = 2;
+  // Output only. Tokens sent to the model.
+  int64 input_tokens = 3;
+  // Output only. Tokens produced by the model.
+  int64 output_tokens = 4;
+  // Output only. Tokens served from the model's prompt cache.
+  int64 cache_read_tokens = 5;
+  // Output only. Tokens written to the model's prompt cache.
+  int64 cache_write_tokens = 6;
+}
+
+// Rollup is what a node and its descendants cost and are expected to
+// cost, grouped by model. Nothing stores a total; both sides are computed
+// on every read.
+message Rollup {
+  // Output only. Every actual reported on the node or a descendant.
+  repeated ModelTotals actual = 1;
+  // Output only. The current estimate of the node and of each descendant
+  // that has one. An estimate a later one superseded counts for nothing.
+  repeated ModelTotals estimate = 2;
+}
+
 // Event is the immutable record of one mutation. Every write produces one;
 // together they are the audit log and the change stream.
 message Event {

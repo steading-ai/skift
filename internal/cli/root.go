@@ -98,6 +98,8 @@ Output is JSON whenever stdout is not a terminal, and on request with
 		a.heartbeatCommand(),
 		a.releaseCommand(),
 		a.completeCommand(),
+		a.estimateCommand(),
+		a.usageCommand(),
 		a.commentCommand(),
 		a.searchCommand(),
 		a.eventsCommand(),

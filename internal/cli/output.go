@@ -79,6 +79,9 @@ func (p printer) text(msg proto.Message) error {
 		if l := m.GetLease(); l != nil {
 			writeLease(&b, l)
 		}
+		writeUsage(&b, m.GetEstimate(), m.GetUsage())
+	case *daggerv1.ReportUsageResponse:
+		writeUsageRecord(&b, "reported", m.GetUsage())
 	case *daggerv1.GetInputsResponse:
 		if len(m.GetInputs()) == 0 {
 			b.WriteString("no inputs\n")
@@ -180,6 +183,38 @@ func writeLease(b *strings.Builder, l *daggerv1.Lease) {
 		return
 	}
 	fmt.Fprintf(b, " expires in %s\n", time.Until(l.GetExpiresAt().AsTime()).Round(time.Second))
+}
+
+// writeUsage renders what a node is expected to cost and what it and its
+// descendants have cost, one line per model. Counts, never currency.
+func writeUsage(b *strings.Builder, estimate *daggerv1.Usage, rollup *daggerv1.Rollup) {
+	if estimate != nil {
+		writeUsageRecord(b, "estimate", estimate)
+	}
+	for _, t := range rollup.GetActual() {
+		fmt.Fprintf(b, "cost     %s  (%d records)\n", tokens(t.GetModel(), t.GetInputTokens(), t.GetOutputTokens(), t.GetCacheReadTokens(), t.GetCacheWriteTokens()), t.GetRecords())
+	}
+	for _, t := range rollup.GetEstimate() {
+		fmt.Fprintf(b, "expected %s  (%d nodes)\n", tokens(t.GetModel(), t.GetInputTokens(), t.GetOutputTokens(), t.GetCacheReadTokens(), t.GetCacheWriteTokens()), t.GetRecords())
+	}
+}
+
+// writeUsageRecord renders one usage record under a label.
+func writeUsageRecord(b *strings.Builder, label string, u *daggerv1.Usage) {
+	fmt.Fprintf(b, "%-8s %s", label, tokens(u.GetModel(), u.GetInputTokens(), u.GetOutputTokens(), u.GetCacheReadTokens(), u.GetCacheWriteTokens()))
+	if basis := u.GetBasis(); basis != "" {
+		fmt.Fprintf(b, "  basis: %s", basis)
+	}
+	b.WriteByte('\n')
+}
+
+// tokens renders the four counts of a usage record, named so a reader
+// need not remember their order. A record naming no model shows a dash.
+func tokens(model string, input, output, cacheRead, cacheWrite int64) string {
+	if model == "" {
+		model = "-"
+	}
+	return fmt.Sprintf("%-20s %d in, %d out, %d cache read, %d cache write", model, input, output, cacheRead, cacheWrite)
 }
 
 func writeReason(b *strings.Builder, r *daggerv1.Reason) {

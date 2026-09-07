@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	"connectrpc.com/connect"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
 	"github.com/ivy/dagger/internal/domain"
+	"github.com/ivy/dagger/internal/server/interceptor"
 )
 
 // WorkService is the dagger.v1.WorkService handler: the ready set, claims
@@ -109,6 +111,58 @@ func (w *WorkService) Heartbeat(ctx context.Context, req *connect.Request[dagger
 		return nil, connectError(err)
 	}
 	return connect.NewResponse(&daggerv1.HeartbeatResponse{Lease: toLease(change.Lease)}), nil
+}
+
+// ReportUsage implements daggerv1connect.WorkServiceHandler. The report
+// is applied as a one-operation patch carrying the attempt's lease, so it
+// is fenced, idempotent, and evented like every other write to a held
+// node.
+func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[daggerv1.ReportUsageRequest]) (*connect.Response[daggerv1.ReportUsageResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := onlyOrchestrators(actor); err != nil {
+		return nil, err
+	}
+	out, err := w.svc.Apply(ctx, orgID, actor, domain.Patch{
+		RequestID: req.Msg.GetRequestId(),
+		Project:   req.Msg.GetProject(),
+		LeaseID:   req.Msg.GetLeaseId(),
+		Ops: []domain.Op{{ReportUsage: &domain.ReportUsage{
+			Node: req.Msg.GetNode(), Model: req.Msg.GetModel(),
+			Tokens: domain.Tokens{
+				InputTokens: req.Msg.GetInputTokens(), OutputTokens: req.Msg.GetOutputTokens(),
+				CacheReadTokens: req.Msg.GetCacheReadTokens(), CacheWriteTokens: req.Msg.GetCacheWriteTokens(),
+			},
+		}}},
+	})
+	if err != nil {
+		return nil, connectError(err)
+	}
+	res := &daggerv1.ReportUsageResponse{}
+	if len(out.Usage) > 0 {
+		res.Usage = toUsage(out.Usage[0])
+	}
+	return connect.NewResponse(res), nil
+}
+
+// onlyOrchestrators refuses a principal that runs work rather than
+// dispatching it. What an attempt cost is counted by the process running
+// the agent, never by the agent's own account of itself, so ReportUsage
+// is a door agents do not have; an agent says what work is expected to
+// cost with the estimate_node operation of a patch instead. Only a user
+// principal passes today: an orchestrator runs under the person whose
+// work it dispatches, and no principal kind names an orchestrator.
+func onlyOrchestrators(actor domain.Actor) error {
+	if actor.PrincipalKind == string(interceptor.KindUser) {
+		return nil
+	}
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf(
+		"the orchestrator reports usage, not the %s that does the work: "+
+			"record what a node is expected to cost with the estimate_node operation of a patch, "+
+			"and leave reporting what an attempt cost to whoever dispatched it",
+		actor.PrincipalKind))
 }
 
 // Release implements daggerv1connect.WorkServiceHandler.

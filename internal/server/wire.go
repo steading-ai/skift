@@ -58,6 +58,11 @@ var principalKinds = enum[daggerv1.PrincipalKind]{
 	daggerv1.PrincipalKind_PRINCIPAL_KIND_SERVICE: "service",
 }
 
+var usageKinds = enum[daggerv1.UsageKind]{
+	daggerv1.UsageKind_USAGE_KIND_ACTUAL:   domain.UsageActual,
+	daggerv1.UsageKind_USAGE_KIND_ESTIMATE: domain.UsageEstimate,
+}
+
 var edgeKinds = enum[daggerv1.EdgeKind]{
 	daggerv1.EdgeKind_EDGE_KIND_BLOCKS: "blocks",
 }
@@ -210,6 +215,15 @@ func fromOp(op *daggerv1.PatchOp) domain.Op {
 	case *daggerv1.PatchOp_ResolveComment:
 		c := o.ResolveComment
 		return domain.Op{ResolveComment: &domain.ResolveComment{Comment: c.GetCommentId()}}
+	case *daggerv1.PatchOp_EstimateNode:
+		e := o.EstimateNode
+		return domain.Op{EstimateNode: &domain.EstimateNode{
+			Node: e.GetNode(), Model: e.GetModel(), Basis: e.GetBasis(),
+			Tokens: domain.Tokens{
+				InputTokens: e.GetInputTokens(), OutputTokens: e.GetOutputTokens(),
+				CacheReadTokens: e.GetCacheReadTokens(), CacheWriteTokens: e.GetCacheWriteTokens(),
+			},
+		}}
 	}
 	// An empty operation reaches the domain as one, which rejects it by
 	// index.
@@ -466,6 +480,50 @@ func toPart(p domain.StoredPart) *daggerv1.Part {
 func textDigest(text string) string {
 	sum := sha256.Sum256([]byte(text))
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// toUsage renders one stored usage record. A record naming no model, or
+// an actual, which has no basis, carries the empty string rather than a
+// null: the wire has no optional here to distinguish them.
+func toUsage(u domain.Usage) *daggerv1.Usage {
+	return &daggerv1.Usage{
+		NodeId:           u.NodeID,
+		LeaseId:          deref(u.LeaseID),
+		Principal:        u.Principal,
+		Model:            deref(u.Model),
+		InputTokens:      u.InputTokens,
+		OutputTokens:     u.OutputTokens,
+		CacheReadTokens:  u.CacheReadTokens,
+		CacheWriteTokens: u.CacheWriteTokens,
+		Kind:             usageKinds.val(u.Kind),
+		Basis:            deref(u.Basis),
+		CreatedAt:        timestamppb.New(u.CreatedAt),
+	}
+}
+
+// toRollup renders what a subtree cost and what it is expected to cost.
+// Nil is no rollup rather than an empty one, so a narrower view carries
+// nothing.
+func toRollup(r *domain.Rollup) *daggerv1.Rollup {
+	if r == nil {
+		return nil
+	}
+	return &daggerv1.Rollup{Actual: toModelTotals(r.Actual), Estimate: toModelTotals(r.Estimate)}
+}
+
+func toModelTotals(totals []domain.ModelTotals) []*daggerv1.ModelTotals {
+	out := make([]*daggerv1.ModelTotals, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, &daggerv1.ModelTotals{
+			Model:            deref(t.Model),
+			Records:          t.Records,
+			InputTokens:      t.InputTokens,
+			OutputTokens:     t.OutputTokens,
+			CacheReadTokens:  t.CacheReadTokens,
+			CacheWriteTokens: t.CacheWriteTokens,
+		})
+	}
+	return out
 }
 
 func toComment(c domain.CommentHistory) *daggerv1.Comment {
