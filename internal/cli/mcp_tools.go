@@ -337,16 +337,14 @@ cycle-checked as a whole. This is the one way to change the graph, and the
 tool to use when decomposing work into several nodes and linking them, or
 for any change the single-purpose tools (complete, comment) do not cover.
 
-Operations (the dagger.v1.PatchOp forms): create_node, update_node,
-drop_node, complete_node, reopen_node, add_edge, remove_edge,
-attach_artifact, add_comment, edit_comment, resolve_comment. Each names its
-target in a field called "node", except add_edge and remove_edge, which use
-"from" and "to". Reparenting and reprioritising are update_node fields
-("parent", "priority"). A target is an existing node by reference
-(` + "`#7`, `slug#7`, `org/slug#7`" + `), or a node created earlier in the
-same patch by the alias its create_node declared. Aliases are what let one
-patch build a whole subgraph atomically. Example, creating two nodes where
-the second waits on the first and both hang under existing node #3:
+The ops schema gives the shape of every operation: create_node,
+update_node, drop_node, complete_node, reopen_node, add_edge, remove_edge,
+attach_artifact, add_comment, edit_comment, resolve_comment. Wherever one
+names a node, that is an existing node by reference (` + "`#7`, `slug#7`, `org/slug#7`" + `),
+or a node created earlier in the same patch by the alias its create_node
+declared. Aliases are what let one patch build a whole subgraph atomically;
+either every operation applies or none does. Example, creating two nodes
+where the second waits on the first and both hang under existing node #3:
 
   {"ops": [
     {"create_node": {"alias": "spike", "title": "Spike the parser", "parent": "#3"}},
@@ -361,11 +359,7 @@ and counts the events written. It never echoes the bodies you sent; ask
 for view "full" to get everything back, events included. A patch touching
 a node you hold a lease on must carry that lease_id.`,
 			schema: objectSchema(map[string]any{
-				"ops": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "object"},
-					"description": "The operations, in order, each a dagger.v1.PatchOp in JSON: an object with one key naming the operation, such as {\"create_node\": {...}} or {\"add_edge\": {\"from\": \"spike\", \"to\": \"#7\"}}.",
-				},
+				"ops":        opsProperty(),
 				"project":    stringProp("Project the patch applies to and bare references resolve in. Defaults to the current project."),
 				"lease_id":   stringProp("Fencing token of the lease you hold, required when the patch touches a leased node. Defaults to the one lease this session holds, if exactly one."),
 				"request_id": stringProp("Idempotency key. Defaults to a fresh one; pass the same one to retry safely."),

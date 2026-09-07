@@ -59,14 +59,17 @@ lint:
 	$(MAKE) --no-print-directory check-generated
 
 # Generated code is committed, so a consumer needs no proto or SQL toolchain.
-# Proto output is regenerated into a scratch directory and diffed against
-# gen/; sqlc compares its own output in place. Either lagging its source
-# fails the build. Specs living beside generated packages are hand-written
-# and excluded from the comparison.
+# Proto output and the descriptor set internal/protodoc reads are
+# regenerated into a scratch directory and compared against the tree; sqlc
+# compares its own output in place. Either lagging its source fails the
+# build. Specs living beside generated packages are hand-written and
+# excluded from the comparison.
 check-generated:
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
 	  buf generate -o "$$tmp" && \
-	  if ! diff -r --exclude='*_test.go' "$$tmp/gen" gen; then \
+	  buf build --as-file-descriptor-set -o "$$tmp/descriptors.binpb" && \
+	  if ! diff -r --exclude='*_test.go' "$$tmp/gen" gen || \
+	     ! cmp -s "$$tmp/descriptors.binpb" internal/protodoc/descriptors.binpb; then \
 	    echo "lint: generated code is stale relative to proto/; run make generate"; \
 	    exit 1; \
 	  fi
@@ -80,6 +83,7 @@ check-generated:
 generate:
 	go generate ./...
 	buf generate
+	buf build --as-file-descriptor-set -o internal/protodoc/descriptors.binpb
 	sqlc generate
 
 clean:

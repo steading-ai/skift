@@ -163,6 +163,52 @@ func (m *mcpSession) closeStdin() int {
 	return code
 }
 
+// patchOpVariants names the operations the PatchOp oneof declares, read
+// from the descriptor so a spec never restates the contract.
+func patchOpVariants() []string {
+	fields := (&daggerv1.PatchOp{}).ProtoReflect().Descriptor().Oneofs().ByName("op").Fields()
+	names := make([]string, 0, fields.Len())
+	for i := range fields.Len() {
+		names = append(names, string(fields.Get(i).Name()))
+	}
+	return names
+}
+
+// patchOpsBranches picks the ops schema apart into the operation schema of
+// each oneOf branch, keyed by the operation the branch names, and asserts
+// on the way that a branch names exactly one operation and requires it.
+func patchOpsBranches(tool map[string]any) map[string]map[string]any {
+	GinkgoHelper()
+	properties := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+	ops, _ := properties["ops"].(map[string]any)
+	Expect(ops).To(HaveKeyWithValue("type", "array"))
+	items, _ := ops["items"].(map[string]any)
+	branches, _ := items["oneOf"].([]any)
+	Expect(branches).NotTo(BeEmpty(), "the ops schema offers no operations")
+	out := map[string]map[string]any{}
+	for _, raw := range branches {
+		branch, _ := raw.(map[string]any)
+		Expect(branch).To(HaveKeyWithValue("additionalProperties", false))
+		named, _ := branch["properties"].(map[string]any)
+		Expect(named).To(HaveLen(1), "a branch names more than one operation")
+		for name, schema := range named {
+			Expect(branch["required"]).To(ConsistOf(name))
+			out[name], _ = schema.(map[string]any)
+			Expect(out[name]).NotTo(BeNil(), name)
+		}
+	}
+	return out
+}
+
+// toAny is a list of strings as the any values a decoded JSON array holds.
+func toAny(values []string) []any {
+	out := make([]any, len(values))
+	for i, v := range values {
+		out[i] = v
+	}
+	return out
+}
+
 var _ = AfterSuite(func() {
 	gexec.CleanupBuildArtifacts()
 })
@@ -505,6 +551,110 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			for _, word := range regexp.MustCompile(`\b\w+_(?:node|edge)\b`).FindAllString(description, -1) {
 				Expect(ops).To(HaveKey(word), "the description names %q, which is not a PatchOp operation", word)
 			}
+		})
+	})
+
+	Describe("Scenario: The ops schema has one branch per PatchOp operation", func() {
+		It("The ops schema has one branch per PatchOp operation", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the operations the PatchOp oneof declares")
+			variants := patchOpVariants()
+			Expect(variants).NotTo(BeEmpty())
+
+			By("when the client lists the tool schemas")
+			branches := patchOpsBranches(m.tools()["apply_patch"])
+
+			By("then the schema offers exactly one branch per operation, keyed by its name")
+			names := make([]string, 0, len(branches))
+			for name := range branches {
+				names = append(names, name)
+			}
+			Expect(names).To(ConsistOf(variants), "the schema and the descriptor disagree on the operations")
+
+			By("and each branch explains its operation in the words the proto uses")
+			for name, branch := range branches {
+				Expect(branch).To(HaveKeyWithValue("type", "object"), name)
+				Expect(branch["description"]).To(BeAssignableToTypeOf(""), name)
+				Expect(branch["description"]).NotTo(BeEmpty(), name)
+			}
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
+	Describe("Scenario: Each operation's schema names the fields it takes", func() {
+		It("Each operation's schema names the fields it takes", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the ops schema apply_patch advertises")
+			branches := patchOpsBranches(m.tools()["apply_patch"])
+
+			By(`then update_node names its target "node", not "ref"`)
+			update := branches["update_node"]
+			Expect(update["properties"]).To(HaveKey("node"))
+			Expect(update["properties"]).NotTo(HaveKey("ref"))
+			Expect(update["required"]).To(ConsistOf("node"))
+
+			By(`and add_edge names its ends "from" and "to"`)
+			edge := branches["add_edge"]
+			Expect(edge["properties"]).To(HaveKey("from"))
+			Expect(edge["properties"]).To(HaveKey("to"))
+			Expect(edge["required"]).To(ConsistOf("from", "to"))
+
+			By("and create_node requires a title, having no node to name")
+			create := branches["create_node"]
+			Expect(create["required"]).To(ConsistOf("title"))
+			Expect(create["properties"]).To(HaveKey("alias"))
+			Expect(create["properties"]).To(HaveKey("blocked_by"))
+
+			By("and every operation naming an existing node requires it")
+			for _, name := range []string{"drop_node", "complete_node", "reopen_node", "attach_artifact", "add_comment"} {
+				Expect(branches[name]["required"]).To(ContainElement("node"), name)
+			}
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
+	Describe("Scenario: Enum fields in the ops schema list their values in the short form", func() {
+		It("Enum fields in the ops schema list their values in the short form", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the ops schema apply_patch advertises")
+			branches := patchOpsBranches(m.tools()["apply_patch"])
+			priorities := codec.EnumNames(daggerv1.Priority(0).Descriptor())
+			reasons := codec.EnumNames(daggerv1.DropReason(0).Descriptor())
+
+			By("then priority carries the priorities, wherever a node's priority is set")
+			Expect(priorities).To(ConsistOf("p0", "p1", "p2", "p3", "p4"))
+			for _, name := range []string{"create_node", "update_node"} {
+				priority := branches[name]["properties"].(map[string]any)["priority"].(map[string]any)
+				Expect(priority).To(HaveKeyWithValue("type", "string"), name)
+				Expect(priority["enum"]).To(ConsistOf(toAny(priorities)), name)
+			}
+
+			By("and drop_node's reason carries the drop reasons")
+			reason := branches["drop_node"]["properties"].(map[string]any)["reason"].(map[string]any)
+			Expect(reason["enum"]).To(ConsistOf(toAny(reasons)))
+			Expect(reasons).To(ContainElements("superseded", "not_viable", "no_longer_relevant"))
+		})
+	})
+
+	Describe("Scenario: The apply_patch tool definition stays small enough to send", func() {
+		It("The apply_patch tool definition stays small enough to send", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the tool as the client receives it")
+			serialised, err := json.Marshal(m.tools()["apply_patch"])
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then name, description, and schema together stay under 12 KB")
+			Expect(len(serialised)).To(BeNumerically("<", 12*1024),
+				"the apply_patch tool definition is %d bytes; it is in every context window that loads dagger", len(serialised))
+			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})
 
