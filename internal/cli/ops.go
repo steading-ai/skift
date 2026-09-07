@@ -119,6 +119,67 @@ func (a *app) linkCommand() *cobra.Command {
 	return cmd
 }
 
+func (a *app) dropCommand() *cobra.Command {
+	var reason, detail, requestID string
+	var maxNodes int
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	cmd := &cobra.Command{
+		Use:   "drop <ref>",
+		Short: "Drop a node with a reason, optionally cascading within a stated bound",
+		Long: `Drop a node. Without --cascade the drop asserts that downstream work does
+not need this node after all, and what it blocks becomes ready. With
+--cascade N it asserts the functionality is gone and takes the whole
+subtree the node blocks, refusing the patch if that subtree is larger than
+N nodes and naming the real count; N counts the node named here. Read the
+graph first: the bound is a statement that you have.
+
+The response lists the reference of every node dropped, which is what a
+reopen undoing the drop works from.`,
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ref, err := parseRef(args[0])
+			if err != nil {
+				return err
+			}
+			dropReason, err := enumFlag[daggerv1.DropReason]("reason", reason)
+			if err != nil {
+				return err
+			}
+			if dropReason == daggerv1.DropReason_DROP_REASON_UNSPECIFIED {
+				return usage("--reason is required: a drop is an assertion about the work, and the event keeps it")
+			}
+			op := &daggerv1.DropNodeOp{Node: ref.String(), Reason: dropReason, Detail: detail}
+			if cmd.Flags().Changed("cascade") {
+				if maxNodes < 1 {
+					return usage("--cascade takes the most nodes the cascade may drop, at least 1")
+				}
+				op.Cascade = &daggerv1.Cascade{MaxNodes: int32(maxNodes)} //nolint:gosec // bounded below by the check above and above by the patch ceiling the server applies
+			}
+			project, err := a.projectFor(ref)
+			if err != nil {
+				return err
+			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
+			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+				RequestId: orMint(requestID),
+				Project:   project,
+				Ops:       []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_DropNode{DropNode: op}}},
+				View:      v,
+			})
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&reason, "reason", "", "why: superseded, not_viable, no_longer_relevant, or other")
+	f.StringVar(&detail, "detail", "", "free text expanding on the reason; required when the reason is other")
+	f.IntVar(&maxNodes, "cascade", 0, "also drop the subtree this node blocks, refusing more than this many nodes in all")
+	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
+	return cmd
+}
+
 func (a *app) completeCommand() *cobra.Command {
 	var lease, result, requestID string
 	view := viewFlag{def: daggerv1.View_VIEW_REFS}

@@ -177,7 +177,7 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 
 			By("when node 1 is dropped with cascade")
 			r := g.mustApply(ctx, actor, "axe", domain.Op{DropNode: &domain.DropNode{
-				Node: "#1", Reason: domain.DropNoLongerRelevant, Cascade: true,
+				Node: "#1", Reason: domain.DropNoLongerRelevant, Cascade: &domain.Cascade{MaxNodes: 4},
 			}})
 
 			By("then nodes 1 through 4 are dropped in one transaction")
@@ -378,7 +378,7 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			_, err := g.applyWithLease(ctx, agent, "link", holder.Lease.ID, addEdge("#2", "#3"))
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = g.apply(ctx, actor, "axe", domain.Op{DropNode: &domain.DropNode{Node: "#1", Reason: domain.DropSuperseded, Cascade: true}})
+			_, err = g.apply(ctx, actor, "axe", domain.Op{DropNode: &domain.DropNode{Node: "#1", Reason: domain.DropSuperseded, Cascade: &domain.Cascade{MaxNodes: 3}}})
 
 			Expect(err).To(MatchError(domain.ErrLeaseRequired), "node 3 is held, and the patch carries no lease")
 			Expect(g.statuses(ctx, "#1", "#2", "#3")).To(Equal([]string{"open", "open", "open"}))

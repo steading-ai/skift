@@ -185,7 +185,7 @@ func fromOp(op *daggerv1.PatchOp) domain.Op {
 		return domain.Op{UpdateNode: up}
 	case *daggerv1.PatchOp_DropNode:
 		d := o.DropNode
-		return domain.Op{DropNode: &domain.DropNode{Node: d.GetNode(), Reason: dropReasons.str(d.GetReason()), Detail: d.GetDetail(), Cascade: d.GetCascade()}}
+		return domain.Op{DropNode: &domain.DropNode{Node: d.GetNode(), Reason: dropReasons.str(d.GetReason()), Detail: d.GetDetail(), Cascade: fromCascade(d.GetCascade())}}
 	case *daggerv1.PatchOp_CompleteNode:
 		c := o.CompleteNode
 		return domain.Op{CompleteNode: &domain.CompleteNode{Node: c.GetNode(), Result: fromResult(c.GetResult())}}
@@ -214,6 +214,15 @@ func fromOp(op *daggerv1.PatchOp) domain.Op {
 	// An empty operation reaches the domain as one, which rejects it by
 	// index.
 	return domain.Op{}
+}
+
+// fromCascade carries the bound a cascading drop stated. Absent on the
+// wire means the drop takes only the node it names.
+func fromCascade(c *daggerv1.Cascade) *domain.Cascade {
+	if c == nil {
+		return nil
+	}
+	return &domain.Cascade{MaxNodes: int(c.GetMaxNodes())}
 }
 
 func fromResult(r *daggerv1.Result) domain.NodeResult {

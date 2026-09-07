@@ -44,6 +44,9 @@ func (g *GraphService) ApplyPatch(ctx context.Context, req *connect.Request[dagg
 		Aliases:    out.Aliases,
 		EventCount: int32(len(out.Events)), //nolint:gosec // bounded by the patch's operation ceiling
 		RequestId:  req.Msg.GetRequestId(),
+		// The undo list of a drop, cheap enough to carry under every
+		// view: without it the caller cannot reopen what a cascade took.
+		Dropped: out.Dropped,
 	}
 	// Events are the audit record, read through WatchEvents; a patch
 	// response carries them only when asked for everything.

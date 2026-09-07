@@ -138,7 +138,13 @@ func (h *history) drawOp(aliases *[]string) domain.Op {
 		return domain.Op{RemoveEdge: &domain.RemoveEdge{From: ref("from"), To: ref("to")}}
 	case "drop":
 		reason := rapid.SampledFrom([]string{domain.DropSuperseded, domain.DropNotViable, domain.DropNoLongerRelevant, domain.DropOther}).Draw(t, "reason")
-		op := &domain.DropNode{Node: ref("node"), Reason: reason, Cascade: rapid.Bool().Draw(t, "cascade")}
+		op := &domain.DropNode{Node: ref("node"), Reason: reason}
+		if rapid.Bool().Draw(t, "cascade") {
+			// A bound the generated graphs never reach, so the
+			// cascade itself is what is exercised rather than its
+			// refusal.
+			op.Cascade = &domain.Cascade{MaxNodes: 1000}
+		}
 		if reason == domain.DropOther {
 			op.Detail = "because"
 		}
@@ -339,8 +345,8 @@ func renderOp(op domain.Op) string {
 	case op.DropNode != nil:
 		d := op.DropNode
 		s := fmt.Sprintf("drop %s as %s", d.Node, d.Reason)
-		if d.Cascade {
-			s += " cascade"
+		if d.Cascade != nil {
+			s += fmt.Sprintf(" cascade max_nodes %d", d.Cascade.MaxNodes)
 		}
 		return s
 	case op.ReopenNode != nil:

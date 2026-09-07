@@ -40,7 +40,7 @@ var _ = Describe("root command", Label("unit"), func() {
 			names = append(names, c.Name())
 		}
 		Expect(names).To(ConsistOf("version", "mcp", "serve", "reap",
-			"project", "node", "patch", "create", "link", "ready", "explain", "inputs",
+			"project", "node", "patch", "create", "link", "drop", "ready", "explain", "inputs",
 			"claim", "heartbeat", "release", "complete", "comment", "search", "events"))
 	})
 

@@ -100,8 +100,11 @@ is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
 - **`dg ready --wait` claims** — the CLI verb is overloaded, which is why
   `Bash(dg ready:*)` is not pre-authorized above. The MCP `ready` tool takes no
   such flag and never claims.
-- **A cascading drop takes the whole blocked subtree** in one transaction. Read
-  the graph before setting `cascade`.
+- **A cascading drop takes the whole blocked subtree** in one transaction, and
+  states its size first: `"cascade": {"max_nodes": 5}`, counting the node named.
+  The server refuses the patch and names the real count when the subtree is
+  larger, so read the graph before choosing the number. The response lists every
+  reference dropped, which is what a `reopen_node` undoing it works from.
 - **Never claim a node whose `assignee_kind` is `user`.** That is a gate — a
   decision a human owes, deliberately blocking something.
 

@@ -153,6 +153,10 @@ message ApplyPatchResponse {
   // The idempotency key the patch was applied under, so a caller that let
   // a client mint one can retry or find the patch's events.
   string request_id = 5;
+  // The slug#number reference of every node the patch dropped, in the
+  // order they were dropped, cascades included. Present under every view:
+  // it is the list a reopen undoing the drop works from.
+  repeated string dropped = 6;
 }
 
 // PatchOp is one operation in a patch. Exactly one of its forms is set.
@@ -248,8 +252,9 @@ message Labels {
 
 // DropNodeOp abandons a node. Without cascade it asserts downstream work no
 // longer needs this node; with cascade it asserts the functionality is gone
-// and drops the subtree it blocks in the same patch. A dropped gate never
-// satisfies anything.
+// and drops the subtree it blocks in the same patch, up to the bound the
+// cascade states. A dropped gate never satisfies anything, and the
+// response lists every node the drop took.
 message DropNodeOp {
   // Node reference of the node to drop.
   string node = 1;
@@ -257,8 +262,22 @@ message DropNodeOp {
   DropReason reason = 2;
   // Free text expanding on the reason. Recorded on the event.
   string detail = 3;
-  // Also drop every node this one transitively blocks.
-  bool cascade = 4;
+  // Present to also drop every node this one transitively blocks, within
+  // the bound it states. Absent drops this node alone.
+  Cascade cascade = 4;
+}
+
+// Cascade is the bound a cascading drop states before it runs. The server
+// counts the subtree the drop would take and refuses the patch if the
+// count exceeds max_nodes, naming both numbers, so a caller who has not
+// looked at the graph cannot supply a truthful bound and one who has loses
+// nothing.
+message Cascade {
+  // Most nodes the cascade may drop, counting the node the drop names
+  // itself. A node blocking two others is a count of three. Nodes already
+  // dropped are not counted, since the cascade does not change them. Must
+  // be at least one.
+  int32 max_nodes = 1;
 }
 
 // CompleteNodeOp finishes a node. Results of all blocking predecessors are

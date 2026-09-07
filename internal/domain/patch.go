@@ -26,6 +26,9 @@ var (
 	ErrNoOperations = errors.New("a patch needs at least one operation")
 	// ErrProjectArchived: an archived project is read-only.
 	ErrProjectArchived = errors.New("project is archived")
+	// ErrCascadeBoundRequired: a cascading drop states how many nodes it
+	// is prepared to take, and zero is not a cascade.
+	ErrCascadeBoundRequired = errors.New("a cascading drop needs a bound of at least one node")
 	// ErrStatusConflict: a transition the node's stored status does not
 	// permit, such as completing a node that is not open. The error
 	// wrapping it names the node and its status.
@@ -210,8 +213,36 @@ type DropNode struct {
 	Detail string `json:"detail,omitempty"`
 	// Cascade asserts the functionality is gone: every node this one
 	// transitively blocks is dropped in the same patch, each as its own
-	// operation, authorized and recorded like one the client wrote.
-	Cascade bool `json:"cascade,omitempty"`
+	// operation, authorized and recorded like one the client wrote. Nil
+	// drops the node alone.
+	Cascade *Cascade `json:"cascade,omitempty"`
+}
+
+// Cascade is the bound a cascading drop states before it runs. Nothing
+// else makes the caller look at the size of the subtree it is taking, and
+// a caller who has not looked cannot state a truthful bound.
+type Cascade struct {
+	// MaxNodes is the most nodes the cascade may drop, counting the node
+	// the drop names itself and leaving out nodes already dropped. A
+	// cascade over a larger subtree is refused with a
+	// [*CascadeTooLargeError] and nothing is dropped.
+	MaxNodes int `json:"max_nodes"`
+}
+
+// CascadeTooLargeError reports a cascading drop whose subtree is larger
+// than the bound the operation stated. Both numbers are named: the bound
+// is what the caller believed, and the count is what the graph holds.
+type CascadeTooLargeError struct {
+	// Node is the reference the drop named.
+	Node string
+	// Count is how many nodes the cascade would have dropped.
+	Count int
+	// MaxNodes is the bound the cascade stated.
+	MaxNodes int
+}
+
+func (e *CascadeTooLargeError) Error() string {
+	return fmt.Sprintf("cascading drop of %s would drop %d nodes, above the stated bound of %d", e.Node, e.Count, e.MaxNodes)
 }
 
 // Drop reasons, as a drop_node classifies itself.
@@ -227,6 +258,9 @@ const (
 )
 
 func (d *DropNode) validate() error {
+	if d.Cascade != nil && d.Cascade.MaxNodes < 1 {
+		return fmt.Errorf("%w: max_nodes is %d", ErrCascadeBoundRequired, d.Cascade.MaxNodes)
+	}
 	switch d.Reason {
 	case DropSuperseded, DropNotViable, DropNoLongerRelevant:
 		return nil
@@ -292,6 +326,10 @@ type Result struct {
 	CommentAliases map[string]string `json:"comment_aliases"`
 	// Usage is every usage record the patch wrote, in operation order.
 	Usage []store.Usage `json:"usage"`
+	// Dropped is the `slug#number` reference of every node the patch
+	// dropped, in the order they were dropped and including the ones a
+	// cascade expanded into. It is the list an undo reopens.
+	Dropped []string `json:"dropped"`
 	// Events are the events the patch wrote, in operation order.
 	Events []store.Event `json:"events"`
 	// Replayed reports that this is the stored response of an earlier
@@ -586,6 +624,11 @@ type applier struct {
 	commentAliases map[string]string
 	// usage are the usage records the patch wrote.
 	usage []store.Usage
+	// dropped are the references of the nodes the patch dropped, in the
+	// order they were dropped, and slugs the project slugs they were
+	// built from.
+	dropped []string
+	slugs   map[string]string
 }
 
 func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, p Patch) (*applier, error) {
@@ -903,37 +946,67 @@ func (a *applier) updateNode(ctx context.Context, op *UpdateNode) error {
 
 func (a *applier) dropNode(ctx context.Context, op *DropNode) error {
 	reason := op.eventReason()
-	notDropped := func(ref string) func(store.Node) error {
-		return func(n store.Node) error {
-			if n.Status == "dropped" {
-				return fmt.Errorf("node %s is already dropped: %w", ref, ErrStatusConflict)
-			}
-			return nil
-		}
-	}
 	resolved, err := a.resolver.Resolve(ctx, op.Node)
 	if err != nil {
 		return err
 	}
-	if err := a.transitionNode(ctx, OpDropNode, resolved.ID, op.Node, &reason, notDropped(op.Node), "dropped"); err != nil {
+	targets, err := a.dropTargets(ctx, resolved.ID, op)
+	if err != nil {
 		return err
 	}
-	if !op.Cascade {
+	if op.Cascade != nil && len(targets) > op.Cascade.MaxNodes {
+		return &CascadeTooLargeError{Node: op.Node, Count: len(targets), MaxNodes: op.Cascade.MaxNodes}
+	}
+	for _, t := range targets {
+		if err := a.transitionNode(ctx, OpDropNode, t.id, t.ref, &reason, notDropped(t.ref), "dropped"); err != nil {
+			return err
+		}
+		if err := a.recordDropped(ctx, t.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// notDropped refuses a node that is already dropped, naming it as ref.
+func notDropped(ref string) func(store.Node) error {
+	return func(n store.Node) error {
+		if n.Status == "dropped" {
+			return fmt.Errorf("node %s is already dropped: %w", ref, ErrStatusConflict)
+		}
 		return nil
+	}
+}
+
+// dropTarget is one node a drop takes, and how errors name it.
+type dropTarget struct {
+	id  string
+	ref string
+}
+
+// dropTargets is every node the drop would take, in the order it takes
+// them: the node itself, then the subtree it blocks when the drop
+// cascades. Counting the whole set before dropping any of it is what lets
+// a cascade be refused for exceeding its bound without having written
+// anything.
+func (a *applier) dropTargets(ctx context.Context, rootID string, op *DropNode) ([]dropTarget, error) {
+	targets := []dropTarget{{id: rootID, ref: op.Node}}
+	if op.Cascade == nil {
+		return targets, nil
 	}
 	// The subtree this node blocks, walked breadth-first over blocks
 	// edges. Each node it reaches is dropped as an operation of its own,
 	// so it is fenced, authorized, and recorded like one the client
 	// wrote; a node already dropped is passed over but still walked
 	// through, since what it blocks is still this node's subtree.
-	seen := map[string]bool{resolved.ID: true}
-	queue := []string{resolved.ID}
+	seen := map[string]bool{rootID: true}
+	queue := []string{rootID}
 	for len(queue) > 0 {
 		id := queue[0]
 		queue = queue[1:]
 		edges, err := a.tx.ListEdgesOutOf(ctx, store.ListEdgesOutOfParams{OrgID: a.orgID, FromNode: id})
 		if err != nil {
-			return fmt.Errorf("read edges out of node %s: %w", id, err)
+			return nil, fmt.Errorf("read edges out of node %s: %w", id, err)
 		}
 		for _, e := range edges {
 			if e.Kind != "blocks" || seen[e.ToNode] {
@@ -943,18 +1016,47 @@ func (a *applier) dropNode(ctx context.Context, op *DropNode) error {
 			queue = append(queue, e.ToNode)
 			node, err := a.tx.GetNode(ctx, store.GetNodeParams{OrgID: a.orgID, ID: e.ToNode})
 			if err != nil {
-				return fmt.Errorf("read node %s: %w", e.ToNode, err)
+				return nil, fmt.Errorf("read node %s: %w", e.ToNode, err)
 			}
 			if node.Status == "dropped" {
 				continue
 			}
-			display := fmt.Sprintf("%s (blocked by %s)", e.ToNode, op.Node)
-			if err := a.transitionNode(ctx, OpDropNode, e.ToNode, display, &reason, notDropped(display), "dropped"); err != nil {
-				return err
-			}
+			targets = append(targets, dropTarget{id: e.ToNode, ref: fmt.Sprintf("%s (blocked by %s)", e.ToNode, op.Node)})
 		}
 	}
+	return targets, nil
+}
+
+// recordDropped adds a node the patch dropped to the result's undo list,
+// as the reference a later reopen would name it by.
+func (a *applier) recordDropped(ctx context.Context, id string) error {
+	node := a.nodes[a.index[id]]
+	slug, err := a.slugOf(ctx, node.ProjectID)
+	if err != nil {
+		return err
+	}
+	a.dropped = append(a.dropped, NodeRef{Project: slug, Number: node.Number}.String())
 	return nil
+}
+
+// slugOf is the slug of a project the patch touched. A cascade follows
+// blocks edges, which may leave the patch's own project.
+func (a *applier) slugOf(ctx context.Context, projectID string) (string, error) {
+	if projectID == a.project.ID {
+		return a.project.Slug, nil
+	}
+	if slug, ok := a.slugs[projectID]; ok {
+		return slug, nil
+	}
+	project, err := a.tx.GetProject(ctx, store.GetProjectParams{OrgID: a.orgID, ID: projectID})
+	if err != nil {
+		return "", fmt.Errorf("read project %s: %w", projectID, err)
+	}
+	if a.slugs == nil {
+		a.slugs = map[string]string{}
+	}
+	a.slugs[projectID] = project.Slug
+	return project.Slug, nil
 }
 
 func (a *applier) reopenNode(ctx context.Context, op *ReopenNode) error {
@@ -1088,7 +1190,10 @@ func (a *applier) projectOf(id string) string {
 }
 
 func (a *applier) result() *Result {
-	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Comments: a.comments, CommentAliases: a.commentAliases, Usage: a.usage, Events: a.events}
+	r := &Result{Nodes: a.nodes, Aliases: a.aliases, Comments: a.comments, CommentAliases: a.commentAliases, Usage: a.usage, Dropped: a.dropped, Events: a.events}
+	if r.Dropped == nil {
+		r.Dropped = []string{}
+	}
 	if r.Nodes == nil {
 		r.Nodes = []store.Node{}
 	}

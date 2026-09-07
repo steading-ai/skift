@@ -39,6 +39,7 @@ func codeOf(err error) connect.Code {
 		cycle    *domain.CycleError
 		conflict *domain.RequestConflictError
 		parse    *domain.ParseError
+		cascade  *domain.CascadeTooLargeError
 	)
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -63,11 +64,13 @@ func codeOf(err error) connect.Code {
 		errors.Is(err, domain.ErrPrincipalNotFound):
 		return connect.CodeNotFound
 
-	// The graph is not in the state the request needs: a cycle, a fence
-	// the write does not pass, an archived project, a transition from the
+	// The graph is not in the state the request needs: a cycle, a subtree
+	// larger than the cascade that would take it stated, a fence the
+	// write does not pass, an archived project, a transition from the
 	// wrong status. Distinct from a permission denial: nothing about who
 	// asked is at issue, only what the graph looks like now.
 	case errors.As(err, &cycle),
+		errors.As(err, &cascade),
 		errors.Is(err, domain.ErrLeaseNotLive),
 		errors.Is(err, domain.ErrNotLeaseHolder),
 		errors.Is(err, domain.ErrLeaseRequired),
@@ -100,6 +103,7 @@ func codeOf(err error) connect.Code {
 		errors.Is(err, domain.ErrNoRequestID),
 		errors.Is(err, domain.ErrNoOperations),
 		errors.Is(err, domain.ErrReasonRequired),
+		errors.Is(err, domain.ErrCascadeBoundRequired),
 		errors.Is(err, domain.ErrResultRequired),
 		errors.Is(err, domain.ErrNegativeDuration),
 		errors.Is(err, domain.ErrNoLeaseID),

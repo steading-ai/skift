@@ -15,7 +15,7 @@ import (
 
 // dropCascade is a drop_node operation taking the subtree the node blocks.
 func dropCascade(node, reason string) domain.Op {
-	return domain.Op{DropNode: &domain.DropNode{Node: node, Reason: reason, Cascade: true}}
+	return domain.Op{DropNode: &domain.DropNode{Node: node, Reason: reason, Cascade: &domain.Cascade{MaxNodes: 10}}}
 }
 
 // denials reads the audit of one organization's refusals, in order.

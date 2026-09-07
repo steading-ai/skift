@@ -185,7 +185,7 @@ It is **not in v1**. A field the client asserts is not client-assertable provena
 
 The unit of mutation. A flat list of operations applied in one transaction:
 
-- `create_node`, `update_node`, `drop_node { cascade, reason }`, `complete_node { result }`, `reopen_node { reason }`
+- `create_node`, `update_node`, `drop_node { reason, cascade { max_nodes } }`, `complete_node { result }`, `reopen_node { reason }`
 - `add_edge`, `remove_edge`
 - `attach_artifact`, `add_comment`
 
@@ -220,12 +220,16 @@ The format is written for a model to generate correctly on the first try, and se
 
 ### Drop semantics
 
-The cascade flag carries the intent, and the two cases are different assertions.
+Cascade carries the intent, and the two cases are different assertions.
 
 - **Without cascade**, the drop asserts that downstream work does not need this after all: the dependency was unnecessary or is no longer a blocker. The node satisfies edges out of it and downstream becomes ready if nothing else blocks it.
 - **With cascade**, the drop asserts the functionality is gone, and the subtree of nodes it blocks is dropped in the same patch.
 
 Choosing wrongly is the agent's error, not an ambiguity in the model. Gates are the one exception: a dropped gate never satisfies anything.
+
+A cascade is wide and quiet, so it states its blast radius before it runs: `cascade { max_nodes: N }`. The server counts the subtree the drop would take — the node named included, nodes already dropped excluded — and refuses the patch, naming the count and the bound, when the count is larger. Nothing is written. A caller that has not read the graph cannot state a truthful bound; one that has loses nothing.
+
+A drop is reversible: `reopen_node` takes a dropped node back to open, and edges survive a drop. Undoing one needs the list of what it took, so **every patch response carries the references of every node it dropped**, cascade or not, under every view. That list is what a reopen works from.
 
 ## Completion and results
 

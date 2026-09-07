@@ -352,9 +352,15 @@ where the second waits on the first and both hang under existing node #3:
     {"add_edge": {"from": "spike", "to": "impl"}}
   ]}
 
-An add_edge from A to B means A must finish before B is ready. The
-response lists every node created or changed with its number, reference,
-status, and readiness flags, maps each alias to the reference it became,
+An add_edge from A to B means A must finish before B is ready. A
+drop_node cascade states the blast radius it accepts, as
+{"cascade": {"max_nodes": 5}}: the server counts the subtree the drop
+would take, counting the node named, and refuses the patch naming the
+real count when it is larger. Read the graph before choosing the number.
+
+The response lists every node created or changed with its number,
+reference, status, and readiness flags, maps each alias to the reference
+it became, lists under "dropped" the reference of every node a drop took,
 and counts the events written. It never echoes the bodies you sent; ask
 for view "full" to get everything back, events included. A patch touching
 a node you hold a lease on must carry that lease_id.`,

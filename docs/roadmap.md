@@ -50,3 +50,4 @@ Most of the [external review's](../docs/adrs/) deferred findings live here. That
 - **Supervision and moderation.** Consumers, not features. See [ADR-006](adrs/006-provenance-not-authority.md).
 - **Budget enforcement.** Records exist from M2. Enforcement is the orchestrator's until someone proves otherwise.
 - **Metering-grade usage.** Estimate-grade is best effort by design. Billing would change that, and there is no billing.
+- **A policy veto on large cascades.** A `drop_node` cascade already states the bound it fits within, and the server refuses a larger subtree; a Rego rule capping the bound itself for non-`user` principals would hold regardless of what a model was told. Worth having, not worth having yet.

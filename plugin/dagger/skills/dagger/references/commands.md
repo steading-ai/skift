@@ -111,7 +111,9 @@ and `remove_edge` use `from` and `to`. Reparenting and reprioritising are
 ```json
 {"update_node":   {"node": "#7", "body": "…", "priority": "p0"}}
 {"drop_node":     {"node": "#7", "reason": "superseded",
-                   "detail": "folded into #9", "cascade": false}}
+                   "detail": "folded into #9"}}
+{"drop_node":     {"node": "#7", "reason": "not_viable",
+                   "cascade": {"max_nodes": 5}}}
 {"complete_node": {"node": "#7", "result": {"body": "…"}}}
 {"add_comment":   {"node": "#7", "body": "…", "in_reply_to": "<comment id>"}}
 ```
@@ -125,8 +127,15 @@ same refs view, and takes the same `--view`:
 dg create 'Title' --body - --kind bug --priority p1 --blocked-by '#3' --label api
 dg create 'Decide the retention policy' --assignee-kind user   # files a gate
 dg link '#3' '#7'                                              # #3 before #7
+dg drop '#7' --reason superseded --detail 'folded into #9'
+dg drop '#7' --reason not_viable --cascade 5   # and the subtree, up to 5 nodes
 dg comment '#7' 'note' --in-reply-to '<id>'
 ```
+
+`dg drop` answers with `dropped`, the reference of every node it took: the list
+a `reopen_node` undoing the drop works from. `--cascade` takes the most nodes
+the cascade may drop, counting the node named; the service refuses the patch
+and names the real count when the subtree is larger.
 
 Every write takes `--request-id` as an idempotency key. Retrying with the same
 one returns the original response and writes no second set of events; retrying

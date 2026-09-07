@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
@@ -348,6 +349,64 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(r.code).To(Equal(cli.ExitFailure))
 			Expect(r.stderrError().Code).To(Equal("unavailable"))
 			Expect(r.stderrError().Message).To(ContainSubstring(socket))
+		})
+	})
+
+	Describe("dg drop", func() {
+		BeforeEach(func() { s.newNode("Target") })
+
+		It("builds the same patch as the hand-written JSON", func() {
+			By(`when I run "dg drop dagger#7 --reason superseded"`)
+			r := run(nil, "drop", "dagger#7", "--reason", "superseded")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			built := last[*daggerv1.ApplyPatchRequest](s)
+
+			By("then the operation is the one the same patch written by hand sends")
+			r = run(strings.NewReader(`{"project": "dagger", "ops": [{"drop_node": {"node": "dagger#7", "reason": "superseded"}}]}`), "patch", "apply", "-")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			written := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(built.GetProject()).To(Equal(written.GetProject()))
+			Expect(proto.Equal(built.GetOps()[0], written.GetOps()[0])).To(BeTrue(), "built %v, written %v", built.GetOps()[0], written.GetOps()[0])
+
+			By("and the response lists the reference that was dropped")
+			Expect(r.decode()["dropped"]).To(HaveLen(1))
+		})
+
+		It("carries the detail and the reason as the operation's fields", func() {
+			r := run(nil, "-p", "platform", "drop", "#7", "--reason", "other", "--detail", "folded into #9")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			op := last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode()
+			Expect(op.GetNode()).To(Equal("#7"))
+			Expect(op.GetReason()).To(Equal(daggerv1.DropReason_DROP_REASON_OTHER))
+			Expect(op.GetDetail()).To(Equal("folded into #9"))
+			Expect(op.GetCascade()).To(BeNil())
+		})
+
+		It("--cascade N states the bound and no --cascade cascades nothing", func() {
+			r := run(nil, "-p", "platform", "drop", "#7", "--reason", "superseded", "--cascade", "5")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode().GetCascade().GetMaxNodes()).To(BeEquivalentTo(5))
+
+			r = run(nil, "-p", "platform", "drop", "#7", "--reason", "superseded")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode().GetCascade()).To(BeNil())
+		})
+
+		It("refuses --cascade without a number, and a bound below one", func() {
+			r := run(nil, "-p", "platform", "drop", "#7", "--reason", "superseded", "--cascade")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("cascade"))
+
+			r = run(nil, "-p", "platform", "drop", "#7", "--reason", "superseded", "--cascade", "0")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("--cascade"))
+		})
+
+		It("refuses a drop with no reason, before any round trip", func() {
+			r := run(nil, "-p", "platform", "drop", "#7")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("--reason"))
+			Expect(s.requests).To(BeEmpty())
 		})
 	})
 

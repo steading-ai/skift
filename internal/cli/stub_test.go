@@ -203,6 +203,15 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[daggerv1.Apply
 					res.Nodes = append(res.Nodes, n)
 				}
 			}
+		case *daggerv1.PatchOp_DropNode:
+			if len(s.nodes) > 0 {
+				n := s.nodes[0]
+				n.Status = daggerv1.Status_STATUS_DROPPED
+				n.Ready = false
+				res.EventCount++
+				res.Dropped = append(res.Dropped, n.GetReference())
+				res.Nodes = append(res.Nodes, &daggerv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus()})
+			}
 		case *daggerv1.PatchOp_AddEdge, *daggerv1.PatchOp_AddComment:
 			// Recorded; nothing to return.
 		default:
