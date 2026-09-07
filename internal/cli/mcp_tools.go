@@ -675,6 +675,104 @@ saying that is not the final result.
 				})
 			},
 		},
+		{
+			name: "project_list",
+			description: `List the projects this caller may read, most recently active first, each
+with its slug, title, advisory priority, and node counter (the next node
+number the project will hand out). Use it to find the slug a reference
+needs — "slug#7" is node 7 of project "slug" — and whenever no current
+project is configured, which is when a bare "#7" cannot resolve.
+
+It lists projects, not work: node_list is a project's nodes and ready is
+what could be worked on next. Archived projects, which are read-only, are
+left out unless you ask for them.`,
+			schema: objectSchema(pageSchema(map[string]any{
+				"include_archived": map[string]any{"type": "boolean", "description": "Also list archived projects, which are read-only."},
+			})),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					IncludeArchived bool `json:"include_archived"`
+					pageArgs
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				return unwrap(c.Graph.ListProjects(ctx, connect.NewRequest(&daggerv1.ListProjectsRequest{
+					IncludeArchived: args.IncludeArchived, PageSize: args.PageSize, PageToken: args.PageToken,
+				})))
+			},
+		},
+		{
+			name: "project_show",
+			description: `Show one project: its slug, title, advisory priority, node counter, and
+when it was archived if it was. Use it to confirm a slug before writing a
+cross-project reference, or to read a project's title and priority.
+
+It returns the project and never its nodes; node_list lists those and
+ready says which are workable. A project is named by slug ("platform"), by
+"org/slug", or by id, and a retired slug still resolves. An unknown one is
+a not-found error naming the slug that did not resolve; project_list shows
+every slug that does.`,
+			schema: objectSchema(map[string]any{
+				"project": stringProp(`The project, by slug, org/slug, or id. Defaults to the current project.`),
+			}),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					Project string `json:"project"`
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				project := args.Project
+				if project == "" {
+					var err error
+					if project, err = a.project(); err != nil {
+						return nil, err
+					}
+				}
+				return unwrap(c.Graph.GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: project})))
+			},
+		},
+		{
+			name: "project_create",
+			description: `Create a project: a namespace of nodes with its own numbering, starting at
+1. Use it when work belongs to nothing that exists yet; call project_list
+first, because a second project for work that belongs in an existing one
+splits a graph, and edges do not join them back.
+
+The slug is derived from the title unless you give one, and either way it
+is lowercased and disambiguated on collision — so the slug in the response
+is the one references must use, and assuming it from the title is how a
+cross-project reference silently addresses the wrong project. Priority is
+advisory: dagger never orders projects by it.`,
+			schema: objectSchema(map[string]any{
+				"title":      stringProp("Human-readable name of the project. The slug is derived from it."),
+				"slug":       stringProp("Requested slug. Defaults to one derived from the title; lowercased and disambiguated either way."),
+				"priority":   enumProp("Advisory priority of the project as a whole. Dagger never sorts by it; p2 is the default.", enumChoices[daggerv1.Priority]()),
+				"request_id": stringProp("Idempotency key. Defaults to a fresh one; pass the same one to retry safely."),
+			}, "title"),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					Title     string `json:"title"`
+					Slug      string `json:"slug"`
+					Priority  string `json:"priority"`
+					RequestID string `json:"request_id"`
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				if args.Title == "" {
+					return nil, usage("title is required")
+				}
+				prio, err := parseEnum[daggerv1.Priority]("priority", args.Priority)
+				if err != nil {
+					return nil, err
+				}
+				return unwrap(c.Graph.CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{
+					RequestId: orMint(args.RequestID), Title: args.Title, Slug: args.Slug, Priority: prio,
+				})))
+			},
+		},
 	}
 }
 

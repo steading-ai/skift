@@ -17,6 +17,8 @@ allowed-tools:
   - mcp__plugin_dagger_dagger__inputs
   - mcp__plugin_dagger_dagger__node_list
   - mcp__plugin_dagger_dagger__explain
+  - mcp__plugin_dagger_dagger__project_list
+  - mcp__plugin_dagger_dagger__project_show
 ---
 
 # Dagger
@@ -61,12 +63,16 @@ transitive: a predecessor's result is the summary of its own inputs.
 
 MCP tools are the default: `ready`, `search`, `show_node`, `inputs`,
 `node_list`, `explain`, `claim`, `heartbeat`, `release`, `complete`, `comment`,
-`apply_patch`. A lease taken through them renews in the background, and is
-released if the session ends.
+`apply_patch`, `project_list`, `project_show`, `project_create`. A lease taken
+through them renews in the background, and is released if the session ends.
 
 `ready` is what you can work on; `node_list` is everything else — what is open,
 what is done, what a label or a parent covers. Triage and reporting go through
 `node_list`, and it never tells you what is ready.
+
+`project_list` is how you find a slug when no current project is configured, or
+when you need to write a cross-project `slug#7`; `project_show` reads one
+project, `project_create` makes one. None of them lists work.
 
 Responses are sized for a context window. A write returns references, status
 and readiness flags for what it touched, an alias map, and an event count —

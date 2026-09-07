@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
@@ -507,6 +508,128 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 	})
 
+	Describe("the project tools", func() {
+		It("Scenario: project_list lists the projects an agent may read", func() {
+			By("given two projects, the second the more recently active, and an archived one")
+			s.newProject("platform", "Platform")
+			s.newProject("infra", "Infrastructure")
+			s.newProject("retired", "Retired").ArchivedAt = timestamppb.Now()
+			s.newNode("Some work")
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("when project_list is called")
+			res := m.call("project_list", map[string]any{})
+			Expect(res.isError).To(BeFalse(), res.text)
+			projects, _ := res.decode()["projects"].([]any)
+
+			By("then each project carries its slug, title, priority and node counter")
+			first, _ := projects[0].(map[string]any)
+			Expect(first).To(HaveKeyWithValue("slug", "infra"))
+			Expect(first).To(HaveKeyWithValue("title", "Infrastructure"))
+			Expect(first).To(HaveKeyWithValue("priority", "p2"))
+			Expect(fmt.Sprint(first["node_counter"])).To(Equal("1"))
+
+			By("and they come back most recently active first, archived ones left out")
+			slugs := []string{}
+			for _, raw := range projects {
+				slugs = append(slugs, raw.(map[string]any)["slug"].(string))
+			}
+			Expect(slugs).To(Equal([]string{"infra", "platform"}))
+
+			By("and the answer is the one dg project list gives")
+			Expect(res.decode()).To(Equal(cliJSON(socket, "project", "list")))
+
+			By("and archived projects come back when they are asked for")
+			res = m.call("project_list", map[string]any{"include_archived": true})
+			Expect(res.isError).To(BeFalse(), res.text)
+			Expect(last[*daggerv1.ListProjectsRequest](s).GetIncludeArchived()).To(BeTrue())
+			Expect(res.decode()["projects"]).To(HaveLen(3))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("Scenario: project_show reads one project by slug", func() {
+			By("given a project")
+			s.newProject("platform", "Platform")
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("when project_show is called with its slug")
+			res := m.call("project_show", map[string]any{"project": "platform"})
+
+			By("then the project comes back")
+			Expect(res.isError).To(BeFalse(), res.text)
+			Expect(last[*daggerv1.GetProjectRequest](s).GetProject()).To(Equal("platform"))
+			project, _ := res.decode()["project"].(map[string]any)
+			Expect(project).To(HaveKeyWithValue("slug", "platform"))
+			Expect(project).To(HaveKeyWithValue("title", "Platform"))
+
+			By("and with no slug it shows the current project")
+			res = m.call("project_show", map[string]any{})
+			Expect(res.isError).To(BeFalse(), res.text)
+			Expect(last[*daggerv1.GetProjectRequest](s).GetProject()).To(Equal("platform"))
+
+			By("when project_show is called with an unknown slug")
+			res = m.call("project_show", map[string]any{"project": "nowhere"})
+
+			By("then it is a not-found error naming the slug")
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring("not_found"))
+			Expect(res.text).To(ContainSubstring(`"nowhere"`))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("Scenario: project_create creates a project and returns its slug", func() {
+			m := startMCP("--socket", socket)
+			m.initialize()
+
+			By("when project_create is called with a title and a slug")
+			res := m.call("project_create", map[string]any{"title": "Platform", "slug": "platform", "priority": "p1"})
+
+			By("then the project is created and its slug comes back")
+			Expect(res.isError).To(BeFalse(), res.text)
+			project, _ := res.decode()["project"].(map[string]any)
+			Expect(project).To(HaveKeyWithValue("slug", "platform"))
+			Expect(project).To(HaveKeyWithValue("title", "Platform"))
+			Expect(project).To(HaveKeyWithValue("priority", "p1"))
+
+			By("and it carried a request id, as every write does")
+			sent := last[*daggerv1.CreateProjectRequest](s)
+			Expect(sent.GetRequestId()).NotTo(BeEmpty())
+			Expect(sent.GetSlug()).To(Equal("platform"))
+			Expect(sent.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+
+			By("and a request id given by the caller is the one sent")
+			res = m.call("project_create", map[string]any{"title": "Infra", "request_id": "01JREQUEST00000000000000000"})
+			Expect(res.isError).To(BeFalse(), res.text)
+			Expect(last[*daggerv1.CreateProjectRequest](s).GetRequestId()).To(Equal("01JREQUEST00000000000000000"))
+
+			By("and the slug is derived from the title when none is given")
+			Expect(last[*daggerv1.CreateProjectRequest](s).GetSlug()).To(BeEmpty())
+			Expect(res.decode()["project"]).To(HaveKeyWithValue("slug", "derived"))
+
+			By("and a call with no title is refused")
+			res = m.call("project_create", map[string]any{"slug": "nameless"})
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring("title is required"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("Scenario: the instructions send an agent with no project to project_list", func() {
+			By("given a server with no current project configured")
+			m := startMCP("--socket", socket)
+
+			By("when the client initializes")
+			res := m.initialize()
+
+			By("then the instructions say there is none and name project_list")
+			instructions := res["instructions"].(string)
+			Expect(instructions).To(ContainSubstring("Current project: (none"))
+			Expect(instructions).To(ContainSubstring("project_list"))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
 	Describe("the server starts, advertises its tools, and shuts down on EOF", func() {
 		It("answers initialize with its identity and the tools capability", func() {
 			m := startMCP("--socket", socket)
@@ -523,8 +646,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m := startMCP("--socket", socket)
 			m.initialize()
 			tools := m.tools()
-			Expect(tools).To(HaveLen(12))
-			for _, name := range []string{"search", "show_node", "inputs", "node_list", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment"} {
+			Expect(tools).To(HaveLen(15))
+			for _, name := range []string{"search", "show_node", "inputs", "node_list", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment", "project_list", "project_show", "project_create"} {
 				Expect(tools).To(HaveKey(name))
 				Expect(tools[name]["description"]).NotTo(BeEmpty())
 				Expect(tools[name]["inputSchema"]).To(HaveKeyWithValue("type", "object"))
@@ -916,5 +1039,16 @@ func requestEnums() map[string]protoreflect.EnumDescriptor {
 			}
 		}
 	}
+	return out
+}
+
+// cliJSON runs one dg command against the stub's socket and returns its
+// JSON output, so a spec can hold an MCP answer against the CLI's.
+func cliJSON(socket string, args ...string) map[string]any {
+	GinkgoHelper()
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Expect(cli.Run(append([]string{"--socket", socket}, args...), strings.NewReader(""), stdout, stderr)).To(Equal(0), stderr.String())
+	var out map[string]any
+	Expect(json.Unmarshal(stdout.Bytes(), &out)).To(Succeed(), stdout.String())
 	return out
 }

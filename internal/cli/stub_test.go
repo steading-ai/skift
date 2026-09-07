@@ -37,6 +37,9 @@ type stub struct {
 	mu       sync.Mutex
 	nodes    []*daggerv1.Node
 	projects map[string]*daggerv1.Project
+	// projectOrder is the slugs in creation order, so ListProjects can
+	// answer most recently active first as the handler does.
+	projectOrder []string
 	// leases are every lease handed out, by id. A lease expires the way
 	// the server's do: a claim past its expiry returns the node to the
 	// ready set.
@@ -97,6 +100,25 @@ func (s *stub) newNode(title string) *daggerv1.Node {
 	}
 	s.nodes = append(s.nodes, n)
 	return n
+}
+
+// newProject records a project the way CreateProject does, so a spec can
+// give the stub a backlog of projects to list. The most recently created
+// is the most recently active.
+func (s *stub) newProject(slug, title string) *daggerv1.Project {
+	p := &daggerv1.Project{
+		Id:          fmt.Sprintf("01JPROJECT%016d", len(s.projects)+1),
+		Slug:        slug,
+		Title:       title,
+		Priority:    daggerv1.Priority_PRIORITY_P2,
+		NodeCounter: int64(len(s.nodes) + 1),
+		CreatedAt:   timestamppb.Now(),
+	}
+	if _, ok := s.projects[slug]; !ok {
+		s.projectOrder = append(s.projectOrder, slug)
+	}
+	s.projects[slug] = p
+	return p
 }
 
 // lease renders a lease. An id the stub never handed out is rendered live,
@@ -304,8 +326,8 @@ func (s *stub) CreateProject(_ context.Context, req *connect.Request[daggerv1.Cr
 	if slug == "" {
 		slug = "derived"
 	}
-	p := &daggerv1.Project{Id: fmt.Sprintf("01JPROJECT%016d", len(s.projects)+1), Slug: slug, Title: req.Msg.GetTitle(), Priority: req.Msg.GetPriority(), CreatedAt: timestamppb.Now()}
-	s.projects[slug] = p
+	p := s.newProject(slug, req.Msg.GetTitle())
+	p.Priority = req.Msg.GetPriority()
 	return connect.NewResponse(&daggerv1.CreateProjectResponse{Project: p}), nil
 }
 
@@ -315,7 +337,9 @@ func (s *stub) GetProject(_ context.Context, req *connect.Request[daggerv1.GetPr
 	defer s.mu.Unlock()
 	p, ok := s.projects[req.Msg.GetProject()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, &domain.NotFoundError{
+			Ref: domain.Ref{Project: req.Msg.GetProject()}, Missing: domain.MissingProject,
+		})
 	}
 	return connect.NewResponse(&daggerv1.GetProjectResponse{Project: p}), nil
 }
@@ -325,7 +349,11 @@ func (s *stub) ListProjects(_ context.Context, req *connect.Request[daggerv1.Lis
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &daggerv1.ListProjectsResponse{NextPageToken: "next"}
-	for _, p := range s.projects {
+	for i := len(s.projectOrder) - 1; i >= 0; i-- {
+		p := s.projects[s.projectOrder[i]]
+		if p.GetArchivedAt() != nil && !req.Msg.GetIncludeArchived() {
+			continue
+		}
 		res.Projects = append(res.Projects, p)
 	}
 	return connect.NewResponse(res), nil

@@ -380,7 +380,7 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 	cfg, _ := s.app.config()
 	project := cfg.Project
 	if project == "" {
-		project = "(none: qualify references as slug#7 or pass project)"
+		project = "(none: call project_list for the slugs you may read, then qualify references as slug#7 or pass project)"
 	}
 	return mcpInitializeResult{
 		ProtocolVersion: protocol,
@@ -393,7 +393,8 @@ it, claim to take it under a lease, then complete with a result. Leases
 claimed here are renewed automatically and released with reason "crash"
 if this session ends before completing; a hard kill leaves them to expire.
 Node references are "#7" in the current project, "slug#7" in another
-project, or "org/slug#7" fully qualified.`, project, s.sessionRef),
+project, or "org/slug#7" fully qualified; project_list names the projects
+you may read and the slugs they take.`, project, s.sessionRef),
 	}, nil
 }
 
