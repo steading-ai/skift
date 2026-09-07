@@ -563,6 +563,9 @@ type applier struct {
 	resolver *Resolver
 	// lease is the live lease the patch carries, or nil.
 	lease *store.Lease
+	// released reports that an operation ended the patch's lease, so
+	// there is nothing left to renew at the end of the patch.
+	released bool
 	// created are the nodes this patch created: new, so nothing holds them.
 	created map[string]bool
 	// fenced are the existing nodes already checked and locked.
@@ -672,7 +675,7 @@ func (a *applier) fence(ctx context.Context, nodeID string) error {
 // statement is fenced, so a lease that stopped being live while the patch
 // ran rejects the whole patch here.
 func (a *applier) renewLease(ctx context.Context) error {
-	if a.lease == nil {
+	if a.lease == nil || a.released {
 		return nil
 	}
 	_, err := a.tx.ExtendLease(ctx, store.ExtendLeaseParams{OrgID: a.orgID, ID: a.lease.ID, ExpiresAt: time.Now().Add(DefaultLeaseTTL)})
@@ -683,6 +686,28 @@ func (a *applier) renewLease(ctx context.Context) error {
 		return fmt.Errorf("renew lease %s: %w", a.lease.ID, err)
 	}
 	return nil
+}
+
+// releaseLease ends the patch's lease on node with reason, in the
+// transaction that made the change the reason names. A patch carrying no
+// lease, or one on another node, releases nothing. The lease event is
+// written like any other release, so `release_reason` records how the
+// attempt ended rather than leaving the node held until expiry. See the
+// Lease section of docs/domain-model.md.
+func (a *applier) releaseLease(ctx context.Context, node store.Node, reason string) error {
+	if a.lease == nil || a.lease.NodeID != node.ID || a.released {
+		return nil
+	}
+	before := *a.lease
+	after, err := a.tx.ReleaseLiveLease(ctx, store.ReleaseLiveLeaseParams{OrgID: a.orgID, ID: before.ID, ReleaseReason: &reason})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("lease %s: %w", before.ID, ErrLeaseNotLive)
+	}
+	if err != nil {
+		return fmt.Errorf("release lease %s: %w", before.ID, err)
+	}
+	a.released = true
+	return a.event(ctx, OpReleaseLease, node.ID, node.ProjectID, &reason, before, after)
 }
 
 // ulidShape is the canonical ULID text the schema accepts, used to tell an

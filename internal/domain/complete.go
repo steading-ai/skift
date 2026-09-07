@@ -117,5 +117,9 @@ func (a *applier) completeNode(ctx context.Context, op *CompleteNode) error {
 		artifacts = append(artifacts, stored)
 	}
 	a.record(after)
-	return a.event(ctx, OpCompleteNode, after.ID, after.ProjectID, nil, before, Completed{Node: after, Result: result, Artifacts: artifacts})
+	if err := a.event(ctx, OpCompleteNode, after.ID, after.ProjectID, nil, before, Completed{Node: after, Result: result, Artifacts: artifacts}); err != nil {
+		return err
+	}
+	// The attempt is over, so its lease ends here rather than at expiry.
+	return a.releaseLease(ctx, after, ReleaseComplete)
 }

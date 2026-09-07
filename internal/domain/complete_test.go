@@ -122,6 +122,50 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			Expect(part.Size).To(HaveValue(Equal(int64(1234))))
 		})
 
+		It("Completing releases the lease with reason complete", func(ctx SpecContext) {
+			By("given an agent holds lease L on node #7")
+			g.given(ctx, func(ctx context.Context, tx store.Tx) { g.node(ctx, tx, 7, nil) })
+			agent := g.agent(ctx)
+			held := g.mustClaim(ctx, agent, claimReq("claim-7", time.Minute))
+			Expect(held.Node.Number).To(Equal(int64(7)))
+
+			By("when it completes #7 carrying L")
+			r, err := g.applyWithLease(ctx, agent, "done-7", held.Lease.ID, complete("#7", "the work is done"))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then #7 is done")
+			Expect(g.getNode(ctx, "#7").Status).To(Equal("done"))
+
+			By("and L is released with reason complete")
+			released := g.getLease(ctx, held.Lease.ID)
+			Expect(released.ReleaseReason).To(HaveValue(Equal(domain.ReleaseComplete)))
+			Expect(released.ReleasedAt).NotTo(BeNil())
+
+			By("and the release is one event of the transaction that completed the node")
+			Expect(ops(r.Events)).To(Equal([]string{domain.OpCompleteNode, domain.OpReleaseLease}))
+			Expect(r.Events[1].TxID).To(Equal(r.Events[0].TxID))
+			Expect(r.Events[1].Reason).To(HaveValue(Equal(domain.ReleaseComplete)))
+
+			By("and explain on #7 reports no live lease")
+			e := g.explain(ctx, "#7")
+			Expect(e.Reasons).NotTo(ContainElement(BeReason(domain.ReasonLeased)))
+			Expect(e.Reasons).To(HaveExactElements(BeReason(domain.ReasonNotOpen)))
+		})
+
+		It("A never-claimed node completes without a lease", func(ctx SpecContext) {
+			By("given node #8 has no lease")
+			g.given(ctx, func(ctx context.Context, tx store.Tx) { g.node(ctx, tx, 8, nil) })
+			Expect(g.explain(ctx, "#8").Reasons).To(BeEmpty())
+
+			By("when a user completes it")
+			r, err := g.apply(ctx, actor, "done-8", complete("#8", "done by hand"))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then #8 is done and no lease event is emitted")
+			Expect(g.getNode(ctx, "#8").Status).To(Equal("done"))
+			Expect(ops(r.Events)).To(Equal([]string{domain.OpCompleteNode}))
+		})
+
 		It("Axing functionality takes the subtree", func(ctx SpecContext) {
 			By("given node 1 blocks nodes 2 and 3, and node 3 blocks node 4")
 			g.mustApply(ctx, actor, "setup",
@@ -192,7 +236,7 @@ var _ = Describe("Completion, results, drop, and reopen", Label(testsupport.DBLa
 			r, err := g.applyWithLease(ctx, agentB, "current", second.Lease.ID, complete("#1", "finished"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(r.Nodes[0].Status).To(Equal("done"))
-			Expect(ops(r.Events)).To(Equal([]string{domain.OpCompleteNode}))
+			Expect(ops(r.Events)).To(Equal([]string{domain.OpCompleteNode, domain.OpReleaseLease}))
 			Expect(g.results(ctx, "#1")).To(HaveLen(1))
 			Expect(g.results(ctx, "#1")[0].CompletedBy).To(Equal(agentB.PrincipalID))
 		})

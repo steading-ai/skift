@@ -82,7 +82,8 @@ var _ = Describe("Usage records and cost rollups", Label(testsupport.DBLabel), f
 	})
 
 	// runAttempt claims the next ready node as a fresh agent, reports the
-	// given usage against the attempt, completes the node, and releases.
+	// given usage against the attempt, and completes the node, which
+	// releases the lease with it.
 	runAttempt := func(ctx context.Context, model string, in, out int64) *domain.Claimed {
 		GinkgoHelper()
 		agent := g.agent(ctx)
@@ -90,8 +91,7 @@ var _ = Describe("Usage records and cost rollups", Label(testsupport.DBLabel), f
 		_, err := g.applyWithLease(ctx, agent, "work-"+c.Lease.ID, c.Lease.ID,
 			reportUsage(ref(c), model, in, out), complete(ref(c), "done"))
 		Expect(err).NotTo(HaveOccurred())
-		_, err = domain.Release(ctx, s, pol, g.org, agent, "release-"+c.Lease.ID, c.Lease.ID, domain.ReleaseComplete, "")
-		Expect(err).NotTo(HaveOccurred())
+		Expect(g.getLease(ctx, c.Lease.ID).ReleaseReason).To(HaveValue(Equal(domain.ReleaseComplete)))
 		return c
 	}
 

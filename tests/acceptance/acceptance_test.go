@@ -353,7 +353,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			for _, ev := range received {
 				ops = append(ops, ev.GetOp())
 			}
-			Expect(ops).To(Equal([]string{"create_node", "create_node", "add_comment", "claim_node", "complete_node"}))
+			Expect(ops).To(Equal([]string{"create_node", "create_node", "add_comment", "claim_node", "complete_node", "release_lease"}))
 
 			By("and can rebuild the current state from what it received")
 			type rebuilt struct {
