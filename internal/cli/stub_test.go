@@ -203,6 +203,31 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[daggerv1.Apply
 					res.Nodes = append(res.Nodes, n)
 				}
 			}
+		case *daggerv1.PatchOp_UpdateNode:
+			if len(s.nodes) > 0 {
+				n := s.nodes[0]
+				if o.UpdateNode.Title != nil {
+					n.Title = o.UpdateNode.GetTitle()
+				}
+				if o.UpdateNode.Body != nil {
+					n.Body = o.UpdateNode.GetBody()
+				}
+				if o.UpdateNode.Kind != nil {
+					n.Kind = o.UpdateNode.GetKind()
+				}
+				if o.UpdateNode.Priority != nil {
+					n.Priority = o.UpdateNode.GetPriority()
+				}
+				if o.UpdateNode.Labels != nil {
+					n.Labels = o.UpdateNode.GetLabels().GetValues()
+				}
+				res.EventCount++
+				if s.refsOnly {
+					res.Nodes = append(res.Nodes, &daggerv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus(), Ready: n.GetReady(), Blocked: n.GetBlocked()})
+				} else {
+					res.Nodes = append(res.Nodes, n)
+				}
+			}
 		case *daggerv1.PatchOp_DropNode:
 			if len(s.nodes) > 0 {
 				n := s.nodes[0]

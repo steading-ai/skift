@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -407,6 +408,158 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(r.code).To(Equal(cli.ExitUsage))
 			Expect(r.stderrError().Message).To(ContainSubstring("--reason"))
 			Expect(s.requests).To(BeEmpty())
+		})
+	})
+
+	Describe("dg update", func() {
+		BeforeEach(func() { s.newNode("Target") })
+
+		update := func(stdin io.Reader, args ...string) *daggerv1.UpdateNodeOp {
+			GinkgoHelper()
+			r := run(stdin, args...)
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			sent := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(sent.GetOps()).To(HaveLen(1))
+			op := sent.GetOps()[0].GetUpdateNode()
+			Expect(op).NotTo(BeNil())
+			return op
+		}
+
+		It("reprioritises with one update_node op and changes nothing else", func() {
+			By(`when I run "dg update dagger#7 --priority p0"`)
+			op := update(nil, "update", "dagger#7", "--priority", "p0")
+
+			By("then the op sets priority P0 on that node")
+			Expect(op.GetNode()).To(Equal("dagger#7"))
+			Expect(op.Priority).NotTo(BeNil())
+			Expect(op.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P0))
+
+			By("and every other field is unset, so the server leaves it alone")
+			Expect(op.Title).To(BeNil())
+			Expect(op.Body).To(BeNil())
+			Expect(op.Kind).To(BeNil())
+			Expect(op.Parent).To(BeNil())
+			Expect(op.Assignee).To(BeNil())
+			Expect(op.AssigneeKind).To(BeNil())
+			Expect(op.Labels).To(BeNil())
+
+			By("and the patch is the one the same JSON written by hand sends")
+			built := last[*daggerv1.ApplyPatchRequest](s)
+			r := run(strings.NewReader(`{"project": "dagger", "ops": [{"update_node": {"node": "dagger#7", "priority": "p0"}}]}`), "patch", "apply", "-")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			written := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(built.GetProject()).To(Equal(written.GetProject()))
+			Expect(proto.Equal(built.GetOps()[0], written.GetOps()[0])).To(BeTrue(), "built %v, written %v", built.GetOps()[0], written.GetOps()[0])
+		})
+
+		It("reparents, and --parent '' clears the parent", func() {
+			By(`when I run "dg update dagger#7 --parent dagger#3"`)
+			op := update(nil, "update", "dagger#7", "--parent", "dagger#3")
+
+			By("then the op carries the new parent")
+			Expect(op.Parent).NotTo(BeNil())
+			Expect(op.GetParent()).To(Equal("dagger#3"))
+
+			By(`when I run "dg update dagger#7 --parent ''"`)
+			op = update(nil, "update", "dagger#7", "--parent", "")
+
+			By("then the parent is present and empty, which makes the node a root")
+			Expect(op.Parent).NotTo(BeNil())
+			Expect(op.GetParent()).To(BeEmpty())
+
+			By("and with no --parent at all the field is unset")
+			op = update(nil, "update", "dagger#7", "--title", "Renamed")
+			Expect(op.Parent).To(BeNil())
+		})
+
+		It("refuses a malformed parent reference before any round trip", func() {
+			r := run(nil, "-p", "platform", "update", "#7", "--parent", "not a ref")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(s.requests).To(BeEmpty())
+		})
+
+		It("reads the body from stdin for --body -", func() {
+			By(`when I run "dg update dagger#7 --body -" with a body on stdin`)
+			op := update(strings.NewReader("# Rewritten\n\nthe new prompt\n"), "update", "dagger#7", "--body", "-")
+
+			By("then the op carries what stdin held")
+			Expect(op.Body).NotTo(BeNil())
+			Expect(op.GetBody()).To(Equal("# Rewritten\n\nthe new prompt\n"))
+		})
+
+		It("replaces the label set, and --label '' clears it", func() {
+			op := update(nil, "update", "dagger#7", "--label", "api", "--label", "backend")
+			Expect(op.GetLabels().GetValues()).To(ConsistOf("api", "backend"))
+
+			op = update(nil, "update", "dagger#7", "--label", "")
+			Expect(op.Labels).NotTo(BeNil())
+			Expect(op.GetLabels().GetValues()).To(BeEmpty())
+		})
+
+		It("carries the title, kind, assignee and assignee kind, and the lease", func() {
+			r := run(nil, "update", "dagger#7", "--title", "Renamed", "--kind", "bug",
+				"--assignee-kind", "user", "--assignee", "01JPRINCIPAL0000000000000A", "--lease", "01JLEASE0000000000000000001")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			sent := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(sent.GetLeaseId()).To(Equal("01JLEASE0000000000000000001"))
+			op := sent.GetOps()[0].GetUpdateNode()
+			Expect(op.GetTitle()).To(Equal("Renamed"))
+			Expect(op.GetKind()).To(Equal("bug"))
+			Expect(op.GetAssigneeKind()).To(Equal(daggerv1.AssigneeKind_ASSIGNEE_KIND_USER))
+			Expect(op.GetAssignee()).To(Equal("01JPRINCIPAL0000000000000A"))
+		})
+
+		It("is a usage error with no field flags, naming them", func() {
+			r := run(nil, "-p", "platform", "update", "#7")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			for _, flag := range []string{"--title", "--body", "--kind", "--priority", "--parent", "--label", "--assignee-kind", "--assignee"} {
+				Expect(r.stderrError().Message).To(ContainSubstring(flag))
+			}
+			Expect(s.requests).To(BeEmpty())
+		})
+
+		It("teaches the values when a flag it was given takes an enum", func() {
+			r := run(nil, "-p", "platform", "update", "#7", "--priority", "urgent")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("p0"))
+
+			r = run(nil, "-p", "platform", "update", "#7", "--priority", "")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("--priority"))
+		})
+
+		It("has exactly one flag per field of UpdateNodeOp", func() {
+			cmd, _, err := cli.NewRootCommand(io.Discard, io.Discard).Find([]string{"update"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cmd.Name()).To(Equal("update"))
+
+			By("then every field of the op has the flag that sets it")
+			// node is the positional argument; labels is repeatable, so its
+			// flag is singular. Every other field is its own name in kebab.
+			flagNames := map[string]string{"node": "", "labels": "label"}
+			fields := (&daggerv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
+			isField := map[string]bool{}
+			for i := range fields.Len() {
+				fd := fields.Get(i)
+				name, ok := flagNames[string(fd.Name())]
+				if !ok {
+					name = strings.ReplaceAll(string(fd.Name()), "_", "-")
+				}
+				if name == "" {
+					continue
+				}
+				Expect(cmd.Flags().Lookup(name)).NotTo(BeNil(), "no --%s flag for UpdateNodeOp field %s", name, fd.Name())
+				isField[name] = true
+			}
+
+			By("and no flag beyond them, other than the ones every write takes")
+			var rest []string
+			cmd.Flags().VisitAll(func(f *pflag.Flag) {
+				if !isField[f.Name] {
+					rest = append(rest, f.Name)
+				}
+			})
+			Expect(rest).To(ConsistOf("lease", "request-id", "view"))
 		})
 	})
 

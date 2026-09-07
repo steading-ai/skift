@@ -88,6 +88,7 @@ Output is JSON whenever stdout is not a terminal, and on request with
 		a.nodeCommand(),
 		a.patchCommand(),
 		a.createCommand(),
+		a.updateCommand(),
 		a.linkCommand(),
 		a.dropCommand(),
 		a.readyCommand(),

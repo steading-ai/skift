@@ -126,11 +126,19 @@ same refs view, and takes the same `--view`:
 ```sh
 dg create 'Title' --body - --kind bug --priority p1 --blocked-by '#3' --label api
 dg create 'Decide the retention policy' --assignee-kind user   # files a gate
+dg update '#7' --priority p0 --label api --label backend       # replaces the labels
+dg update '#7' --body - --title 'Retitled'                     # body from stdin
+dg update '#7' --parent '#3'                                   # reparent; --parent '' roots it
 dg link '#3' '#7'                                              # #3 before #7
 dg drop '#7' --reason superseded --detail 'folded into #9'
 dg drop '#7' --reason not_viable --cascade 5   # and the subtree, up to 5 nodes
 dg comment '#7' 'note' --in-reply-to '<id>'
 ```
+
+`dg update` sends only the flags you pass, so everything else is left alone. An
+empty value is a value: `--parent ''` makes the node a root, `--assignee ''`
+unassigns, and `--label ''` clears the label set. Status is not among its flags
+— it changes through `complete`, `drop` and `reopen` alone.
 
 `dg drop` answers with `dropped`, the reference of every node it took: the list
 a `reopen_node` undoing the drop works from. `--cascade` takes the most nodes

@@ -142,6 +142,20 @@ func enumFlag[E protoEnum](flag, value string) (E, error) {
 	return parseEnum[E]("--"+flag, value)
 }
 
+// requiredEnumFlag is enumFlag for a flag whose presence states a value:
+// the empty string is a mistake rather than "leave it to the default".
+func requiredEnumFlag[E protoEnum](flag, value string) (E, error) {
+	var zero E
+	v, err := enumFlag[E](flag, value)
+	if err != nil {
+		return zero, err
+	}
+	if v == zero {
+		return zero, usage("--%s: %q is not one of %s", flag, value, strings.Join(codec.EnumNames(zero.Descriptor()), ", "))
+	}
+	return v, nil
+}
+
 // parseEnum is enumFlag for an input named by something other than a flag,
 // such as an MCP tool argument. The name is how the error refers to it.
 func parseEnum[E protoEnum](name, value string) (E, error) {

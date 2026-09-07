@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
@@ -73,6 +76,124 @@ func (a *app) createCommand() *cobra.Command {
 	requestIDFlag(cmd, &requestID)
 	view.bind(cmd)
 	return cmd
+}
+
+// updateNodeFieldFlags are the flags that set a field of UpdateNodeOp. One
+// of them must be given: an update that changes nothing is a mistake, not
+// an empty patch.
+var updateNodeFieldFlags = []string{"title", "body", "kind", "priority", "parent", "label", "assignee-kind", "assignee"}
+
+func (a *app) updateCommand() *cobra.Command {
+	var title, body, kind, priority, parent, assignee, assigneeKind, lease, requestID string
+	var labels []string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	cmd := &cobra.Command{
+		Use:   "update <ref>",
+		Short: "Change the mutable fields of a node: title, body, kind, priority, parent, labels, assignee",
+		Long: `Change a node in place. Only the flags you pass are sent, so everything
+else is left alone; status is not here because it changes through complete,
+drop and reopen alone.
+
+An empty value is a value: --parent '' makes the node a root, --assignee ''
+unassigns, and --label '' clears the label set. --label otherwise replaces
+the whole set rather than adding to it.`,
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ref, err := parseRef(args[0])
+			if err != nil {
+				return err
+			}
+			f := cmd.Flags()
+			if !slices.ContainsFunc(updateNodeFieldFlags, f.Changed) {
+				return usage("dg update needs a field to change: --%s", strings.Join(updateNodeFieldFlags, ", --"))
+			}
+			op := &daggerv1.UpdateNodeOp{Node: ref.String()}
+			refs := []client.NodeRef{ref}
+			if f.Changed("title") {
+				op.Title = &title
+			}
+			if f.Changed("body") {
+				b, err := readBody(cmd, body)
+				if err != nil {
+					return err
+				}
+				op.Body = &b
+			}
+			if f.Changed("kind") {
+				op.Kind = &kind
+			}
+			if f.Changed("priority") {
+				p, err := requiredEnumFlag[daggerv1.Priority]("priority", priority)
+				if err != nil {
+					return err
+				}
+				op.Priority = &p
+			}
+			if f.Changed("parent") {
+				if parent != "" {
+					parentRef, err := parseRef(parent)
+					if err != nil {
+						return err
+					}
+					refs = append(refs, parentRef)
+				}
+				op.Parent = &parent
+			}
+			if f.Changed("label") {
+				op.Labels = &daggerv1.Labels{Values: nonEmpty(labels)}
+			}
+			if f.Changed("assignee-kind") {
+				k, err := requiredEnumFlag[daggerv1.AssigneeKind]("assignee-kind", assigneeKind)
+				if err != nil {
+					return err
+				}
+				op.AssigneeKind = &k
+			}
+			if f.Changed("assignee") {
+				op.Assignee = &assignee
+			}
+			project, err := a.projectFor(refs...)
+			if err != nil {
+				return err
+			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
+			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+				RequestId: orMint(requestID),
+				Project:   project,
+				LeaseId:   lease,
+				Ops:       []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_UpdateNode{UpdateNode: op}}},
+				View:      v,
+			})
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&title, "title", "", "new title")
+	f.StringVar(&body, "body", "", "new markdown body, the prompt an agent receives; - reads stdin")
+	f.StringVar(&kind, "kind", "", "new single-valued label such as task, bug, spike, or chore")
+	f.StringVar(&priority, "priority", "", "new advisory priority: p0 to p4")
+	f.StringVar(&parent, "parent", "", "node reference of the new parent; the empty string makes the node a root")
+	f.StringArrayVarP(&labels, "label", "l", nil, "label; repeatable, and replaces the whole set")
+	f.StringVar(&assigneeKind, "assignee-kind", "", "who may complete the node: agent or user; user makes it a gate")
+	f.StringVar(&assignee, "assignee", "", "id of a specific principal to assign to; the empty string unassigns")
+	f.StringVar(&lease, "lease", "", "fencing token of the lease held on the node, if any")
+	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
+	return cmd
+}
+
+// nonEmpty drops empty values from a repeatable flag, so that an empty
+// --label is a label set with nothing in it rather than one empty label.
+func nonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (a *app) linkCommand() *cobra.Command {
