@@ -83,6 +83,7 @@ func (p printer) text(msg proto.Message) error {
 		for alias, ref := range m.GetAliases() {
 			fmt.Fprintf(&b, "alias %s = %s\n", alias, ref)
 		}
+		fmt.Fprintf(&b, "%d events, request %s\n", m.GetEventCount(), m.GetRequestId())
 	case *daggerv1.GetNodeResponse:
 		writeNodes(&b, []*daggerv1.Node{m.GetNode()})
 		if body := m.GetNode().GetBody(); body != "" {
@@ -152,6 +153,8 @@ func enumName(s string) string {
 	return strings.ToLower(s)
 }
 
+// writeNodes renders one line per node. A node in the refs view has no
+// title to show, so its line is its number, state, and reference.
 func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 	for _, n := range nodes {
 		state := enumName(n.GetStatus().String())
@@ -162,6 +165,10 @@ func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 			state = "ready"
 		case n.GetBlocked():
 			state = "blocked"
+		}
+		if n.GetTitle() == "" && n.GetKind() == "" {
+			fmt.Fprintf(b, "#%-5d %-8s %s\n", n.GetNumber(), state, n.GetReference())
+			continue
 		}
 		fmt.Fprintf(b, "#%-5d %-3s %-8s %-6s %s", n.GetNumber(), enumName(n.GetPriority().String()), state, n.GetKind(), n.GetTitle())
 		if len(n.GetLabels()) > 0 {

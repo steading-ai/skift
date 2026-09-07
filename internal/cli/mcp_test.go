@@ -249,6 +249,56 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 	})
 
+	Describe("Scenario: Each tool asks for the view its purpose needs", func() {
+		It("Each tool asks for the view its purpose needs", func() {
+			s.newNode("Viewed")
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the tools advertise a view argument with the short names")
+			tools := m.tools()
+			for _, name := range []string{"ready", "search", "show_node", "apply_patch", "complete", "comment"} {
+				props := tools[name]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+				Expect(props).To(HaveKey("view"), name)
+				Expect(props["view"].(map[string]any)["enum"]).To(ConsistOf("refs", "summary", "full"), name)
+			}
+
+			By("when each tool is called without one")
+			Expect(m.call("ready", map[string]any{}).isError).To(BeFalse())
+			Expect(m.call("search", map[string]any{"query": "viewed"}).isError).To(BeFalse())
+			Expect(m.call("show_node", map[string]any{"ref": "#1"}).isError).To(BeFalse())
+			Expect(m.call("apply_patch", map[string]any{"ops": []any{map[string]any{"create_node": map[string]any{"title": "A", "body": "long"}}}}).isError).To(BeFalse())
+			applied := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(m.call("comment", map[string]any{"ref": "#1", "body": "a note"}).isError).To(BeFalse())
+			commented := last[*daggerv1.ApplyPatchRequest](s)
+			Expect(m.call("complete", map[string]any{"ref": "#1", "result": "done"}).isError).To(BeFalse())
+			completed := last[*daggerv1.ApplyPatchRequest](s)
+
+			By("then ready and search ask for a summary, show_node for full, and the writes for refs")
+			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*daggerv1.SearchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(applied.GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(applied.GetOps()[0].GetCreateNode().GetBody()).To(Equal("long"), "the view is taken out of the arguments, the patch is not")
+			Expect(commented.GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(completed.GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+
+			By("and a view given by short name is sent, and one that is not a view is refused")
+			Expect(m.call("apply_patch", map[string]any{"view": "full", "ops": []any{map[string]any{"create_node": map[string]any{"title": "B"}}}}).isError).To(BeFalse())
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(m.call("ready", map[string]any{"view": "refs"}).isError).To(BeFalse())
+			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(m.call("show_node", map[string]any{"ref": "#1", "view": "summary"}).isError).To(BeFalse())
+			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(m.call("apply_patch", map[string]any{"view": "VIEW_FULL", "ops": []any{map[string]any{"create_node": map[string]any{"title": "C"}}}}).isError).To(BeFalse(), "the arguments are a message in protojson, so the enum's wire spelling is accepted too")
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			res := m.call("ready", map[string]any{"view": "huge"})
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring(`view: "huge" is not one of full, refs, summary`))
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
 	Describe("Scenario: The apply_patch description names exactly the PatchOp operations", func() {
 		It("The apply_patch description names exactly the PatchOp operations", func() {
 			m := startMCP("--socket", socket, "--project", "platform")

@@ -592,9 +592,10 @@ func textArtifact(name, text string) *daggerv1.Artifact {
 	return &daggerv1.Artifact{Name: name, Parts: []*daggerv1.Part{{Content: &daggerv1.Part_Text{Text: &daggerv1.TextPart{Text: text}}}}}
 }
 
-// request is a patch against project with a fresh request id.
+// request is a patch against project with a fresh request id, asking for
+// the full view: the scenarios read the nodes and events it returns.
 func request(project string, ops ...*daggerv1.PatchOp) *daggerv1.ApplyPatchRequest {
-	return &daggerv1.ApplyPatchRequest{RequestId: client.NewRequestID(), Project: project, Ops: ops}
+	return &daggerv1.ApplyPatchRequest{RequestId: client.NewRequestID(), Project: project, Ops: ops, View: daggerv1.View_VIEW_FULL}
 }
 
 // ref renders a node as the bare reference the CLI takes.

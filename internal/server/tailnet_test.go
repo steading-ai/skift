@@ -157,11 +157,11 @@ var _ = Describe("Connect server over the tailnet", func() {
 			_, err = r.graph().CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{RequestId: newID(), Title: "Platform"}))
 			Expect(err).NotTo(HaveOccurred())
 			viaSocket, err := r.graph().ApplyPatch(ctx, connect.NewRequest(&daggerv1.ApplyPatchRequest{
-				RequestId: newID(), Project: "platform", Ops: []*daggerv1.PatchOp{createOp("a", "From the host")},
+				RequestId: newID(), Project: "platform", Ops: []*daggerv1.PatchOp{createOp("a", "From the host")}, View: daggerv1.View_VIEW_FULL,
 			}))
 			Expect(err).NotTo(HaveOccurred())
 			viaTailnet, err := tn.graph().ApplyPatch(ctx, connect.NewRequest(&daggerv1.ApplyPatchRequest{
-				RequestId: newID(), Project: "platform", Ops: []*daggerv1.PatchOp{createOp("b", "From the laptop")},
+				RequestId: newID(), Project: "platform", Ops: []*daggerv1.PatchOp{createOp("b", "From the laptop")}, View: daggerv1.View_VIEW_FULL,
 			}))
 			Expect(err).NotTo(HaveOccurred())
 

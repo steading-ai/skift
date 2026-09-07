@@ -70,6 +70,9 @@ type Hit struct {
 	// Snippet is a fragment of the matching text, each matched word
 	// marked with <b> and </b>.
 	Snippet string `json:"snippet"`
+	// Ref is the node's reference, `slug#7`, from its project's current
+	// slug. Hits span projects, so each carries its own.
+	Ref string `json:"ref"`
 }
 
 // Search returns one page of the nodes matching q in the organization,
@@ -118,7 +121,10 @@ func Search(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, 
 			return nil, err
 		}
 		if visible {
-			hits = append(hits, Hit{Node: row.Node, Rank: row.Rank, Source: row.Source, Snippet: row.Snippet})
+			hits = append(hits, Hit{
+				Node: row.Node, Rank: row.Rank, Source: row.Source, Snippet: row.Snippet,
+				Ref: NodeRef{Project: row.ProjectSlug, Number: row.Node.Number}.String(),
+			})
 		}
 	}
 	return hits, nil

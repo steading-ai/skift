@@ -179,6 +179,68 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
+	Describe("Scenario: Each command asks for the view its output needs", func() {
+		BeforeEach(func() { s.newNode("Viewed") })
+
+		It("defaults reads to a summary, node show to full, and writes to refs", func() {
+			Expect(run(nil, "-p", "platform", "ready").code).To(Equal(0))
+			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+
+			Expect(run(nil, "-p", "platform", "node", "list").code).To(Equal(0))
+			Expect(last[*daggerv1.ListNodesRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+
+			Expect(run(nil, "-p", "platform", "search", "viewed").code).To(Equal(0))
+			Expect(last[*daggerv1.SearchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+
+			Expect(run(nil, "-p", "platform", "node", "show", "#1").code).To(Equal(0))
+			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+
+			Expect(run(strings.NewReader(`{"ops": [{"create_node": {"title": "A", "body": "long"}}]}`), "-p", "platform", "patch", "apply", "-").code).To(Equal(0))
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+
+			for _, args := range [][]string{
+				{"create", "B", "--body", "long"},
+				{"link", "#1", "#2"},
+				{"comment", "#1", "a note"},
+				{"complete", "#1", "--result", "done"},
+			} {
+				r := run(nil, append([]string{"-p", "platform"}, args...)...)
+				Expect(r.code).To(Equal(0), r.stderr.String())
+				Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS), strings.Join(args, " "))
+			}
+		})
+
+		It("--view overrides the default and rejects a view that is not one", func() {
+			Expect(run(nil, "-p", "platform", "ready", "--view", "full").code).To(Equal(0))
+			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+
+			Expect(run(nil, "-p", "platform", "node", "show", "#1", "--view", "refs").code).To(Equal(0))
+			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+
+			Expect(run(strings.NewReader(`{"ops": [{"create_node": {"title": "A"}}]}`), "-p", "platform", "patch", "apply", "-", "--view", "full").code).To(Equal(0))
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+
+			By("a view the patch file names is kept unless the flag overrides it")
+			Expect(run(strings.NewReader(`{"view": "VIEW_SUMMARY", "ops": [{"create_node": {"title": "A"}}]}`), "-p", "platform", "patch", "apply", "-").code).To(Equal(0))
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(run(strings.NewReader(`{"view": "VIEW_SUMMARY", "ops": [{"create_node": {"title": "A"}}]}`), "-p", "platform", "patch", "apply", "-", "--view", "refs").code).To(Equal(0))
+			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+
+			r := run(nil, "-p", "platform", "ready", "--view", "huge")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring(`--view: "huge" is not one of full, refs, summary`))
+		})
+
+		It("renders a refs response as numbers, states, and references in text mode", func() {
+			s.refsOnly = true
+			r := run(strings.NewReader(`{"ops": [{"create_node": {"alias": "a", "title": "A"}}]}`), "-p", "platform", "-o", "text", "patch", "apply", "-")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(r.stdout.String()).To(ContainSubstring("#2     ready    platform#2"))
+			Expect(r.stdout.String()).To(ContainSubstring("alias a = platform#2"))
+			Expect(r.stdout.String()).To(ContainSubstring("1 events, request "))
+		})
+	})
+
 	Describe("Scenario: A failed command is machine-readable", func() {
 		It("A failed command is machine-readable", func() {
 			s.newNode("Held work")

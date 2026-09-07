@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -21,6 +23,48 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 	})
 
 	Describe("Ready", func() {
+		Describe("Scenario: The ready set is a summary", func() {
+			It("The ready set is a summary", func(ctx SpecContext) {
+				By("given 22 ready nodes with 2000-byte bodies")
+				ops := make([]*daggerv1.PatchOp, 0, 22)
+				for i := range 22 {
+					ops = append(ops, createOpWith(&daggerv1.CreateNodeOp{
+						Alias: fmt.Sprintf("n%d", i+1), Title: fmt.Sprintf("Task %d", i+1), Kind: "task",
+						Priority: daggerv1.Priority_PRIORITY_P1, Body: strings.Repeat("b", 2000),
+					}))
+				}
+				f.mustApply(ctx, ops...)
+
+				By("when ready is called with no view")
+				res, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Project: "platform"}))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.Msg.GetNodes()).To(HaveLen(22))
+
+				By("then every node in the response has title, kind, priority and reference")
+				for i, n := range res.Msg.GetNodes() {
+					Expect(n.GetTitle()).To(Equal(fmt.Sprintf("Task %d", i+1)))
+					Expect(n.GetKind()).To(Equal("task"))
+					Expect(n.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+					Expect(n.GetStatus()).To(Equal(daggerv1.Status_STATUS_OPEN))
+					Expect(n.GetReference()).To(Equal(fmt.Sprintf("platform#%d", i+1)))
+					Expect(n.GetReady()).To(BeTrue())
+				}
+
+				By("and no node in the response has a body")
+				for _, n := range res.Msg.GetNodes() {
+					Expect(n.GetBody()).To(BeEmpty())
+				}
+				wire := wireJSON(res.Msg)
+				Expect(wire).NotTo(ContainSubstring(`"body"`))
+				Expect(len(wire)).To(BeNumerically("<", 22*2000), "the bodies were not sent: %d bytes", len(wire))
+
+				By("and the full view carries the body on request")
+				full, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Project: "platform", View: daggerv1.View_VIEW_FULL, PageSize: 1}))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(full.Msg.GetNodes()[0].GetBody()).To(HaveLen(2000))
+			})
+		})
+
 		It("returns the ready set most urgent first, filtered and paged", func(ctx SpecContext) {
 			f.mustApply(ctx,
 				createOpWith(&daggerv1.CreateNodeOp{Alias: "low", Title: "Low", Priority: daggerv1.Priority_PRIORITY_P3}),

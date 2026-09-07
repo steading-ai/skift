@@ -125,17 +125,20 @@ work by topic, to check whether something already exists before creating
 it, or to locate a node whose number you do not know. The query is
 PostgreSQL websearch syntax: words, "quoted phrases", -excluded words, and
 OR. Every project the caller may read is searched unless project narrows
-it. Each hit carries the node and a snippet with the match marked.`,
+it. Each hit carries a summary of the node and a snippet with the match
+marked; show_node reads the body.`,
 			schema: objectSchema(pageSchema(map[string]any{
 				"query":            stringProp("Search text in websearch syntax, such as: parser \"error handling\" -legacy"),
 				"project":          stringProp("Narrow to one project, by slug or org/slug. Defaults to the current project, or every project when none is configured."),
 				"include_archived": map[string]any{"type": "boolean", "description": "Also search nodes of archived projects."},
+				"view":             viewProp(daggerv1.View_VIEW_SUMMARY),
 			}), "query"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
 					Query           string `json:"query"`
 					Project         string `json:"project"`
 					IncludeArchived bool   `json:"include_archived"`
+					View            string `json:"view"`
 					pageArgs
 				}
 				if err := decodeArgs(raw, &args); err != nil {
@@ -143,6 +146,10 @@ it. Each hit carries the node and a snippet with the match marked.`,
 				}
 				if args.Query == "" {
 					return nil, usage("query is required")
+				}
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_SUMMARY)
+				if err != nil {
+					return nil, err
 				}
 				cfg, err := a.config()
 				if err != nil {
@@ -154,7 +161,7 @@ it. Each hit carries the node and a snippet with the match marked.`,
 				}
 				return unwrap(c.Graph.Search(ctx, connect.NewRequest(&daggerv1.SearchRequest{
 					Query: args.Query, Project: project, IncludeArchived: args.IncludeArchived,
-					PageSize: args.PageSize, PageToken: args.PageToken,
+					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
 		},
@@ -167,11 +174,13 @@ a node and whenever you need what a node says rather than a summary.
 
 ` + refSyntax,
 			schema: objectSchema(map[string]any{
-				"ref": stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
+				"ref":  stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
+				"view": viewProp(daggerv1.View_VIEW_FULL),
 			}, "ref"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
-					Ref string `json:"ref"`
+					Ref  string `json:"ref"`
+					View string `json:"view"`
 				}
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
@@ -180,7 +189,11 @@ a node and whenever you need what a node says rather than a summary.
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref})))
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_FULL)
+				if err != nil {
+					return nil, err
+				}
+				return unwrap(c.Graph.GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref, View: view})))
 			},
 		},
 		{
@@ -234,9 +247,11 @@ the second waits on the first and both hang under existing node #3:
   ]}
 
 An add_edge from A to B means A must finish before B is ready. The
-response lists every node created or changed with its number, and maps
-each alias to the reference it became. A patch touching a node you hold a
-lease on must carry that lease_id.`,
+response lists every node created or changed with its number, reference,
+status, and readiness flags, maps each alias to the reference it became,
+and counts the events written. It never echoes the bodies you sent; ask
+for view "full" to get everything back, events included. A patch touching
+a node you hold a lease on must carry that lease_id.`,
 			schema: objectSchema(map[string]any{
 				"ops": map[string]any{
 					"type":        "array",
@@ -246,12 +261,18 @@ lease on must carry that lease_id.`,
 				"project":    stringProp("Project the patch applies to and bare references resolve in. Defaults to the current project."),
 				"lease_id":   stringProp("Fencing token of the lease you hold, required when the patch touches a leased node. Defaults to the one lease this session holds, if exactly one."),
 				"request_id": stringProp("Idempotency key. Defaults to a fresh one; pass the same one to retry safely."),
+				"view":       viewProp(daggerv1.View_VIEW_REFS),
 			}, "ops"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				view, rest, err := splitView(raw, daggerv1.View_VIEW_REFS)
+				if err != nil {
+					return nil, err
+				}
 				req := &daggerv1.ApplyPatchRequest{}
-				if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(raw, req); err != nil {
+				if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(rest, req); err != nil {
 					return nil, usage("arguments are not a dagger.v1.ApplyPatchRequest: %v", err)
 				}
+				req.View = view
 				if len(req.GetOps()) == 0 {
 					return nil, usage("ops is required and must hold at least one operation")
 				}
@@ -271,12 +292,19 @@ lease on must carry that lease_id.`,
 			name: "ready",
 			description: `List the ready set: nodes that are open, unblocked, unleased, and have no
 open children, most urgent first and then oldest. Nothing is claimed. Use
-it to see what could be worked on next; use claim to take one.`,
-			schema: objectSchema(pageSchema(filterSchema())),
+it to see what could be worked on next; use claim to take one. Each node
+is a summary (reference, title, kind, priority, labels); show_node reads
+the body.`,
+			schema: objectSchema(pageSchema(func() map[string]any {
+				props := filterSchema()
+				props["view"] = viewProp(daggerv1.View_VIEW_SUMMARY)
+				return props
+			}())),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
 					filterArgs
 					pageArgs
+					View string `json:"view"`
 				}
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
@@ -285,9 +313,13 @@ it to see what could be worked on next; use claim to take one.`,
 				if err != nil {
 					return nil, err
 				}
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_SUMMARY)
+				if err != nil {
+					return nil, err
+				}
 				return unwrap(c.Work.Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{
 					Project: project, Kind: args.Kind, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio,
-					PageSize: args.PageSize, PageToken: args.PageToken,
+					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
 		},
@@ -350,7 +382,7 @@ wait blocks until something does, up to that long.`,
 					return nil, err
 				}
 				if res.GetLease() != nil {
-					s.hold(res.GetLease())
+					s.hold(res.GetLease(), res.GetNode())
 				}
 				return res, nil
 			},
@@ -446,12 +478,14 @@ the work is done; use release when it is not.
 				"ref":      stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
 				"result":   stringProp("Result body in markdown: what was produced and where."),
 				"lease_id": stringProp("Fencing token of the lease held on the node. Defaults to the lease this session holds on it."),
+				"view":     viewProp(daggerv1.View_VIEW_REFS),
 			}, "ref", "result"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
 					Ref     string `json:"ref"`
 					Result  string `json:"result"`
 					LeaseID string `json:"lease_id"`
+					View    string `json:"view"`
 				}
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
@@ -464,11 +498,16 @@ the work is done; use release when it is not.
 				if err != nil {
 					return nil, err
 				}
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_REFS)
+				if err != nil {
+					return nil, err
+				}
 				return s.apply(ctx, &daggerv1.ApplyPatchRequest{
 					RequestId: client.NewRequestID(), Project: project, LeaseId: s.leaseOr(args.LeaseID),
 					Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_CompleteNode{CompleteNode: &daggerv1.CompleteNodeOp{
 						Node: ref.String(), Result: &daggerv1.Result{Body: args.Result},
 					}}}},
+					View: view,
 				})
 			},
 		},
@@ -485,6 +524,7 @@ saying that is not the final result.
 				"body":        stringProp("Comment body in markdown."),
 				"in_reply_to": stringProp("Id of the comment this one replies to."),
 				"lease_id":    stringProp("Fencing token of the lease held on the node, if any. Defaults to the lease this session holds on it."),
+				"view":        viewProp(daggerv1.View_VIEW_REFS),
 			}, "ref", "body"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -492,6 +532,7 @@ saying that is not the final result.
 					Body      string `json:"body"`
 					InReplyTo string `json:"in_reply_to"`
 					LeaseID   string `json:"lease_id"`
+					View      string `json:"view"`
 				}
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
@@ -504,11 +545,16 @@ saying that is not the final result.
 				if err != nil {
 					return nil, err
 				}
+				view, err := parseView("view", args.View, daggerv1.View_VIEW_REFS)
+				if err != nil {
+					return nil, err
+				}
 				return s.apply(ctx, &daggerv1.ApplyPatchRequest{
 					RequestId: client.NewRequestID(), Project: project, LeaseId: s.leaseOr(args.LeaseID),
 					Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_AddComment{AddComment: &daggerv1.AddCommentOp{
 						Node: ref.String(), Body: args.Body, InReplyTo: args.InReplyTo,
 					}}}},
+					View: view,
 				})
 			},
 		},
@@ -528,7 +574,7 @@ func (s *mcpServer) apply(ctx context.Context, req *daggerv1.ApplyPatchRequest) 
 				continue
 			}
 			for _, n := range res.GetNodes() {
-				if n.GetId() == h.nodeID && n.GetStatus() != daggerv1.Status_STATUS_OPEN {
+				if n.GetReference() == h.ref && n.GetStatus() != daggerv1.Status_STATUS_OPEN {
 					s.forget(h.id)
 				}
 			}

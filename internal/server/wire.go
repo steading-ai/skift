@@ -277,6 +277,7 @@ func toNode(n domain.NodeState) *daggerv1.Node {
 		Ready:        n.Ready,
 		Claimed:      n.Claimed,
 		HumanTouched: n.HumanTouched,
+		Reference:    n.Ref,
 	}
 	if n.ContextID.Valid {
 		out.ContextId = n.ContextID.String()
@@ -284,10 +285,11 @@ func toNode(n domain.NodeState) *daggerv1.Node {
 	return out
 }
 
-func toNodes(states []domain.NodeState) []*daggerv1.Node {
+// toNodes renders states in view, in order.
+func toNodes(states []domain.NodeState, view daggerv1.View) []*daggerv1.Node {
 	out := make([]*daggerv1.Node, 0, len(states))
 	for _, s := range states {
-		out = append(out, toNode(s))
+		out = append(out, projectNode(toNode(s), view))
 	}
 	return out
 }
@@ -479,10 +481,11 @@ func toReason(r domain.Reason, derived map[string]domain.Derived) *daggerv1.Reas
 	return &daggerv1.Reason{}
 }
 
-func toHit(h domain.Hit) *daggerv1.SearchHit {
+func toHit(h domain.Hit, view daggerv1.View) *daggerv1.SearchHit {
 	// A search hit is a node without derived state: the page is ranked
 	// text, and readiness is Explain's to answer.
-	return &daggerv1.SearchHit{Node: toNode(domain.NodeState{Node: h.Node}), Snippet: h.Snippet}
+	node := toNode(domain.NodeState{Node: h.Node, Derived: domain.Derived{Ref: h.Ref}})
+	return &daggerv1.SearchHit{Node: projectNode(node, view), Snippet: h.Snippet}
 }
 
 // fromDuration reads an optional wire duration. Unset is zero, which the

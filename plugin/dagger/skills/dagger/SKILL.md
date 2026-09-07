@@ -44,10 +44,15 @@ MCP tools are the default: `ready`, `search`, `show_node`, `explain`, `claim`,
 `heartbeat`, `release`, `complete`, `comment`, `apply_patch`. A lease taken
 through them renews in the background, and is released if the session ends.
 
-Reach for the `dg` CLI when **writing more than two or three nodes at once** —
-`apply_patch` echoes every created node *and* every event back into the
-conversation, while `dg patch apply - < patch.json` returns a result you can
-summarise. Also for shell scripts, hooks, and `dg ready --wait`.
+Responses are sized for a context window. A write returns references, status
+and readiness flags for what it touched, an alias map, and an event count —
+never the bodies you sent, never the events. `ready`, `search` and `node list`
+return summaries (reference, title, kind, priority, status, labels); only
+`show_node` returns a body. Every one of these takes `view: refs | summary |
+full` when you need more or less, so filing a large patch through MCP costs
+about the same as filing a small one.
+
+Reach for the `dg` CLI for shell pipelines, hooks, and `dg ready --wait`.
 
 ## Traps
 

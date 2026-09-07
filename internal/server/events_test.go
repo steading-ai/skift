@@ -43,7 +43,8 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		Expect(opening.GetCursor()).NotTo(BeEmpty())
 
 		By("each event arrives with the cursor to resume after it")
-		res := f.mustApply(ctx, createOp("a", "A"), createOp("b", "B"))
+		res, err := f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: "platform", View: daggerv1.View_VIEW_FULL, Ops: []*daggerv1.PatchOp{createOp("a", "A"), createOp("b", "B")}})
+		Expect(err).NotTo(HaveOccurred())
 		first := receiveEvent(stream)
 		Expect(first.GetEvent().GetId()).To(Equal(res.GetEvents()[0].GetId()))
 		Expect(first.GetEvent().GetOp()).To(Equal("create_node"))
@@ -70,7 +71,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		Expect(receive(stream).GetEvent()).To(BeNil())
 
 		f.mustApply(ctx, createOp("a", "In platform"))
-		res, err := f.apply(ctx, other.GetSlug(), createOp("b", "In other"))
+		res, err := f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: other.GetSlug(), View: daggerv1.View_VIEW_FULL, Ops: []*daggerv1.PatchOp{createOp("b", "In other")}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(receiveEvent(stream).GetEvent().GetId()).To(Equal(res.GetEvents()[0].GetId()))
 	})

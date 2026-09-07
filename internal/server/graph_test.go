@@ -3,6 +3,8 @@ package server_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -94,10 +96,11 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 
 		It("returns the nodes, aliases, and events a patch produced, attributed to the caller", func(ctx SpecContext) {
 			f.project(ctx, "Platform")
-			res := f.mustApply(ctx,
+			res, err := f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: "platform", View: daggerv1.View_VIEW_FULL, Ops: []*daggerv1.PatchOp{
 				createOp("root", "Root"),
 				createOpWith(&daggerv1.CreateNodeOp{Alias: "child", Title: "Child", Parent: "root", Priority: daggerv1.Priority_PRIORITY_P0, Labels: []string{"infra"}}),
-			)
+			}})
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(res.GetAliases()).To(Equal(map[string]string{"root": "platform#1", "child": "platform#2"}))
 			Expect(numbers(res.GetNodes())).To(Equal([]int64{1, 2}))
@@ -111,8 +114,10 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(child.GetLabels()).To(Equal([]string{"infra"}))
 			Expect(child.GetReady()).To(BeTrue())
 			Expect(child.GetContextId()).NotTo(BeEmpty())
+			Expect(child.GetReference()).To(Equal("platform#2"))
 
 			Expect(res.GetEvents()).To(HaveLen(2))
+			Expect(res.GetEventCount()).To(BeEquivalentTo(2))
 			ev := res.GetEvents()[0]
 			Expect(ev.GetOp()).To(Equal("create_node"))
 			Expect(ev.GetPrincipal()).To(Equal(f.user.ID))
@@ -152,7 +157,131 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 		})
 	})
 
+	Describe("views", func() {
+		// bigPatch is a patch of one create_node per alias, each with a
+		// body of size bytes.
+		bigPatch := func(aliases []string, size int) []*daggerv1.PatchOp {
+			ops := make([]*daggerv1.PatchOp, 0, len(aliases))
+			for _, alias := range aliases {
+				ops = append(ops, createOpWith(&daggerv1.CreateNodeOp{Alias: alias, Title: "Node " + alias, Body: strings.Repeat(alias[:1], size)}))
+			}
+			return ops
+		}
+
+		Describe("Scenario: A write does not echo what it was sent", func() {
+			It("A write does not echo what it was sent", func(ctx SpecContext) {
+				By("given a patch of one create_node with a 3000-byte body")
+				f.project(ctx, "Platform")
+				patch := bigPatch([]string{"big"}, 3000)
+
+				By("when it is applied with no view")
+				res := f.mustApply(ctx, patch...)
+
+				By("then the response maps the alias to a reference")
+				Expect(res.GetAliases()).To(Equal(map[string]string{"big": "platform#1"}))
+				Expect(res.GetNodes()).To(HaveLen(1))
+				Expect(res.GetNodes()[0].GetReference()).To(Equal("platform#1"))
+				Expect(res.GetNodes()[0].GetNumber()).To(BeEquivalentTo(1))
+				Expect(res.GetNodes()[0].GetReady()).To(BeTrue())
+
+				By("and the response contains no body and no events")
+				Expect(res.GetNodes()[0].GetBody()).To(BeEmpty())
+				Expect(res.GetEvents()).To(BeEmpty())
+				wire := wireJSON(res)
+				Expect(wire).NotTo(ContainSubstring(`"body"`))
+				Expect(wire).NotTo(ContainSubstring(`"events"`))
+				Expect(wire).NotTo(ContainSubstring(`"title"`), "refs is not a summary")
+
+				By("and the response carries event_count 1")
+				Expect(res.GetEventCount()).To(BeEquivalentTo(1))
+				Expect(res.GetRequestId()).To(HaveLen(26))
+			})
+		})
+
+		Describe("Scenario: Full is available on request", func() {
+			It("Full is available on request", func(ctx SpecContext) {
+				By("given the same patch")
+				f.project(ctx, "Platform")
+				patch := bigPatch([]string{"big"}, 3000)
+
+				By("when it is applied with view full")
+				res, err := f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: "platform", Ops: patch, View: daggerv1.View_VIEW_FULL})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("then the response contains the events and the node bodies")
+				Expect(res.GetEvents()).To(HaveLen(1))
+				Expect(res.GetEvents()[0].GetOp()).To(Equal("create_node"))
+				Expect(res.GetNodes()).To(HaveLen(1))
+				Expect(res.GetNodes()[0].GetBody()).To(Equal(strings.Repeat("b", 3000)))
+				Expect(res.GetNodes()[0].GetTitle()).To(Equal("Node big"))
+				Expect(res.GetEventCount()).To(BeEquivalentTo(1))
+			})
+		})
+
+		It("keeps a 28-operation patch of 2 KB bodies under 4 KB on the wire", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			aliases := make([]string, 0, 28)
+			for i := range 28 {
+				aliases = append(aliases, fmt.Sprintf("n%d", i+1))
+			}
+			res := f.mustApply(ctx, bigPatch(aliases, 2048)...)
+
+			Expect(res.GetNodes()).To(HaveLen(28))
+			Expect(res.GetAliases()).To(HaveLen(28))
+			Expect(res.GetEventCount()).To(BeEquivalentTo(28))
+			wire := wireJSON(res)
+			Expect(wire).NotTo(ContainSubstring(`"body"`))
+			Expect(wire).NotTo(ContainSubstring(`"events"`))
+			Expect(len(wire)).To(BeNumerically("<", 4096), "the response was %d bytes", len(wire))
+		})
+
+		It("projects a summary as the fields that choose work, and never the body", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			f.mustApply(ctx, createOpWith(&daggerv1.CreateNodeOp{Alias: "a", Title: "Choose me", Kind: "bug", Body: "the body", Priority: daggerv1.Priority_PRIORITY_P1, Labels: []string{"infra"}}))
+
+			list, err := f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Project: "platform"}))
+			Expect(err).NotTo(HaveOccurred())
+			n := list.Msg.GetNodes()[0]
+			Expect(n.GetTitle()).To(Equal("Choose me"))
+			Expect(n.GetKind()).To(Equal("bug"))
+			Expect(n.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+			Expect(n.GetStatus()).To(Equal(daggerv1.Status_STATUS_OPEN))
+			Expect(n.GetLabels()).To(Equal([]string{"infra"}))
+			Expect(n.GetReference()).To(Equal("platform#1"))
+			Expect(n.GetReady()).To(BeTrue())
+			Expect(wireJSON(list.Msg)).NotTo(ContainSubstring(`"body"`))
+
+			hits, err := f.graph().Search(ctx, connect.NewRequest(&daggerv1.SearchRequest{Query: "choose"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hits.Msg.GetHits()).To(HaveLen(1))
+			Expect(hits.Msg.GetHits()[0].GetNode().GetReference()).To(Equal("platform#1"))
+			Expect(hits.Msg.GetHits()[0].GetNode().GetTitle()).To(Equal("Choose me"))
+			Expect(wireJSON(hits.Msg)).NotTo(ContainSubstring(`"body"`))
+
+			full, err := f.graph().Search(ctx, connect.NewRequest(&daggerv1.SearchRequest{Query: "choose", View: daggerv1.View_VIEW_FULL}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(full.Msg.GetHits()[0].GetNode().GetBody()).To(Equal("the body"))
+		})
+	})
+
 	Describe("GetNode", func() {
+		It("returns the body with no view, and leaves content out of a narrower one", func(ctx SpecContext) {
+			project := f.project(ctx, "Platform")
+			f.mustApply(ctx, createOpWith(&daggerv1.CreateNodeOp{Alias: "a", Title: "Read me", Body: "the prompt"}), commentOp("a", "a note"))
+
+			shown := f.getNode(ctx, "platform", "#1")
+			Expect(shown.GetNode().GetBody()).To(Equal("the prompt"))
+			Expect(shown.GetNode().GetReference()).To(Equal("platform#1"))
+			Expect(shown.GetComments()).To(HaveLen(1))
+
+			res, err := f.graph().GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Project: "platform", Node: "#1", View: daggerv1.View_VIEW_SUMMARY}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Msg.GetNode().GetTitle()).To(Equal("Read me"))
+			Expect(res.Msg.GetNode().GetProjectId()).To(Equal(project.GetId()), "a summary says which project the node is in; search crosses them")
+			Expect(res.Msg.GetNode().GetBody()).To(BeEmpty())
+			Expect(res.Msg.GetComments()).To(BeEmpty())
+		})
+
 		It("returns a node with its edges, result, artifacts, comments, and lease", func(ctx SpecContext) {
 			project := f.project(ctx, "Platform")
 			f.mustApply(ctx, createOp("a", "First"), createOp("b", "Second"), edgeOp("a", "b"), commentOp("b", "Looks right"))

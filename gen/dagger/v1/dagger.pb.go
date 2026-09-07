@@ -677,7 +677,10 @@ type Node struct {
 	Claimed bool `protobuf:"varint,18,opt,name=claimed,proto3" json:"claimed,omitempty"`
 	// Output only. Derived from the event log: a user principal has written
 	// to this node at least once.
-	HumanTouched  bool `protobuf:"varint,19,opt,name=human_touched,json=humanTouched,proto3" json:"human_touched,omitempty"`
+	HumanTouched bool `protobuf:"varint,19,opt,name=human_touched,json=humanTouched,proto3" json:"human_touched,omitempty"`
+	// Output only. The node's reference as a request names it: slug#7, the
+	// project's current slug and the node's number.
+	Reference     string `protobuf:"bytes,20,opt,name=reference,proto3" json:"reference,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -843,6 +846,13 @@ func (x *Node) GetHumanTouched() bool {
 		return x.HumanTouched
 	}
 	return false
+}
+
+func (x *Node) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
 }
 
 // Edge is a directed relation between two nodes in the same organization.
@@ -2054,7 +2064,7 @@ const file_dagger_v1_dagger_proto_rawDesc = "" +
 	"\varchived_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAt\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xd6\x04\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xf4\x04\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x15\n" +
@@ -2078,7 +2088,8 @@ const file_dagger_v1_dagger_proto_rawDesc = "" +
 	"\ablocked\x18\x10 \x01(\bR\ablocked\x12\x14\n" +
 	"\x05ready\x18\x11 \x01(\bR\x05ready\x12\x18\n" +
 	"\aclaimed\x18\x12 \x01(\bR\aclaimed\x12#\n" +
-	"\rhuman_touched\x18\x13 \x01(\bR\fhumanTouched\"S\n" +
+	"\rhuman_touched\x18\x13 \x01(\bR\fhumanTouched\x12\x1c\n" +
+	"\treference\x18\x14 \x01(\tR\treference\"S\n" +
 	"\x04Edge\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12'\n" +

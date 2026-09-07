@@ -18,7 +18,8 @@ func (a *app) nodeCommand() *cobra.Command {
 }
 
 func (a *app) nodeShow() *cobra.Command {
-	return &cobra.Command{
+	view := viewFlag{def: daggerv1.View_VIEW_FULL}
+	cmd := &cobra.Command{
 		Use:   "show <ref>",
 		Short: "Show a node with its edges, result, lease, artifacts, and comments",
 		Args:  exactArgs(1),
@@ -27,22 +28,29 @@ func (a *app) nodeShow() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			c, err := a.connect()
 			if err != nil {
 				return err
 			}
 			return send(a, cmd, func() (*daggerv1.GetNodeResponse, error) {
-				res, err := c.Graph.GetNode(cmd.Context(), connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref}))
+				res, err := c.Graph.GetNode(cmd.Context(), connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref, View: v}))
 				return unwrap(res, err)
 			})
 		},
 	}
+	view.bind(cmd)
+	return cmd
 }
 
 func (a *app) nodeList() *cobra.Command {
 	var f nodeFilters
 	var status, parent string
 	var page pageFlags
+	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the nodes of the current project, filtered",
@@ -60,6 +68,10 @@ func (a *app) nodeList() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			c, err := a.connect()
 			if err != nil {
 				return err
@@ -67,7 +79,7 @@ func (a *app) nodeList() *cobra.Command {
 			return send(a, cmd, func() (*daggerv1.ListNodesResponse, error) {
 				res, err := c.Graph.ListNodes(cmd.Context(), connect.NewRequest(&daggerv1.ListNodesRequest{
 					Project: project, Status: st, Kind: f.kind, AssigneeKind: kind, Labels: f.labels, Parent: parent,
-					PageSize: page.size, PageToken: page.token,
+					PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
 			})
@@ -77,6 +89,7 @@ func (a *app) nodeList() *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "", "only nodes in this status: open, done, dropped")
 	cmd.Flags().StringVar(&parent, "parent", "", "only children of this node, as a node reference")
 	page.bind(cmd)
+	view.bind(cmd)
 	return cmd
 }
 

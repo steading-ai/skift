@@ -47,7 +47,7 @@ func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.R
 		return nil, connectError(err)
 	}
 	return connect.NewResponse(&daggerv1.ReadyResponse{
-		Nodes:         toNodes(nodes),
+		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), daggerv1.View_VIEW_SUMMARY)),
 		NextPageToken: nextPageToken(offset, size, len(nodes)),
 	}), nil
 }

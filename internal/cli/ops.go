@@ -13,6 +13,7 @@ import (
 func (a *app) createCommand() *cobra.Command {
 	op := &daggerv1.CreateNodeOp{}
 	var body, priority, assigneeKind, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "create <title>",
 		Short: "Create a node in the current project",
@@ -47,11 +48,16 @@ func (a *app) createCommand() *cobra.Command {
 			if op.Body, err = readBody(cmd, body); err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			op.Title = args[0]
 			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
 				Ops:       []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_CreateNode{CreateNode: op}}},
+				View:      v,
 			})
 		},
 	}
@@ -65,11 +71,13 @@ func (a *app) createCommand() *cobra.Command {
 	f.StringVar(&op.Assignee, "assignee", "", "id of a specific principal to assign to")
 	f.StringArrayVarP(&op.Labels, "label", "l", nil, "label; repeatable")
 	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
 	return cmd
 }
 
 func (a *app) linkCommand() *cobra.Command {
 	var kind, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "link <from> <to>",
 		Short: "Add an edge: for blocks, <from> must finish before <to> is ready",
@@ -91,22 +99,29 @@ func (a *app) linkCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
 				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_AddEdge{AddEdge: &daggerv1.AddEdgeOp{
 					From: from.String(), To: to.String(), Kind: edgeKind,
 				}}}},
+				View: v,
 			})
 		},
 	}
 	cmd.Flags().StringVar(&kind, "kind", "", "edge kind (default: blocks)")
 	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
 	return cmd
 }
 
 func (a *app) completeCommand() *cobra.Command {
 	var lease, result, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "complete <ref>",
 		Short: "Complete a node with a result, under the lease that holds it",
@@ -128,6 +143,10 @@ as the fencing token; the lease is released as part of the same patch.`,
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
@@ -135,17 +154,20 @@ as the fencing token; the lease is released as part of the same patch.`,
 				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_CompleteNode{CompleteNode: &daggerv1.CompleteNodeOp{
 					Node: ref.String(), Result: &daggerv1.Result{Body: body},
 				}}}},
+				View: v,
 			})
 		},
 	}
 	cmd.Flags().StringVar(&lease, "lease", "", "fencing token of the lease held on the node")
 	cmd.Flags().StringVar(&result, "result", "", "result body in markdown; - reads stdin")
 	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
 	return cmd
 }
 
 func (a *app) commentCommand() *cobra.Command {
 	var inReplyTo, lease, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "comment <ref> <body|->",
 		Short: "Add a comment to a node",
@@ -163,6 +185,10 @@ func (a *app) commentCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
@@ -170,11 +196,13 @@ func (a *app) commentCommand() *cobra.Command {
 				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_AddComment{AddComment: &daggerv1.AddCommentOp{
 					Node: ref.String(), Body: body, InReplyTo: inReplyTo,
 				}}}},
+				View: v,
 			})
 		},
 	}
 	cmd.Flags().StringVar(&inReplyTo, "in-reply-to", "", "id of the comment this one replies to")
 	cmd.Flags().StringVar(&lease, "lease", "", "fencing token of the lease held on the node, if any")
 	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
 	return cmd
 }

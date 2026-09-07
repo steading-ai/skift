@@ -23,6 +23,7 @@ func (a *app) patchCommand() *cobra.Command {
 
 func (a *app) patchApply() *cobra.Command {
 	var lease, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "apply <file|->",
 		Short: "Apply a JSON patch from a file, or from stdin with -",
@@ -39,7 +40,9 @@ create_node operation earlier in the same patch declared:
   ]}
 
 The response lists every node the patch created or changed, with their
-numbers, and maps each alias to the node it became.`,
+numbers and references, and maps each alias to the node it became. It never
+echoes the bodies the patch sent; --view full asks for everything, events
+included.`,
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req, err := readPatch(cmd, args[0])
@@ -60,11 +63,17 @@ numbers, and maps each alias to the node it became.`,
 			if lease != "" {
 				req.LeaseId = lease
 			}
+			if req.GetView() == daggerv1.View_VIEW_UNSPECIFIED || cmd.Flags().Changed("view") {
+				if req.View, err = view.view(); err != nil {
+					return err
+				}
+			}
 			return a.apply(cmd, req)
 		},
 	}
 	cmd.Flags().StringVar(&lease, "lease", "", "fencing token of the lease the caller holds, when the patch touches a leased node")
 	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
 	return cmd
 }
 

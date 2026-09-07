@@ -10,6 +10,7 @@ import (
 func (a *app) searchCommand() *cobra.Command {
 	var includeArchived bool
 	var page pageFlags
+	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Search titles, bodies, results, and comments across the organization",
@@ -22,6 +23,10 @@ unless --project narrows it.`,
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			c, err := a.connect()
 			if err != nil {
 				return err
@@ -29,7 +34,7 @@ unless --project narrows it.`,
 			return send(a, cmd, func() (*daggerv1.SearchResponse, error) {
 				res, err := c.Graph.Search(cmd.Context(), connect.NewRequest(&daggerv1.SearchRequest{
 					Query: args[0], Project: cfg.Project, IncludeArchived: includeArchived,
-					PageSize: page.size, PageToken: page.token,
+					PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
 			})
@@ -37,6 +42,7 @@ unless --project narrows it.`,
 	}
 	cmd.Flags().BoolVar(&includeArchived, "include-archived", false, "include nodes of archived projects")
 	page.bind(cmd)
+	view.bind(cmd)
 	return cmd
 }
 

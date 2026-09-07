@@ -208,6 +208,9 @@ message Node {
   // Output only. Derived from the event log: a user principal has written
   // to this node at least once.
   bool human_touched = 19;
+  // Output only. The node's reference as a request names it: slug#7, the
+  // project's current slug and the node's number.
+  string reference = 20;
 }
 
 // Edge is a directed relation between two nodes in the same organization.

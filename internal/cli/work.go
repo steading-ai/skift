@@ -74,6 +74,7 @@ func (f *claimFlags) waitDuration() (d time.Duration, ok bool, err error) {
 func (a *app) readyCommand() *cobra.Command {
 	var f claimFlags
 	var page pageFlags
+	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "ready",
 		Short: "List the ready set of the current project, or with --wait, block until a node can be claimed",
@@ -105,6 +106,10 @@ token every later write to the node carries.`,
 			if err != nil {
 				return err
 			}
+			v, err := view.view()
+			if err != nil {
+				return err
+			}
 			c, err := a.connect()
 			if err != nil {
 				return err
@@ -112,7 +117,7 @@ token every later write to the node carries.`,
 			return send(a, cmd, func() (*daggerv1.ReadyResponse, error) {
 				res, err := c.Work.Ready(cmd.Context(), connect.NewRequest(&daggerv1.ReadyRequest{
 					Project: project, Kind: f.kind, AssigneeKind: kind, Labels: f.labels, MinPriority: prio,
-					PageSize: page.size, PageToken: page.token,
+					PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
 			})
@@ -122,6 +127,7 @@ token every later write to the node carries.`,
 	f.bindWait(cmd)
 	f.bindClaim(cmd)
 	page.bind(cmd)
+	view.bind(cmd)
 	return cmd
 }
 

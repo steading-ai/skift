@@ -126,8 +126,10 @@ func readBody(cmd *cobra.Command, arg string) (string, error) {
 	return string(raw), nil
 }
 
-// enumFlag parses a short enum name such as "p1", "user", or "crash" into
-// the wire enum whose values carry the given prefix. Empty means
+// enumFlag parses an enum name into the wire enum whose values carry the
+// given prefix. The short form ("p1", "user", "crash") and the wire form
+// ("PRIORITY_P1") are both accepted, so an argument that is otherwise a
+// proto message in JSON may spell the enum as protojson does. Empty means
 // unspecified, which the server treats as its default.
 func enumFlag[E ~int32](flag, value, prefix string, values map[string]int32) (E, error) {
 	return parseEnum[E]("--"+flag, value, prefix, values)
@@ -139,7 +141,11 @@ func parseEnum[E ~int32](name, value, prefix string, values map[string]int32) (E
 	if value == "" {
 		return 0, nil
 	}
-	n, ok := values[prefix+strings.ToUpper(strings.ReplaceAll(value, "-", "_"))]
+	key := strings.ToUpper(strings.ReplaceAll(value, "-", "_"))
+	if !strings.HasPrefix(key, prefix) {
+		key = prefix + key
+	}
+	n, ok := values[key]
 	if !ok || n == 0 {
 		return 0, usage("%s: %q is not one of %s", name, value, strings.Join(enumNames(values), ", "))
 	}

@@ -43,6 +43,70 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// View is how much of each node a response carries. Every response that
+// returns nodes is projected through one view on the way out, so the
+// three shapes are the same on every RPC. Each RPC documents which view
+// it takes when the request leaves it unspecified.
+type View int32
+
+const (
+	// VIEW_UNSPECIFIED takes the RPC's default.
+	View_VIEW_UNSPECIFIED View = 0
+	// VIEW_REFS is what a caller needs to name and act on a node and nothing
+	// it already knows: number, reference, status, and the derived blocked,
+	// ready, and claimed flags.
+	View_VIEW_REFS View = 1
+	// VIEW_SUMMARY is VIEW_REFS plus what choosing work needs: id,
+	// project_id, title, kind, priority, assignee_kind, assignee, labels, and
+	// human_touched. Never the body.
+	View_VIEW_SUMMARY View = 2
+	// VIEW_FULL is every field, the body included.
+	View_VIEW_FULL View = 3
+)
+
+// Enum value maps for View.
+var (
+	View_name = map[int32]string{
+		0: "VIEW_UNSPECIFIED",
+		1: "VIEW_REFS",
+		2: "VIEW_SUMMARY",
+		3: "VIEW_FULL",
+	}
+	View_value = map[string]int32{
+		"VIEW_UNSPECIFIED": 0,
+		"VIEW_REFS":        1,
+		"VIEW_SUMMARY":     2,
+		"VIEW_FULL":        3,
+	}
+)
+
+func (x View) Enum() *View {
+	p := new(View)
+	*p = x
+	return p
+}
+
+func (x View) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (View) Descriptor() protoreflect.EnumDescriptor {
+	return file_dagger_v1_service_proto_enumTypes[0].Descriptor()
+}
+
+func (View) Type() protoreflect.EnumType {
+	return &file_dagger_v1_service_proto_enumTypes[0]
+}
+
+func (x View) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use View.Descriptor instead.
+func (View) EnumDescriptor() ([]byte, []int) {
+	return file_dagger_v1_service_proto_rawDescGZIP(), []int{0}
+}
+
 // ApplyPatchRequest is one atomic mutation of the graph.
 type ApplyPatchRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -58,7 +122,10 @@ type ApplyPatchRequest struct {
 	// expired. Empty when the caller holds no lease.
 	LeaseId string `protobuf:"bytes,3,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
 	// The operations, applied in order within one transaction.
-	Ops           []*PatchOp `protobuf:"bytes,4,rep,name=ops,proto3" json:"ops,omitempty"`
+	Ops []*PatchOp `protobuf:"bytes,4,rep,name=ops,proto3" json:"ops,omitempty"`
+	// How much of each touched node to return. Defaults to VIEW_REFS: a
+	// write never echoes the bodies it was sent.
+	View          View `protobuf:"varint,5,opt,name=view,proto3,enum=dagger.v1.View" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -121,17 +188,34 @@ func (x *ApplyPatchRequest) GetOps() []*PatchOp {
 	return nil
 }
 
+func (x *ApplyPatchRequest) GetView() View {
+	if x != nil {
+		return x.View
+	}
+	return View_VIEW_UNSPECIFIED
+}
+
 // ApplyPatchResponse is the state of everything the patch touched, after
-// it was applied.
+// it was applied, projected through the request's view. Under VIEW_REFS
+// and VIEW_SUMMARY the nodes carry no body and events are left out; the
+// event log is the audit record and WatchEvents reads it. VIEW_FULL
+// returns every field and the events.
 type ApplyPatchResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Every node the patch created or changed, as it stands after the patch.
+	// Every node the patch created or changed, as it stands after the patch,
+	// in the request's view.
 	Nodes []*Node `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
 	// Each alias declared by a create_node operation, mapped to the
 	// slug#number reference of the node it created.
 	Aliases map[string]string `protobuf:"bytes,2,rep,name=aliases,proto3" json:"aliases,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// The events the patch produced, in application order.
-	Events        []*Event `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
+	// The events the patch produced, in application order. Only under
+	// VIEW_FULL.
+	Events []*Event `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
+	// How many events the patch produced, whatever the view.
+	EventCount int32 `protobuf:"varint,4,opt,name=event_count,json=eventCount,proto3" json:"event_count,omitempty"`
+	// The idempotency key the patch was applied under, so a caller that let
+	// a client mint one can retry or find the patch's events.
+	RequestId     string `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -185,6 +269,20 @@ func (x *ApplyPatchResponse) GetEvents() []*Event {
 		return x.Events
 	}
 	return nil
+}
+
+func (x *ApplyPatchResponse) GetEventCount() int32 {
+	if x != nil {
+		return x.EventCount
+	}
+	return 0
+}
+
+func (x *ApplyPatchResponse) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
 }
 
 // PatchOp is one operation in a patch. Exactly one of its forms is set.
@@ -1278,7 +1376,11 @@ type GetNodeRequest struct {
 	// id. Optional when the node reference carries its own project.
 	Project string `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
 	// Node reference.
-	Node          string `protobuf:"bytes,2,opt,name=node,proto3" json:"node,omitempty"`
+	Node string `protobuf:"bytes,2,opt,name=node,proto3" json:"node,omitempty"`
+	// How much of the node to return. Defaults to VIEW_FULL: this is the
+	// read whose purpose is the body. A narrower view also leaves out the
+	// result, artifacts, and comments; edges and the lease stay.
+	View          View `protobuf:"varint,3,opt,name=view,proto3,enum=dagger.v1.View" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1325,6 +1427,13 @@ func (x *GetNodeRequest) GetNode() string {
 		return x.Node
 	}
 	return ""
+}
+
+func (x *GetNodeRequest) GetView() View {
+	if x != nil {
+		return x.View
+	}
+	return View_VIEW_UNSPECIFIED
 }
 
 // GetNodeResponse is a node with everything attached to it.
@@ -1438,7 +1547,9 @@ type ListNodesRequest struct {
 	PageSize int32 `protobuf:"varint,7,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// The next_page_token of the previous response. Empty for the first
 	// page.
-	PageToken     string `protobuf:"bytes,8,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageToken string `protobuf:"bytes,8,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// How much of each node to return. Defaults to VIEW_SUMMARY.
+	View          View `protobuf:"varint,9,opt,name=view,proto3,enum=dagger.v1.View" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1527,6 +1638,13 @@ func (x *ListNodesRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListNodesRequest) GetView() View {
+	if x != nil {
+		return x.View
+	}
+	return View_VIEW_UNSPECIFIED
 }
 
 // ListNodesResponse is one page of nodes.
@@ -2090,7 +2208,9 @@ type SearchRequest struct {
 	PageSize int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// The next_page_token of the previous response. Empty for the first
 	// page.
-	PageToken     string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageToken string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// How much of each hit's node to return. Defaults to VIEW_SUMMARY.
+	View          View `protobuf:"varint,6,opt,name=view,proto3,enum=dagger.v1.View" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2158,6 +2278,13 @@ func (x *SearchRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *SearchRequest) GetView() View {
+	if x != nil {
+		return x.View
+	}
+	return View_VIEW_UNSPECIFIED
 }
 
 // SearchResponse is one page of hits, best match first.
@@ -2723,7 +2850,9 @@ type ReadyRequest struct {
 	PageSize int32 `protobuf:"varint,6,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// The next_page_token of the previous response. Empty for the first
 	// page.
-	PageToken     string `protobuf:"bytes,7,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageToken string `protobuf:"bytes,7,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// How much of each node to return. Defaults to VIEW_SUMMARY.
+	View          View `protobuf:"varint,8,opt,name=view,proto3,enum=dagger.v1.View" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2805,6 +2934,13 @@ func (x *ReadyRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ReadyRequest) GetView() View {
+	if x != nil {
+		return x.View
+	}
+	return View_VIEW_UNSPECIFIED
 }
 
 // ReadyResponse is one page of the ready set.
@@ -3425,17 +3561,22 @@ var File_dagger_v1_service_proto protoreflect.FileDescriptor
 
 const file_dagger_v1_service_proto_rawDesc = "" +
 	"\n" +
-	"\x17dagger/v1/service.proto\x12\tdagger.v1\x1a\x16dagger/v1/dagger.proto\x1a\x1egoogle/protobuf/duration.proto\"\x8d\x01\n" +
+	"\x17dagger/v1/service.proto\x12\tdagger.v1\x1a\x16dagger/v1/dagger.proto\x1a\x1egoogle/protobuf/duration.proto\"\xb2\x01\n" +
 	"\x11ApplyPatchRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12\x19\n" +
 	"\blease_id\x18\x03 \x01(\tR\aleaseId\x12$\n" +
-	"\x03ops\x18\x04 \x03(\v2\x12.dagger.v1.PatchOpR\x03ops\"\xe7\x01\n" +
+	"\x03ops\x18\x04 \x03(\v2\x12.dagger.v1.PatchOpR\x03ops\x12#\n" +
+	"\x04view\x18\x05 \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"\xa7\x02\n" +
 	"\x12ApplyPatchResponse\x12%\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x0f.dagger.v1.NodeR\x05nodes\x12D\n" +
 	"\aaliases\x18\x02 \x03(\v2*.dagger.v1.ApplyPatchResponse.AliasesEntryR\aaliases\x12(\n" +
-	"\x06events\x18\x03 \x03(\v2\x10.dagger.v1.EventR\x06events\x1a:\n" +
+	"\x06events\x18\x03 \x03(\v2\x10.dagger.v1.EventR\x06events\x12\x1f\n" +
+	"\vevent_count\x18\x04 \x01(\x05R\n" +
+	"eventCount\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x05 \x01(\tR\trequestId\x1a:\n" +
 	"\fAliasesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb5\x05\n" +
@@ -3523,17 +3664,18 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\x04body\x18\x02 \x01(\tR\x04body\"1\n" +
 	"\x10ResolveCommentOp\x12\x1d\n" +
 	"\n" +
-	"comment_id\x18\x01 \x01(\tR\tcommentId\">\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentId\"c\n" +
 	"\x0eGetNodeRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
-	"\x04node\x18\x02 \x01(\tR\x04node\"\x93\x02\n" +
+	"\x04node\x18\x02 \x01(\tR\x04node\x12#\n" +
+	"\x04view\x18\x03 \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"\x93\x02\n" +
 	"\x0fGetNodeResponse\x12#\n" +
 	"\x04node\x18\x01 \x01(\v2\x0f.dagger.v1.NodeR\x04node\x12%\n" +
 	"\x05edges\x18\x02 \x03(\v2\x0f.dagger.v1.EdgeR\x05edges\x12)\n" +
 	"\x06result\x18\x03 \x01(\v2\x11.dagger.v1.ResultR\x06result\x12&\n" +
 	"\x05lease\x18\x04 \x01(\v2\x10.dagger.v1.LeaseR\x05lease\x121\n" +
 	"\tartifacts\x18\x05 \x03(\v2\x13.dagger.v1.ArtifactR\tartifacts\x12.\n" +
-	"\bcomments\x18\x06 \x03(\v2\x12.dagger.v1.CommentR\bcomments\"\x95\x02\n" +
+	"\bcomments\x18\x06 \x03(\v2\x12.dagger.v1.CommentR\bcomments\"\xba\x02\n" +
 	"\x10ListNodesRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12)\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x11.dagger.v1.StatusR\x06status\x12\x12\n" +
@@ -3543,7 +3685,8 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\x06parent\x18\x06 \x01(\tR\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\a \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\b \x01(\tR\tpageToken\"b\n" +
+	"page_token\x18\b \x01(\tR\tpageToken\x12#\n" +
+	"\x04view\x18\t \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"b\n" +
 	"\x11ListNodesResponse\x12%\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x0f.dagger.v1.NodeR\x05nodes\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\">\n" +
@@ -3571,14 +3714,15 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\x0fOpenChildReason\x12%\n" +
 	"\x05child\x18\x01 \x01(\v2\x0f.dagger.v1.NodeR\x05child\">\n" +
 	"\x0eArchivedReason\x12,\n" +
-	"\aproject\x18\x01 \x01(\v2\x12.dagger.v1.ProjectR\aproject\"\xa6\x01\n" +
+	"\aproject\x18\x01 \x01(\v2\x12.dagger.v1.ProjectR\aproject\"\xcb\x01\n" +
 	"\rSearchRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12)\n" +
 	"\x10include_archived\x18\x03 \x01(\bR\x0fincludeArchived\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\tR\tpageToken\"b\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\x12#\n" +
+	"\x04view\x18\x06 \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"b\n" +
 	"\x0eSearchResponse\x12(\n" +
 	"\x04hits\x18\x01 \x03(\v2\x14.dagger.v1.SearchHitR\x04hits\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"J\n" +
@@ -3610,7 +3754,7 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"F\n" +
 	"\x16ArchiveProjectResponse\x12,\n" +
-	"\aproject\x18\x01 \x01(\v2\x12.dagger.v1.ProjectR\aproject\"\x86\x02\n" +
+	"\aproject\x18\x01 \x01(\v2\x12.dagger.v1.ProjectR\aproject\"\xab\x02\n" +
 	"\fReadyRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12<\n" +
@@ -3619,7 +3763,8 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\fmin_priority\x18\x05 \x01(\x0e2\x13.dagger.v1.PriorityR\vminPriority\x12\x1b\n" +
 	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\a \x01(\tR\tpageToken\"^\n" +
+	"page_token\x18\a \x01(\tR\tpageToken\x12#\n" +
+	"\x04view\x18\b \x01(\x0e2\x0f.dagger.v1.ViewR\x04view\"^\n" +
 	"\rReadyResponse\x12%\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x0f.dagger.v1.NodeR\x05nodes\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa1\x03\n" +
@@ -3662,7 +3807,12 @@ const file_dagger_v1_service_proto_rawDesc = "" +
 	"\x03ops\x18\x03 \x03(\tR\x03ops\"U\n" +
 	"\x13WatchEventsResponse\x12&\n" +
 	"\x05event\x18\x01 \x01(\v2\x10.dagger.v1.EventR\x05event\x12\x16\n" +
-	"\x06cursor\x18\x02 \x01(\tR\x06cursor2\xab\x05\n" +
+	"\x06cursor\x18\x02 \x01(\tR\x06cursor*L\n" +
+	"\x04View\x12\x14\n" +
+	"\x10VIEW_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tVIEW_REFS\x10\x01\x12\x10\n" +
+	"\fVIEW_SUMMARY\x10\x02\x12\r\n" +
+	"\tVIEW_FULL\x10\x032\xab\x05\n" +
 	"\fGraphService\x12I\n" +
 	"\n" +
 	"ApplyPatch\x12\x1c.dagger.v1.ApplyPatchRequest\x1a\x1d.dagger.v1.ApplyPatchResponse\x12@\n" +
@@ -3695,174 +3845,181 @@ func file_dagger_v1_service_proto_rawDescGZIP() []byte {
 	return file_dagger_v1_service_proto_rawDescData
 }
 
+var file_dagger_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_dagger_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_dagger_v1_service_proto_goTypes = []any{
-	(*ApplyPatchRequest)(nil),      // 0: dagger.v1.ApplyPatchRequest
-	(*ApplyPatchResponse)(nil),     // 1: dagger.v1.ApplyPatchResponse
-	(*PatchOp)(nil),                // 2: dagger.v1.PatchOp
-	(*CreateNodeOp)(nil),           // 3: dagger.v1.CreateNodeOp
-	(*UpdateNodeOp)(nil),           // 4: dagger.v1.UpdateNodeOp
-	(*Labels)(nil),                 // 5: dagger.v1.Labels
-	(*DropNodeOp)(nil),             // 6: dagger.v1.DropNodeOp
-	(*CompleteNodeOp)(nil),         // 7: dagger.v1.CompleteNodeOp
-	(*ReopenNodeOp)(nil),           // 8: dagger.v1.ReopenNodeOp
-	(*AddEdgeOp)(nil),              // 9: dagger.v1.AddEdgeOp
-	(*RemoveEdgeOp)(nil),           // 10: dagger.v1.RemoveEdgeOp
-	(*AttachArtifactOp)(nil),       // 11: dagger.v1.AttachArtifactOp
-	(*AddCommentOp)(nil),           // 12: dagger.v1.AddCommentOp
-	(*EditCommentOp)(nil),          // 13: dagger.v1.EditCommentOp
-	(*ResolveCommentOp)(nil),       // 14: dagger.v1.ResolveCommentOp
-	(*GetNodeRequest)(nil),         // 15: dagger.v1.GetNodeRequest
-	(*GetNodeResponse)(nil),        // 16: dagger.v1.GetNodeResponse
-	(*ListNodesRequest)(nil),       // 17: dagger.v1.ListNodesRequest
-	(*ListNodesResponse)(nil),      // 18: dagger.v1.ListNodesResponse
-	(*ExplainRequest)(nil),         // 19: dagger.v1.ExplainRequest
-	(*ExplainResponse)(nil),        // 20: dagger.v1.ExplainResponse
-	(*Reason)(nil),                 // 21: dagger.v1.Reason
-	(*NotOpenReason)(nil),          // 22: dagger.v1.NotOpenReason
-	(*BlockedReason)(nil),          // 23: dagger.v1.BlockedReason
-	(*LeasedReason)(nil),           // 24: dagger.v1.LeasedReason
-	(*OpenChildReason)(nil),        // 25: dagger.v1.OpenChildReason
-	(*ArchivedReason)(nil),         // 26: dagger.v1.ArchivedReason
-	(*SearchRequest)(nil),          // 27: dagger.v1.SearchRequest
-	(*SearchResponse)(nil),         // 28: dagger.v1.SearchResponse
-	(*SearchHit)(nil),              // 29: dagger.v1.SearchHit
-	(*CreateProjectRequest)(nil),   // 30: dagger.v1.CreateProjectRequest
-	(*CreateProjectResponse)(nil),  // 31: dagger.v1.CreateProjectResponse
-	(*GetProjectRequest)(nil),      // 32: dagger.v1.GetProjectRequest
-	(*GetProjectResponse)(nil),     // 33: dagger.v1.GetProjectResponse
-	(*ListProjectsRequest)(nil),    // 34: dagger.v1.ListProjectsRequest
-	(*ListProjectsResponse)(nil),   // 35: dagger.v1.ListProjectsResponse
-	(*ArchiveProjectRequest)(nil),  // 36: dagger.v1.ArchiveProjectRequest
-	(*ArchiveProjectResponse)(nil), // 37: dagger.v1.ArchiveProjectResponse
-	(*ReadyRequest)(nil),           // 38: dagger.v1.ReadyRequest
-	(*ReadyResponse)(nil),          // 39: dagger.v1.ReadyResponse
-	(*ClaimNextRequest)(nil),       // 40: dagger.v1.ClaimNextRequest
-	(*ClaimNextResponse)(nil),      // 41: dagger.v1.ClaimNextResponse
-	(*HeartbeatRequest)(nil),       // 42: dagger.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),      // 43: dagger.v1.HeartbeatResponse
-	(*ReleaseRequest)(nil),         // 44: dagger.v1.ReleaseRequest
-	(*ReleaseResponse)(nil),        // 45: dagger.v1.ReleaseResponse
-	(*WatchEventsRequest)(nil),     // 46: dagger.v1.WatchEventsRequest
-	(*WatchEventsResponse)(nil),    // 47: dagger.v1.WatchEventsResponse
-	nil,                            // 48: dagger.v1.ApplyPatchResponse.AliasesEntry
-	(*Node)(nil),                   // 49: dagger.v1.Node
-	(*Event)(nil),                  // 50: dagger.v1.Event
-	(Priority)(0),                  // 51: dagger.v1.Priority
-	(AssigneeKind)(0),              // 52: dagger.v1.AssigneeKind
-	(DropReason)(0),                // 53: dagger.v1.DropReason
-	(*Result)(nil),                 // 54: dagger.v1.Result
-	(EdgeKind)(0),                  // 55: dagger.v1.EdgeKind
-	(*Artifact)(nil),               // 56: dagger.v1.Artifact
-	(*Edge)(nil),                   // 57: dagger.v1.Edge
-	(*Lease)(nil),                  // 58: dagger.v1.Lease
-	(*Comment)(nil),                // 59: dagger.v1.Comment
-	(Status)(0),                    // 60: dagger.v1.Status
-	(*Project)(nil),                // 61: dagger.v1.Project
-	(*durationpb.Duration)(nil),    // 62: google.protobuf.Duration
-	(ReleaseReason)(0),             // 63: dagger.v1.ReleaseReason
+	(View)(0),                      // 0: dagger.v1.View
+	(*ApplyPatchRequest)(nil),      // 1: dagger.v1.ApplyPatchRequest
+	(*ApplyPatchResponse)(nil),     // 2: dagger.v1.ApplyPatchResponse
+	(*PatchOp)(nil),                // 3: dagger.v1.PatchOp
+	(*CreateNodeOp)(nil),           // 4: dagger.v1.CreateNodeOp
+	(*UpdateNodeOp)(nil),           // 5: dagger.v1.UpdateNodeOp
+	(*Labels)(nil),                 // 6: dagger.v1.Labels
+	(*DropNodeOp)(nil),             // 7: dagger.v1.DropNodeOp
+	(*CompleteNodeOp)(nil),         // 8: dagger.v1.CompleteNodeOp
+	(*ReopenNodeOp)(nil),           // 9: dagger.v1.ReopenNodeOp
+	(*AddEdgeOp)(nil),              // 10: dagger.v1.AddEdgeOp
+	(*RemoveEdgeOp)(nil),           // 11: dagger.v1.RemoveEdgeOp
+	(*AttachArtifactOp)(nil),       // 12: dagger.v1.AttachArtifactOp
+	(*AddCommentOp)(nil),           // 13: dagger.v1.AddCommentOp
+	(*EditCommentOp)(nil),          // 14: dagger.v1.EditCommentOp
+	(*ResolveCommentOp)(nil),       // 15: dagger.v1.ResolveCommentOp
+	(*GetNodeRequest)(nil),         // 16: dagger.v1.GetNodeRequest
+	(*GetNodeResponse)(nil),        // 17: dagger.v1.GetNodeResponse
+	(*ListNodesRequest)(nil),       // 18: dagger.v1.ListNodesRequest
+	(*ListNodesResponse)(nil),      // 19: dagger.v1.ListNodesResponse
+	(*ExplainRequest)(nil),         // 20: dagger.v1.ExplainRequest
+	(*ExplainResponse)(nil),        // 21: dagger.v1.ExplainResponse
+	(*Reason)(nil),                 // 22: dagger.v1.Reason
+	(*NotOpenReason)(nil),          // 23: dagger.v1.NotOpenReason
+	(*BlockedReason)(nil),          // 24: dagger.v1.BlockedReason
+	(*LeasedReason)(nil),           // 25: dagger.v1.LeasedReason
+	(*OpenChildReason)(nil),        // 26: dagger.v1.OpenChildReason
+	(*ArchivedReason)(nil),         // 27: dagger.v1.ArchivedReason
+	(*SearchRequest)(nil),          // 28: dagger.v1.SearchRequest
+	(*SearchResponse)(nil),         // 29: dagger.v1.SearchResponse
+	(*SearchHit)(nil),              // 30: dagger.v1.SearchHit
+	(*CreateProjectRequest)(nil),   // 31: dagger.v1.CreateProjectRequest
+	(*CreateProjectResponse)(nil),  // 32: dagger.v1.CreateProjectResponse
+	(*GetProjectRequest)(nil),      // 33: dagger.v1.GetProjectRequest
+	(*GetProjectResponse)(nil),     // 34: dagger.v1.GetProjectResponse
+	(*ListProjectsRequest)(nil),    // 35: dagger.v1.ListProjectsRequest
+	(*ListProjectsResponse)(nil),   // 36: dagger.v1.ListProjectsResponse
+	(*ArchiveProjectRequest)(nil),  // 37: dagger.v1.ArchiveProjectRequest
+	(*ArchiveProjectResponse)(nil), // 38: dagger.v1.ArchiveProjectResponse
+	(*ReadyRequest)(nil),           // 39: dagger.v1.ReadyRequest
+	(*ReadyResponse)(nil),          // 40: dagger.v1.ReadyResponse
+	(*ClaimNextRequest)(nil),       // 41: dagger.v1.ClaimNextRequest
+	(*ClaimNextResponse)(nil),      // 42: dagger.v1.ClaimNextResponse
+	(*HeartbeatRequest)(nil),       // 43: dagger.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),      // 44: dagger.v1.HeartbeatResponse
+	(*ReleaseRequest)(nil),         // 45: dagger.v1.ReleaseRequest
+	(*ReleaseResponse)(nil),        // 46: dagger.v1.ReleaseResponse
+	(*WatchEventsRequest)(nil),     // 47: dagger.v1.WatchEventsRequest
+	(*WatchEventsResponse)(nil),    // 48: dagger.v1.WatchEventsResponse
+	nil,                            // 49: dagger.v1.ApplyPatchResponse.AliasesEntry
+	(*Node)(nil),                   // 50: dagger.v1.Node
+	(*Event)(nil),                  // 51: dagger.v1.Event
+	(Priority)(0),                  // 52: dagger.v1.Priority
+	(AssigneeKind)(0),              // 53: dagger.v1.AssigneeKind
+	(DropReason)(0),                // 54: dagger.v1.DropReason
+	(*Result)(nil),                 // 55: dagger.v1.Result
+	(EdgeKind)(0),                  // 56: dagger.v1.EdgeKind
+	(*Artifact)(nil),               // 57: dagger.v1.Artifact
+	(*Edge)(nil),                   // 58: dagger.v1.Edge
+	(*Lease)(nil),                  // 59: dagger.v1.Lease
+	(*Comment)(nil),                // 60: dagger.v1.Comment
+	(Status)(0),                    // 61: dagger.v1.Status
+	(*Project)(nil),                // 62: dagger.v1.Project
+	(*durationpb.Duration)(nil),    // 63: google.protobuf.Duration
+	(ReleaseReason)(0),             // 64: dagger.v1.ReleaseReason
 }
 var file_dagger_v1_service_proto_depIdxs = []int32{
-	2,  // 0: dagger.v1.ApplyPatchRequest.ops:type_name -> dagger.v1.PatchOp
-	49, // 1: dagger.v1.ApplyPatchResponse.nodes:type_name -> dagger.v1.Node
-	48, // 2: dagger.v1.ApplyPatchResponse.aliases:type_name -> dagger.v1.ApplyPatchResponse.AliasesEntry
-	50, // 3: dagger.v1.ApplyPatchResponse.events:type_name -> dagger.v1.Event
-	3,  // 4: dagger.v1.PatchOp.create_node:type_name -> dagger.v1.CreateNodeOp
-	4,  // 5: dagger.v1.PatchOp.update_node:type_name -> dagger.v1.UpdateNodeOp
-	6,  // 6: dagger.v1.PatchOp.drop_node:type_name -> dagger.v1.DropNodeOp
-	7,  // 7: dagger.v1.PatchOp.complete_node:type_name -> dagger.v1.CompleteNodeOp
-	8,  // 8: dagger.v1.PatchOp.reopen_node:type_name -> dagger.v1.ReopenNodeOp
-	9,  // 9: dagger.v1.PatchOp.add_edge:type_name -> dagger.v1.AddEdgeOp
-	10, // 10: dagger.v1.PatchOp.remove_edge:type_name -> dagger.v1.RemoveEdgeOp
-	11, // 11: dagger.v1.PatchOp.attach_artifact:type_name -> dagger.v1.AttachArtifactOp
-	12, // 12: dagger.v1.PatchOp.add_comment:type_name -> dagger.v1.AddCommentOp
-	13, // 13: dagger.v1.PatchOp.edit_comment:type_name -> dagger.v1.EditCommentOp
-	14, // 14: dagger.v1.PatchOp.resolve_comment:type_name -> dagger.v1.ResolveCommentOp
-	51, // 15: dagger.v1.CreateNodeOp.priority:type_name -> dagger.v1.Priority
-	52, // 16: dagger.v1.CreateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	51, // 17: dagger.v1.UpdateNodeOp.priority:type_name -> dagger.v1.Priority
-	52, // 18: dagger.v1.UpdateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	5,  // 19: dagger.v1.UpdateNodeOp.labels:type_name -> dagger.v1.Labels
-	53, // 20: dagger.v1.DropNodeOp.reason:type_name -> dagger.v1.DropReason
-	54, // 21: dagger.v1.CompleteNodeOp.result:type_name -> dagger.v1.Result
-	55, // 22: dagger.v1.AddEdgeOp.kind:type_name -> dagger.v1.EdgeKind
-	55, // 23: dagger.v1.RemoveEdgeOp.kind:type_name -> dagger.v1.EdgeKind
-	56, // 24: dagger.v1.AttachArtifactOp.artifact:type_name -> dagger.v1.Artifact
-	49, // 25: dagger.v1.GetNodeResponse.node:type_name -> dagger.v1.Node
-	57, // 26: dagger.v1.GetNodeResponse.edges:type_name -> dagger.v1.Edge
-	54, // 27: dagger.v1.GetNodeResponse.result:type_name -> dagger.v1.Result
-	58, // 28: dagger.v1.GetNodeResponse.lease:type_name -> dagger.v1.Lease
-	56, // 29: dagger.v1.GetNodeResponse.artifacts:type_name -> dagger.v1.Artifact
-	59, // 30: dagger.v1.GetNodeResponse.comments:type_name -> dagger.v1.Comment
-	60, // 31: dagger.v1.ListNodesRequest.status:type_name -> dagger.v1.Status
-	52, // 32: dagger.v1.ListNodesRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	49, // 33: dagger.v1.ListNodesResponse.nodes:type_name -> dagger.v1.Node
-	49, // 34: dagger.v1.ExplainResponse.node:type_name -> dagger.v1.Node
-	21, // 35: dagger.v1.ExplainResponse.reasons:type_name -> dagger.v1.Reason
-	22, // 36: dagger.v1.Reason.not_open:type_name -> dagger.v1.NotOpenReason
-	23, // 37: dagger.v1.Reason.blocked:type_name -> dagger.v1.BlockedReason
-	24, // 38: dagger.v1.Reason.leased:type_name -> dagger.v1.LeasedReason
-	25, // 39: dagger.v1.Reason.open_child:type_name -> dagger.v1.OpenChildReason
-	26, // 40: dagger.v1.Reason.archived:type_name -> dagger.v1.ArchivedReason
-	60, // 41: dagger.v1.NotOpenReason.status:type_name -> dagger.v1.Status
-	49, // 42: dagger.v1.BlockedReason.blocker:type_name -> dagger.v1.Node
-	58, // 43: dagger.v1.LeasedReason.lease:type_name -> dagger.v1.Lease
-	49, // 44: dagger.v1.OpenChildReason.child:type_name -> dagger.v1.Node
-	61, // 45: dagger.v1.ArchivedReason.project:type_name -> dagger.v1.Project
-	29, // 46: dagger.v1.SearchResponse.hits:type_name -> dagger.v1.SearchHit
-	49, // 47: dagger.v1.SearchHit.node:type_name -> dagger.v1.Node
-	51, // 48: dagger.v1.CreateProjectRequest.priority:type_name -> dagger.v1.Priority
-	61, // 49: dagger.v1.CreateProjectResponse.project:type_name -> dagger.v1.Project
-	61, // 50: dagger.v1.GetProjectResponse.project:type_name -> dagger.v1.Project
-	61, // 51: dagger.v1.ListProjectsResponse.projects:type_name -> dagger.v1.Project
-	61, // 52: dagger.v1.ArchiveProjectResponse.project:type_name -> dagger.v1.Project
-	52, // 53: dagger.v1.ReadyRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	51, // 54: dagger.v1.ReadyRequest.min_priority:type_name -> dagger.v1.Priority
-	49, // 55: dagger.v1.ReadyResponse.nodes:type_name -> dagger.v1.Node
-	52, // 56: dagger.v1.ClaimNextRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
-	51, // 57: dagger.v1.ClaimNextRequest.min_priority:type_name -> dagger.v1.Priority
-	62, // 58: dagger.v1.ClaimNextRequest.wait:type_name -> google.protobuf.Duration
-	62, // 59: dagger.v1.ClaimNextRequest.ttl:type_name -> google.protobuf.Duration
-	49, // 60: dagger.v1.ClaimNextResponse.node:type_name -> dagger.v1.Node
-	58, // 61: dagger.v1.ClaimNextResponse.lease:type_name -> dagger.v1.Lease
-	62, // 62: dagger.v1.HeartbeatRequest.ttl:type_name -> google.protobuf.Duration
-	58, // 63: dagger.v1.HeartbeatResponse.lease:type_name -> dagger.v1.Lease
-	63, // 64: dagger.v1.ReleaseRequest.reason:type_name -> dagger.v1.ReleaseReason
-	58, // 65: dagger.v1.ReleaseResponse.lease:type_name -> dagger.v1.Lease
-	50, // 66: dagger.v1.WatchEventsResponse.event:type_name -> dagger.v1.Event
-	0,  // 67: dagger.v1.GraphService.ApplyPatch:input_type -> dagger.v1.ApplyPatchRequest
-	15, // 68: dagger.v1.GraphService.GetNode:input_type -> dagger.v1.GetNodeRequest
-	17, // 69: dagger.v1.GraphService.ListNodes:input_type -> dagger.v1.ListNodesRequest
-	19, // 70: dagger.v1.GraphService.Explain:input_type -> dagger.v1.ExplainRequest
-	27, // 71: dagger.v1.GraphService.Search:input_type -> dagger.v1.SearchRequest
-	30, // 72: dagger.v1.GraphService.CreateProject:input_type -> dagger.v1.CreateProjectRequest
-	32, // 73: dagger.v1.GraphService.GetProject:input_type -> dagger.v1.GetProjectRequest
-	34, // 74: dagger.v1.GraphService.ListProjects:input_type -> dagger.v1.ListProjectsRequest
-	36, // 75: dagger.v1.GraphService.ArchiveProject:input_type -> dagger.v1.ArchiveProjectRequest
-	38, // 76: dagger.v1.WorkService.Ready:input_type -> dagger.v1.ReadyRequest
-	40, // 77: dagger.v1.WorkService.ClaimNext:input_type -> dagger.v1.ClaimNextRequest
-	42, // 78: dagger.v1.WorkService.Heartbeat:input_type -> dagger.v1.HeartbeatRequest
-	44, // 79: dagger.v1.WorkService.Release:input_type -> dagger.v1.ReleaseRequest
-	46, // 80: dagger.v1.EventService.WatchEvents:input_type -> dagger.v1.WatchEventsRequest
-	1,  // 81: dagger.v1.GraphService.ApplyPatch:output_type -> dagger.v1.ApplyPatchResponse
-	16, // 82: dagger.v1.GraphService.GetNode:output_type -> dagger.v1.GetNodeResponse
-	18, // 83: dagger.v1.GraphService.ListNodes:output_type -> dagger.v1.ListNodesResponse
-	20, // 84: dagger.v1.GraphService.Explain:output_type -> dagger.v1.ExplainResponse
-	28, // 85: dagger.v1.GraphService.Search:output_type -> dagger.v1.SearchResponse
-	31, // 86: dagger.v1.GraphService.CreateProject:output_type -> dagger.v1.CreateProjectResponse
-	33, // 87: dagger.v1.GraphService.GetProject:output_type -> dagger.v1.GetProjectResponse
-	35, // 88: dagger.v1.GraphService.ListProjects:output_type -> dagger.v1.ListProjectsResponse
-	37, // 89: dagger.v1.GraphService.ArchiveProject:output_type -> dagger.v1.ArchiveProjectResponse
-	39, // 90: dagger.v1.WorkService.Ready:output_type -> dagger.v1.ReadyResponse
-	41, // 91: dagger.v1.WorkService.ClaimNext:output_type -> dagger.v1.ClaimNextResponse
-	43, // 92: dagger.v1.WorkService.Heartbeat:output_type -> dagger.v1.HeartbeatResponse
-	45, // 93: dagger.v1.WorkService.Release:output_type -> dagger.v1.ReleaseResponse
-	47, // 94: dagger.v1.EventService.WatchEvents:output_type -> dagger.v1.WatchEventsResponse
-	81, // [81:95] is the sub-list for method output_type
-	67, // [67:81] is the sub-list for method input_type
-	67, // [67:67] is the sub-list for extension type_name
-	67, // [67:67] is the sub-list for extension extendee
-	0,  // [0:67] is the sub-list for field type_name
+	3,  // 0: dagger.v1.ApplyPatchRequest.ops:type_name -> dagger.v1.PatchOp
+	0,  // 1: dagger.v1.ApplyPatchRequest.view:type_name -> dagger.v1.View
+	50, // 2: dagger.v1.ApplyPatchResponse.nodes:type_name -> dagger.v1.Node
+	49, // 3: dagger.v1.ApplyPatchResponse.aliases:type_name -> dagger.v1.ApplyPatchResponse.AliasesEntry
+	51, // 4: dagger.v1.ApplyPatchResponse.events:type_name -> dagger.v1.Event
+	4,  // 5: dagger.v1.PatchOp.create_node:type_name -> dagger.v1.CreateNodeOp
+	5,  // 6: dagger.v1.PatchOp.update_node:type_name -> dagger.v1.UpdateNodeOp
+	7,  // 7: dagger.v1.PatchOp.drop_node:type_name -> dagger.v1.DropNodeOp
+	8,  // 8: dagger.v1.PatchOp.complete_node:type_name -> dagger.v1.CompleteNodeOp
+	9,  // 9: dagger.v1.PatchOp.reopen_node:type_name -> dagger.v1.ReopenNodeOp
+	10, // 10: dagger.v1.PatchOp.add_edge:type_name -> dagger.v1.AddEdgeOp
+	11, // 11: dagger.v1.PatchOp.remove_edge:type_name -> dagger.v1.RemoveEdgeOp
+	12, // 12: dagger.v1.PatchOp.attach_artifact:type_name -> dagger.v1.AttachArtifactOp
+	13, // 13: dagger.v1.PatchOp.add_comment:type_name -> dagger.v1.AddCommentOp
+	14, // 14: dagger.v1.PatchOp.edit_comment:type_name -> dagger.v1.EditCommentOp
+	15, // 15: dagger.v1.PatchOp.resolve_comment:type_name -> dagger.v1.ResolveCommentOp
+	52, // 16: dagger.v1.CreateNodeOp.priority:type_name -> dagger.v1.Priority
+	53, // 17: dagger.v1.CreateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	52, // 18: dagger.v1.UpdateNodeOp.priority:type_name -> dagger.v1.Priority
+	53, // 19: dagger.v1.UpdateNodeOp.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	6,  // 20: dagger.v1.UpdateNodeOp.labels:type_name -> dagger.v1.Labels
+	54, // 21: dagger.v1.DropNodeOp.reason:type_name -> dagger.v1.DropReason
+	55, // 22: dagger.v1.CompleteNodeOp.result:type_name -> dagger.v1.Result
+	56, // 23: dagger.v1.AddEdgeOp.kind:type_name -> dagger.v1.EdgeKind
+	56, // 24: dagger.v1.RemoveEdgeOp.kind:type_name -> dagger.v1.EdgeKind
+	57, // 25: dagger.v1.AttachArtifactOp.artifact:type_name -> dagger.v1.Artifact
+	0,  // 26: dagger.v1.GetNodeRequest.view:type_name -> dagger.v1.View
+	50, // 27: dagger.v1.GetNodeResponse.node:type_name -> dagger.v1.Node
+	58, // 28: dagger.v1.GetNodeResponse.edges:type_name -> dagger.v1.Edge
+	55, // 29: dagger.v1.GetNodeResponse.result:type_name -> dagger.v1.Result
+	59, // 30: dagger.v1.GetNodeResponse.lease:type_name -> dagger.v1.Lease
+	57, // 31: dagger.v1.GetNodeResponse.artifacts:type_name -> dagger.v1.Artifact
+	60, // 32: dagger.v1.GetNodeResponse.comments:type_name -> dagger.v1.Comment
+	61, // 33: dagger.v1.ListNodesRequest.status:type_name -> dagger.v1.Status
+	53, // 34: dagger.v1.ListNodesRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	0,  // 35: dagger.v1.ListNodesRequest.view:type_name -> dagger.v1.View
+	50, // 36: dagger.v1.ListNodesResponse.nodes:type_name -> dagger.v1.Node
+	50, // 37: dagger.v1.ExplainResponse.node:type_name -> dagger.v1.Node
+	22, // 38: dagger.v1.ExplainResponse.reasons:type_name -> dagger.v1.Reason
+	23, // 39: dagger.v1.Reason.not_open:type_name -> dagger.v1.NotOpenReason
+	24, // 40: dagger.v1.Reason.blocked:type_name -> dagger.v1.BlockedReason
+	25, // 41: dagger.v1.Reason.leased:type_name -> dagger.v1.LeasedReason
+	26, // 42: dagger.v1.Reason.open_child:type_name -> dagger.v1.OpenChildReason
+	27, // 43: dagger.v1.Reason.archived:type_name -> dagger.v1.ArchivedReason
+	61, // 44: dagger.v1.NotOpenReason.status:type_name -> dagger.v1.Status
+	50, // 45: dagger.v1.BlockedReason.blocker:type_name -> dagger.v1.Node
+	59, // 46: dagger.v1.LeasedReason.lease:type_name -> dagger.v1.Lease
+	50, // 47: dagger.v1.OpenChildReason.child:type_name -> dagger.v1.Node
+	62, // 48: dagger.v1.ArchivedReason.project:type_name -> dagger.v1.Project
+	0,  // 49: dagger.v1.SearchRequest.view:type_name -> dagger.v1.View
+	30, // 50: dagger.v1.SearchResponse.hits:type_name -> dagger.v1.SearchHit
+	50, // 51: dagger.v1.SearchHit.node:type_name -> dagger.v1.Node
+	52, // 52: dagger.v1.CreateProjectRequest.priority:type_name -> dagger.v1.Priority
+	62, // 53: dagger.v1.CreateProjectResponse.project:type_name -> dagger.v1.Project
+	62, // 54: dagger.v1.GetProjectResponse.project:type_name -> dagger.v1.Project
+	62, // 55: dagger.v1.ListProjectsResponse.projects:type_name -> dagger.v1.Project
+	62, // 56: dagger.v1.ArchiveProjectResponse.project:type_name -> dagger.v1.Project
+	53, // 57: dagger.v1.ReadyRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	52, // 58: dagger.v1.ReadyRequest.min_priority:type_name -> dagger.v1.Priority
+	0,  // 59: dagger.v1.ReadyRequest.view:type_name -> dagger.v1.View
+	50, // 60: dagger.v1.ReadyResponse.nodes:type_name -> dagger.v1.Node
+	53, // 61: dagger.v1.ClaimNextRequest.assignee_kind:type_name -> dagger.v1.AssigneeKind
+	52, // 62: dagger.v1.ClaimNextRequest.min_priority:type_name -> dagger.v1.Priority
+	63, // 63: dagger.v1.ClaimNextRequest.wait:type_name -> google.protobuf.Duration
+	63, // 64: dagger.v1.ClaimNextRequest.ttl:type_name -> google.protobuf.Duration
+	50, // 65: dagger.v1.ClaimNextResponse.node:type_name -> dagger.v1.Node
+	59, // 66: dagger.v1.ClaimNextResponse.lease:type_name -> dagger.v1.Lease
+	63, // 67: dagger.v1.HeartbeatRequest.ttl:type_name -> google.protobuf.Duration
+	59, // 68: dagger.v1.HeartbeatResponse.lease:type_name -> dagger.v1.Lease
+	64, // 69: dagger.v1.ReleaseRequest.reason:type_name -> dagger.v1.ReleaseReason
+	59, // 70: dagger.v1.ReleaseResponse.lease:type_name -> dagger.v1.Lease
+	51, // 71: dagger.v1.WatchEventsResponse.event:type_name -> dagger.v1.Event
+	1,  // 72: dagger.v1.GraphService.ApplyPatch:input_type -> dagger.v1.ApplyPatchRequest
+	16, // 73: dagger.v1.GraphService.GetNode:input_type -> dagger.v1.GetNodeRequest
+	18, // 74: dagger.v1.GraphService.ListNodes:input_type -> dagger.v1.ListNodesRequest
+	20, // 75: dagger.v1.GraphService.Explain:input_type -> dagger.v1.ExplainRequest
+	28, // 76: dagger.v1.GraphService.Search:input_type -> dagger.v1.SearchRequest
+	31, // 77: dagger.v1.GraphService.CreateProject:input_type -> dagger.v1.CreateProjectRequest
+	33, // 78: dagger.v1.GraphService.GetProject:input_type -> dagger.v1.GetProjectRequest
+	35, // 79: dagger.v1.GraphService.ListProjects:input_type -> dagger.v1.ListProjectsRequest
+	37, // 80: dagger.v1.GraphService.ArchiveProject:input_type -> dagger.v1.ArchiveProjectRequest
+	39, // 81: dagger.v1.WorkService.Ready:input_type -> dagger.v1.ReadyRequest
+	41, // 82: dagger.v1.WorkService.ClaimNext:input_type -> dagger.v1.ClaimNextRequest
+	43, // 83: dagger.v1.WorkService.Heartbeat:input_type -> dagger.v1.HeartbeatRequest
+	45, // 84: dagger.v1.WorkService.Release:input_type -> dagger.v1.ReleaseRequest
+	47, // 85: dagger.v1.EventService.WatchEvents:input_type -> dagger.v1.WatchEventsRequest
+	2,  // 86: dagger.v1.GraphService.ApplyPatch:output_type -> dagger.v1.ApplyPatchResponse
+	17, // 87: dagger.v1.GraphService.GetNode:output_type -> dagger.v1.GetNodeResponse
+	19, // 88: dagger.v1.GraphService.ListNodes:output_type -> dagger.v1.ListNodesResponse
+	21, // 89: dagger.v1.GraphService.Explain:output_type -> dagger.v1.ExplainResponse
+	29, // 90: dagger.v1.GraphService.Search:output_type -> dagger.v1.SearchResponse
+	32, // 91: dagger.v1.GraphService.CreateProject:output_type -> dagger.v1.CreateProjectResponse
+	34, // 92: dagger.v1.GraphService.GetProject:output_type -> dagger.v1.GetProjectResponse
+	36, // 93: dagger.v1.GraphService.ListProjects:output_type -> dagger.v1.ListProjectsResponse
+	38, // 94: dagger.v1.GraphService.ArchiveProject:output_type -> dagger.v1.ArchiveProjectResponse
+	40, // 95: dagger.v1.WorkService.Ready:output_type -> dagger.v1.ReadyResponse
+	42, // 96: dagger.v1.WorkService.ClaimNext:output_type -> dagger.v1.ClaimNextResponse
+	44, // 97: dagger.v1.WorkService.Heartbeat:output_type -> dagger.v1.HeartbeatResponse
+	46, // 98: dagger.v1.WorkService.Release:output_type -> dagger.v1.ReleaseResponse
+	48, // 99: dagger.v1.EventService.WatchEvents:output_type -> dagger.v1.WatchEventsResponse
+	86, // [86:100] is the sub-list for method output_type
+	72, // [72:86] is the sub-list for method input_type
+	72, // [72:72] is the sub-list for extension type_name
+	72, // [72:72] is the sub-list for extension extendee
+	0,  // [0:72] is the sub-list for field type_name
 }
 
 func init() { file_dagger_v1_service_proto_init() }
@@ -3897,13 +4054,14 @@ func file_dagger_v1_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dagger_v1_service_proto_rawDesc), len(file_dagger_v1_service_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
 		GoTypes:           file_dagger_v1_service_proto_goTypes,
 		DependencyIndexes: file_dagger_v1_service_proto_depIdxs,
+		EnumInfos:         file_dagger_v1_service_proto_enumTypes,
 		MessageInfos:      file_dagger_v1_service_proto_msgTypes,
 	}.Build()
 	File_dagger_v1_service_proto = out.File

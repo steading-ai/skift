@@ -1,7 +1,9 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -15,11 +17,24 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
 	"github.com/ivy/dagger/internal/server"
 )
+
+// wireJSON renders a response the way a JSON client, and so a context
+// window, receives it: proto field names, no indentation.
+func wireJSON(msg proto.Message) string {
+	GinkgoHelper()
+	raw, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(msg)
+	Expect(err).NotTo(HaveOccurred())
+	var buf bytes.Buffer
+	Expect(json.Compact(&buf, raw)).To(Succeed())
+	return buf.String()
+}
 
 // pinger is a database stand-in for the unit specs.
 type pinger struct{ err error }

@@ -89,6 +89,25 @@ service EventService {
   rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse);
 }
 
+// View is how much of each node a response carries. Every response that
+// returns nodes is projected through one view on the way out, so the
+// three shapes are the same on every RPC. Each RPC documents which view
+// it takes when the request leaves it unspecified.
+enum View {
+  // VIEW_UNSPECIFIED takes the RPC's default.
+  VIEW_UNSPECIFIED = 0;
+  // VIEW_REFS is what a caller needs to name and act on a node and nothing
+  // it already knows: number, reference, status, and the derived blocked,
+  // ready, and claimed flags.
+  VIEW_REFS = 1;
+  // VIEW_SUMMARY is VIEW_REFS plus what choosing work needs: id,
+  // project_id, title, kind, priority, assignee_kind, assignee, labels, and
+  // human_touched. Never the body.
+  VIEW_SUMMARY = 2;
+  // VIEW_FULL is every field, the body included.
+  VIEW_FULL = 3;
+}
+
 // ApplyPatchRequest is one atomic mutation of the graph.
 message ApplyPatchRequest {
   // Client-supplied idempotency key. Required.
@@ -104,18 +123,31 @@ message ApplyPatchRequest {
   string lease_id = 3;
   // The operations, applied in order within one transaction.
   repeated PatchOp ops = 4;
+  // How much of each touched node to return. Defaults to VIEW_REFS: a
+  // write never echoes the bodies it was sent.
+  View view = 5;
 }
 
 // ApplyPatchResponse is the state of everything the patch touched, after
-// it was applied.
+// it was applied, projected through the request's view. Under VIEW_REFS
+// and VIEW_SUMMARY the nodes carry no body and events are left out; the
+// event log is the audit record and WatchEvents reads it. VIEW_FULL
+// returns every field and the events.
 message ApplyPatchResponse {
-  // Every node the patch created or changed, as it stands after the patch.
+  // Every node the patch created or changed, as it stands after the patch,
+  // in the request's view.
   repeated Node nodes = 1;
   // Each alias declared by a create_node operation, mapped to the
   // slug#number reference of the node it created.
   map<string, string> aliases = 2;
-  // The events the patch produced, in application order.
+  // The events the patch produced, in application order. Only under
+  // VIEW_FULL.
   repeated Event events = 3;
+  // How many events the patch produced, whatever the view.
+  int32 event_count = 4;
+  // The idempotency key the patch was applied under, so a caller that let
+  // a client mint one can retry or find the patch's events.
+  string request_id = 5;
 }
 
 // PatchOp is one operation in a patch. Exactly one of its forms is set.
@@ -308,6 +340,10 @@ message GetNodeRequest {
   string project = 1;
   // Node reference.
   string node = 2;
+  // How much of the node to return. Defaults to VIEW_FULL: this is the
+  // read whose purpose is the body. A narrower view also leaves out the
+  // result, artifacts, and comments; edges and the lease stay.
+  View view = 3;
 }
 
 // GetNodeResponse is a node with everything attached to it.
@@ -346,6 +382,8 @@ message ListNodesRequest {
   // The next_page_token of the previous response. Empty for the first
   // page.
   string page_token = 8;
+  // How much of each node to return. Defaults to VIEW_SUMMARY.
+  View view = 9;
 }
 
 // ListNodesResponse is one page of nodes.
@@ -440,6 +478,8 @@ message SearchRequest {
   // The next_page_token of the previous response. Empty for the first
   // page.
   string page_token = 5;
+  // How much of each hit's node to return. Defaults to VIEW_SUMMARY.
+  View view = 6;
 }
 
 // SearchResponse is one page of hits, best match first.
@@ -542,6 +582,8 @@ message ReadyRequest {
   // The next_page_token of the previous response. Empty for the first
   // page.
   string page_token = 7;
+  // How much of each node to return. Defaults to VIEW_SUMMARY.
+  View view = 8;
 }
 
 // ReadyResponse is one page of the ready set.

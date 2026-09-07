@@ -38,6 +38,7 @@ WITH hits AS (
     FROM hits
 )
 SELECT n.id, n.number, n.org_id, n.project_id, n.parent_id, n.kind, n.title, n.body, n.status, n.priority, n.assignee_kind, n.assignee, n.labels, n.context_id, n.created_at,
+       p.slug::text AS project_slug,
        h.rank::real AS rank,
        h.source::text AS source,
        ts_headline('english', h.text, websearch_to_tsquery('english', $2),
@@ -62,10 +63,11 @@ type SearchNodesParams struct {
 }
 
 type SearchNodesRow struct {
-	Node    Node
-	Rank    float32
-	Source  string
-	Snippet string
+	Node        Node
+	ProjectSlug string
+	Rank        float32
+	Source      string
+	Snippet     string
 }
 
 // Lexical search. See the Search section of docs/domain-model.md and
@@ -112,6 +114,7 @@ func (q *Queries) SearchNodes(ctx context.Context, arg SearchNodesParams) ([]Sea
 			&i.Node.Labels,
 			&i.Node.ContextID,
 			&i.Node.CreatedAt,
+			&i.ProjectSlug,
 			&i.Rank,
 			&i.Source,
 			&i.Snippet,

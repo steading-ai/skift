@@ -38,15 +38,21 @@ func (g *GraphService) ApplyPatch(ctx context.Context, req *connect.Request[dagg
 	if err != nil {
 		return nil, connectError(err)
 	}
-	events, err := toEvents(out.Events)
-	if err != nil {
-		return nil, connectError(err)
+	view := viewOr(req.Msg.GetView(), daggerv1.View_VIEW_REFS)
+	res := &daggerv1.ApplyPatchResponse{
+		Nodes:      toNodes(out.States, view),
+		Aliases:    out.Aliases,
+		EventCount: int32(len(out.Events)), //nolint:gosec // bounded by the patch's operation ceiling
+		RequestId:  req.Msg.GetRequestId(),
 	}
-	return connect.NewResponse(&daggerv1.ApplyPatchResponse{
-		Nodes:   toNodes(out.States),
-		Aliases: out.Aliases,
-		Events:  events,
-	}), nil
+	// Events are the audit record, read through WatchEvents; a patch
+	// response carries them only when asked for everything.
+	if view == daggerv1.View_VIEW_FULL {
+		if res.Events, err = toEvents(out.Events); err != nil {
+			return nil, connectError(err)
+		}
+	}
+	return connect.NewResponse(res), nil
 }
 
 // GetNode implements daggerv1connect.GraphServiceHandler.
@@ -55,24 +61,30 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[daggerv
 	if err != nil {
 		return nil, err
 	}
-	view, err := g.svc.GetNode(ctx, orgID, req.Msg.GetProject(), req.Msg.GetNode())
+	node, err := g.svc.GetNode(ctx, orgID, req.Msg.GetProject(), req.Msg.GetNode())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	res := &daggerv1.GetNodeResponse{Node: toNode(view.NodeState)}
-	for _, e := range view.Edges {
+	view := viewOr(req.Msg.GetView(), daggerv1.View_VIEW_FULL)
+	res := &daggerv1.GetNodeResponse{Node: projectNode(toNode(node.NodeState), view)}
+	for _, e := range node.Edges {
 		res.Edges = append(res.Edges, toEdge(e))
 	}
-	if res.Result, err = toResult(view.Result, view.Artifacts); err != nil {
+	if node.Lease != nil {
+		res.Lease = toLease(*node.Lease)
+	}
+	// The result, artifacts, and comments are content, like the body:
+	// only the full view carries them.
+	if view != daggerv1.View_VIEW_FULL {
+		return connect.NewResponse(res), nil
+	}
+	if res.Result, err = toResult(node.Result, node.Artifacts); err != nil {
 		return nil, connectError(err)
 	}
-	if view.Lease != nil {
-		res.Lease = toLease(*view.Lease)
-	}
-	if res.Artifacts, err = toArtifacts(view.Artifacts); err != nil {
+	if res.Artifacts, err = toArtifacts(node.Artifacts); err != nil {
 		return nil, connectError(err)
 	}
-	for _, c := range view.Comments {
+	for _, c := range node.Comments {
 		res.Comments = append(res.Comments, toComment(c))
 	}
 	return connect.NewResponse(res), nil
@@ -103,7 +115,7 @@ func (g *GraphService) ListNodes(ctx context.Context, req *connect.Request[dagge
 		return nil, connectError(err)
 	}
 	return connect.NewResponse(&daggerv1.ListNodesResponse{
-		Nodes:         toNodes(nodes),
+		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), daggerv1.View_VIEW_SUMMARY)),
 		NextPageToken: nextPageToken(offset, size, len(nodes)),
 	}), nil
 }
@@ -147,8 +159,9 @@ func (g *GraphService) Search(ctx context.Context, req *connect.Request[daggerv1
 		return nil, connectError(err)
 	}
 	res := &daggerv1.SearchResponse{}
+	view := viewOr(req.Msg.GetView(), daggerv1.View_VIEW_SUMMARY)
 	for _, h := range hits {
-		res.Hits = append(res.Hits, toHit(h))
+		res.Hits = append(res.Hits, toHit(h, view))
 	}
 	// Policy may drop hits after paging, so a short page is not the last
 	// one; the caller pages until a page comes back empty.

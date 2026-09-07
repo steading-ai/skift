@@ -211,7 +211,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 
 			By("when the gate is completed by a user principal")
 			completed := &daggerv1.ApplyPatchResponse{}
-			d.laptop.call(completed, "complete", "--project", platform, ref(gate), "--result", "Approved.")
+			d.laptop.call(completed, "complete", "--project", platform, ref(gate), "--result", "Approved.", "--view", "full")
 			Expect(completed.GetEvents()).NotTo(BeEmpty())
 			Expect(completed.GetEvents()[0].GetPrincipalKind()).To(Equal(daggerv1.PrincipalKind_PRINCIPAL_KIND_USER))
 

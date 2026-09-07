@@ -146,8 +146,10 @@ type mcpTool struct {
 
 // leaseHold is a lease this process claimed and keeps alive.
 type leaseHold struct {
-	id     string
-	nodeID string
+	id string
+	// ref is the held node's reference, which is how a patch response
+	// names the nodes it touched.
+	ref string
 	// stop ends the heartbeat loop.
 	stop context.CancelFunc
 }
@@ -447,10 +449,10 @@ func codeOf(name string) connect.Code {
 
 // Lease lifetime.
 
-// hold records a claimed lease and starts renewing it.
-func (s *mcpServer) hold(lease *daggerv1.Lease) {
+// hold records a lease claimed on node and starts renewing it.
+func (s *mcpServer) hold(lease *daggerv1.Lease, node *daggerv1.Node) {
 	ctx, stop := context.WithCancel(context.Background())
-	h := &leaseHold{id: lease.GetId(), nodeID: lease.GetNodeId(), stop: stop}
+	h := &leaseHold{id: lease.GetId(), ref: node.GetReference(), stop: stop}
 	s.holdMu.Lock()
 	s.held[h.id] = h
 	s.holdMu.Unlock()

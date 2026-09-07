@@ -13,12 +13,19 @@ and the exit code is non-zero.
 dg ready                          # what can be worked now, most urgent then oldest
 dg ready --assignee-kind user     # what is waiting on a human
 dg ready --kind bug --min-priority p1 --label backend
-dg node show '#7'                 # one node: edges, result, lease, artifacts, comments
+dg node show '#7'                 # one node: body, edges, result, lease, artifacts, comments
 dg node list                      # the project's nodes, filtered
 dg explain '#7'                   # why it is not ready; no reasons means it is
 dg search 'socket "permission denied" -legacy'
 dg project list                   # most recently active first
 ```
+
+`ready`, `node list` and `search` return a **summary** of each node: its
+reference (`slug#7`), title, kind, priority, status, labels, and the derived
+`ready`/`blocked`/`claimed` flags. `node show` returns everything, body
+included. `--view refs|summary|full` (the `view` argument of the MCP tools)
+changes that: `--view full` on a listing carries every body, `--view refs` is
+references and flags alone.
 
 `search` is PostgreSQL websearch syntax: bare words, `"quoted phrases"`,
 `-excluded`, and `OR`. It covers node titles, bodies, results and comments
@@ -74,11 +81,17 @@ with no round trip to learn its number:
 ]}
 ```
 
-The response maps every alias to the reference it became.
+The response is what the patch did, not what it was sent: every node it
+created or changed as a reference with its number, status and readiness
+flags, the map from each alias to the reference it became, `event_count`, and
+the `request_id` it was applied under. Bodies are never echoed and events are
+not returned; `--view full` (or `view: "full"`) returns every field and the
+events, and `dg events` reads them from the log at any time.
 
 ```sh
 dg patch apply patch.json
-dg patch apply -            # from stdin
+dg patch apply -                  # from stdin
+dg patch apply - --view full      # everything back, events included
 ```
 
 Field names differ per operation. Most name their target `node`; `add_edge`
@@ -95,7 +108,8 @@ and `remove_edge` use `from` and `to`. Reparenting and reprioritising are
 
 A patch touching a node you hold a lease on must carry that `lease_id`.
 
-For one small change the CLI builds the patch for you:
+For one small change the CLI builds the patch for you; each answers in the
+same refs view, and takes the same `--view`:
 
 ```sh
 dg create 'Title' --body - --kind bug --priority p1 --blocked-by '#3' --label api

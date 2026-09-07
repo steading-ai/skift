@@ -31,6 +31,9 @@ type Derived struct {
 	// HumanTouched: a user principal has written to the node at least
 	// once, according to the event log.
 	HumanTouched bool
+	// Ref: the node's reference as a request names it, `slug#7`, from the
+	// project's current slug and the node's number.
+	Ref string
 }
 
 // NodeState is a node with its derived flags.
@@ -42,6 +45,8 @@ type NodeState struct {
 // derivedRow is one row of derivedSQL.
 type derivedRow struct {
 	ID           string `db:"id"`
+	Number       int64  `db:"number"`
+	Slug         string `db:"slug"`
 	Status       string `db:"status"`
 	Blocked      bool   `db:"blocked"`
 	Claimed      bool   `db:"claimed"`
@@ -54,7 +59,7 @@ type derivedRow struct {
 // the readiness fragments Ready and Explain share. $1 is the organization,
 // $2 the node ids.
 const derivedSQL = `
-SELECT n.id, n.status,
+SELECT n.id, n.number, pr.slug, n.status,
        EXISTS (` + unsatisfiedBlockers + `) AS blocked,
        EXISTS (` + liveLease + `) AS claimed,
        EXISTS (` + openChildren + `) AS open_child,
@@ -62,6 +67,7 @@ SELECT n.id, n.status,
        EXISTS (SELECT 1 FROM events ev
                WHERE ev.org_id = $1 AND ev.node_id = n.id AND ev.principal_kind = 'user') AS human_touched
 FROM nodes n
+JOIN projects pr ON pr.org_id = $1 AND pr.id = n.project_id
 WHERE n.org_id = $1 AND n.id = ANY($2::text[])`
 
 // derive computes the derived flags of nodes, keyed by node id.
@@ -88,6 +94,7 @@ func derive(ctx context.Context, tx store.Tx, orgID string, nodes []store.Node) 
 			Ready:        d.Status == "open" && !d.Blocked && !d.Claimed && !d.OpenChild && !d.Archived,
 			Claimed:      d.Claimed,
 			HumanTouched: d.HumanTouched,
+			Ref:          NodeRef{Project: d.Slug, Number: d.Number}.String(),
 		}
 	}
 	return out, nil

@@ -39,6 +39,7 @@ WITH hits AS (
     FROM hits
 )
 SELECT sqlc.embed(n),
+       p.slug::text AS project_slug,
        h.rank::real AS rank,
        h.source::text AS source,
        ts_headline('english', h.text, websearch_to_tsquery('english', sqlc.arg(query)),

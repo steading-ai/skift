@@ -44,6 +44,9 @@ type stub struct {
 	// readyGate, when set, is closed by a spec to make work appear for a
 	// waiting ClaimNext.
 	readyGate chan struct{}
+	// refsOnly makes ApplyPatch answer in the refs view, as the service
+	// does when a request asks for no more, instead of echoing the node.
+	refsOnly bool
 }
 
 // stubLease is a lease the stub handed out and its state.
@@ -82,6 +85,7 @@ func (s *stub) newNode(title string) *daggerv1.Node {
 	n := &daggerv1.Node{
 		Id:        fmt.Sprintf("01J%023d", len(s.nodes)+1),
 		Number:    int64(len(s.nodes) + 1),
+		Reference: fmt.Sprintf("platform#%d", len(s.nodes)+1),
 		Kind:      "task",
 		Title:     title,
 		Status:    daggerv1.Status_STATUS_OPEN,
@@ -136,7 +140,7 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[daggerv1.Apply
 	if req.Msg.GetProject() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrProjectRequired)
 	}
-	res := &daggerv1.ApplyPatchResponse{Aliases: map[string]string{}}
+	res := &daggerv1.ApplyPatchResponse{Aliases: map[string]string{}, RequestId: req.Msg.GetRequestId()}
 	for _, op := range req.Msg.GetOps() {
 		switch o := op.GetOp().(type) {
 		case *daggerv1.PatchOp_CreateNode:
@@ -151,9 +155,14 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[daggerv1.Apply
 			}
 			n.Blocked = len(o.CreateNode.GetBlockedBy()) > 0
 			n.Ready = !n.Blocked
-			res.Nodes = append(res.Nodes, n)
+			res.EventCount++
+			if s.refsOnly {
+				res.Nodes = append(res.Nodes, &daggerv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus(), Ready: n.GetReady(), Blocked: n.GetBlocked()})
+			} else {
+				res.Nodes = append(res.Nodes, n)
+			}
 			if alias := o.CreateNode.GetAlias(); alias != "" {
-				res.Aliases[alias] = fmt.Sprintf("%s#%d", req.Msg.GetProject(), n.GetNumber())
+				res.Aliases[alias] = n.GetReference()
 			}
 		case *daggerv1.PatchOp_CompleteNode:
 			if req.Msg.GetLeaseId() == expiredLease {
@@ -163,7 +172,12 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[daggerv1.Apply
 				n := s.nodes[0]
 				n.Status = daggerv1.Status_STATUS_DONE
 				n.Ready = false
-				res.Nodes = append(res.Nodes, n)
+				res.EventCount++
+				if s.refsOnly {
+					res.Nodes = append(res.Nodes, &daggerv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus()})
+				} else {
+					res.Nodes = append(res.Nodes, n)
+				}
 			}
 		case *daggerv1.PatchOp_AddEdge, *daggerv1.PatchOp_AddComment:
 			// Recorded; nothing to return.
