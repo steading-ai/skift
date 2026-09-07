@@ -5,6 +5,8 @@ friction, and where the token cost falls. Every number here was measured
 against this repository and a live service on 2026-09-06; every claim about
 behaviour is cited to a file.
 
+The user's feedback and comments are between `%%` markers.
+
 ## How this was produced
 
 One agent session used dagger for real work: created a project, filed 28 nodes
@@ -132,6 +134,10 @@ wire contract for every client; doing it in the MCP and CLI layers only leaves
 the wire canonical and fixes it for the callers who actually suffer. The second
 is smaller and reversible, and is probably right for now.
 
+%%
+It's fine, there's no other clients at this point. Let's do this right.
+%%
+
 Independently: **declare the legal values in the MCP tool schemas**
 (`"enum": ["p0","p1","p2","p3","p4"]`). A model that can see the values in the
 tool definition does not need to be told them, and cannot get them wrong.
@@ -210,6 +216,10 @@ repriorotising, editing a body and dropping all require hand-writing one. That
 asymmetry is probably why the description reached for names that sound like
 verbs — the shortcuts are the thing that is missing, not the operations.
 
+%%
+Let's scope this in too.
+%%
+
 ### Two capabilities are implemented and have no contract
 
 **Predecessor results — the handoff mechanism.** `internal/domain/inputs.go`
@@ -224,11 +234,19 @@ backlog #22's scenario is "a design agent hands work to a coding agent" — and
 no client can ask for it today. `show_node` returns a node's own result, never
 its predecessors'.
 
+%%
+We should give this some thought since token efficiency is a concern. Maybe a separate tool + hints to retrieve downstream inputs?
+%%
+
 **Usage and estimates.** `internal/domain/usage.go` implements `ReportUsage`
 (line 200) and `OpEstimateNode`, both authorized (`authz.go:204`) and dispatched
 (`patch.go:744-745`). Neither appears anywhere in `proto/`. An agent cannot
 report what an attempt cost or record an estimate, though the domain is waiting
 to receive both.
+
+%%
+An agent can estimate but the orchestrator should be responsible for reporting.
+%%
 
 Backlog #22, #25 and #26 are open, so this is work in flight rather than
 neglect. It is worth flagging for one reason that generalises beyond these two:
@@ -284,6 +302,11 @@ structural gate beats prose.
    process. A rule refusing a cascade above some size to a non-`user` principal
    is a gate that holds regardless of what the model was told, in the same
    place the other vetoes live (`policy/dagger.rego:226-241`).
+
+%%
+Policy veto could make sense. I don't think we need it *now* though.
+%%
+
 4. `dry_run: true` returning the set without dropping is the most flexible and
    the most work; (1) gets most of the benefit for much less.
 
@@ -303,14 +326,23 @@ claim" rule is a convention from this repository's own backlog header, not a
 property of the system.
 
 **Why the convention is too strong.** Consider a gate that says "decide the
-retention policy". An agent cannot decide it — correctly. But it can read the
-options, price them, comment its findings on the node, and release with reason
+subscription pricing". An agent cannot decide it — correctly. But it can evaluate options, research competitors,
+comment its findings on the node, make a recommendation,
+and release with reason
 `gate`. The human then arrives at a decision that is already researched. That
 is strictly better than the agent skipping the node, and it is what the lease
 and the `gate` release reason appear designed for.
 
+%%
+I edited *convention is too string*. Truthfully, I don't agree with the example. It's situational and depends on the project. A clearer example is for flagging when a human is *required*. For example, if I have to sign up for a service, mint a token through an authenticated web UI, or pull out my credit card. I'd prefer to loosen the default policy quite a bit and use the human owner as a notification mechanism for me to unblock agents, not a safety requirement. Other orgs may have different needs.
+%%
+
 So the useful rule is not *never touch* but **claim to prepare, never to
 decide**, and the guidance should say so.
+
+%%
+I'm not sure about this either. I'd think that "a human needs to XYZ" is a node that depends on "an agent prepares a recommendation" and any other prerequisites. This may be an agent misunderstanding -- maybe docs are needed.
+%%
 
 **The harder question — an agent acting on a human's behalf.** The proto already
 has `on_behalf_of`, deliberately not honoured in this release, and
@@ -326,6 +358,10 @@ authority" separately. Nothing is client-assertable, and the interactive case
 the question comes from — a human working directly with an agent — is served
 without weakening the gate for unattended loops, which is the case the gate
 exists for.
+
+%%
+I'd punt on grants. Maybe somewhere on the roadmap in the future if/when we actually want stronger policy.
+%%
 
 That is a real feature and should be a node, not a patch. Two things are worth
 doing before it:
@@ -353,6 +389,10 @@ not can cost several, or a silent fallback to a worse approach.
 **Suggestion.** Wrap unmarshal failures at the MCP and CLI boundary: on an enum
 failure, list the accepted values; on an unknown field, list the fields of the
 message that failed. Both are available from the descriptor.
+
+%%
+100% agree.
+%%
 
 ## 10. Smaller things
 
