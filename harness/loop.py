@@ -35,7 +35,9 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     query,
 )
 
@@ -146,6 +148,14 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def say(s):
+    """A harness status line: stdout and the run-wide log, flushed at once."""
+    print(s, flush=True)
+    LOGS.mkdir(parents=True, exist_ok=True)
+    with open(LOGS / "loop.log", "a") as f:
+        f.write(s + "\n")
+
+
 # --- dagger ------------------------------------------------------------------
 
 
@@ -221,7 +231,7 @@ def scope_epic(dg, epic_ref, label):
         if node["status"] != "STATUS_OPEN" or label in labels or BLOCKED_LABEL in labels:
             continue
         dg.set_labels(node, labels | {label})
-        print(f"  .. labelled {dg.ref(node)} {label}", flush=True)
+        say(f"  .. labelled {dg.ref(node)} {label}")
     return children
 
 
@@ -349,10 +359,10 @@ def undo_agent_commits(before):
         ["git", "merge-base", "--is-ancestor", "HEAD", "origin/main"], cwd=ROOT
     ).returncode == 0
     if on_origin:
-        print("  .. HEAD moved to a commit already on origin; leaving it", flush=True)
+        say("  .. HEAD moved to a commit already on origin; leaving it")
         return
     git("reset", "--soft", before)
-    print("  .. agent committed; un-committed, harness owns history", flush=True)
+    say("  .. agent committed; un-committed, harness owns history")
 
 
 def commit_and_push(ref, node, summary, args):
@@ -368,11 +378,10 @@ def commit_and_push(ref, node, summary, args):
         capture_output=True, text=True,
     )
     sha = head()
-    print(f"  ++ committed: {sha[:10]} {subject}", flush=True)
+    say(f"  ++ committed: {sha[:10]} {subject}")
     if not args.no_push:
         r = subprocess.run(["git", "push"], cwd=ROOT, capture_output=True, text=True)
-        print("  ++ pushed" if r.returncode == 0 else f"  !! push failed: {r.stderr.strip()}",
-              flush=True)
+        say("  ++ pushed" if r.returncode == 0 else f"  !! push failed: {r.stderr.strip()}")
     return sha
 
 
@@ -395,17 +404,21 @@ async def run_agent(kind, system_prompt, prompt, log_path, args):
         options.disallowed_tools = ["Write", "Edit", "NotebookEdit"]
 
     texts, cost, turns, usage = [], 0.0, 0, []
-    with open(log_path, "a") as log:
-        log.write(f"\n===== {kind} @ {now()} =====\n")
+    with Tail(log_path, kind) as log:
+        log.section(f"{kind} @ {now()}")
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, ToolUseBlock):
-                        line = summarize_tool(block)
-                        print(f"    {line}", flush=True)
-                        log.write(f"  {line}\n")
+                        for line in describe_tool(block):
+                            log.line(line)
                     elif isinstance(block, TextBlock):
                         texts.append(block.text)
+                        log.text(block.text)
+            elif isinstance(message, UserMessage) and not isinstance(message.content, str):
+                for block in message.content:
+                    if isinstance(block, ToolResultBlock):
+                        log.line(describe_result(block))
             elif isinstance(message, ResultMessage):
                 cost = message.total_cost_usd or 0.0
                 turns = message.num_turns or 0
@@ -421,20 +434,77 @@ async def run_agent(kind, system_prompt, prompt, log_path, args):
                         "cost_usd": round(mu.get("costUSD", 0.0), 4),
                     })
                 if message.is_error:
-                    log.write(f"  ERROR: {message.result}\n")
+                    log.line(f"ERROR: {message.result}")
+                log.line(f"done: {turns} turns, ${cost:.2f}")
         final = texts[-1].strip() if texts else ""
-        log.write(f"--- final ---\n{final}\n")
+        log.section("final")
+        log.text(final)
     return final, cost, turns, usage
 
 
-def summarize_tool(block):
+class Tail:
+    """What an agent is doing, as it does it, for `tail -f harness/logs/loop.log`.
+
+    Every line goes to the per-node log, the run-wide log, and stdout, and is
+    flushed at once. Text is the agent's own words; tool lines carry the
+    agent's stated intent and the command, never the full output.
+    """
+
+    def __init__(self, node_log, kind):
+        self.paths = (node_log, LOGS / "loop.log")
+        self.tag = {"implementer": "impl", "reviewer": "review"}.get(kind, kind)
+
+    def __enter__(self):
+        self.files = [open(p, "a") for p in self.paths]
+        return self
+
+    def __exit__(self, *exc):
+        for f in self.files:
+            f.close()
+
+    def _emit(self, s):
+        for f in self.files:
+            f.write(s)
+            f.flush()
+        say(s, end="")
+
+    def section(self, title):
+        self._emit(f"\n===== {title} =====\n")
+
+    def line(self, s):
+        self._emit(f"  [{self.tag}] {s}\n")
+
+    def text(self, s):
+        s = s.strip()
+        if s:
+            self._emit("\n" + "\n".join(f"  {self.tag}> {ln}" for ln in s.splitlines()) + "\n")
+
+
+def describe_tool(block):
+    """The agent's intent, then what it ran. Bash carries its own description."""
     name, inp = block.name, block.input or {}
     if name == "Bash":
-        return f"$ {str(inp.get('command',''))[:100]}"
-    for key in ("file_path", "pattern", "path"):
+        cmd = " ".join(str(inp.get("command", "")).split())
+        lines = []
+        if inp.get("description"):
+            lines.append(f"-- {inp['description']}")
+        lines.append(f"$ {cmd[:200]}")
+        return lines
+    for key in ("file_path", "pattern", "path", "query"):
         if key in inp:
-            return f"{name}: {inp[key]}"
-    return name
+            return [f"{name}: {inp[key]}"]
+    return [name]
+
+
+def describe_result(block):
+    """One line per tool result: outcome and size, not content."""
+    content = block.content
+    if isinstance(content, list):
+        content = " ".join(part.get("text", "") for part in content if isinstance(part, dict))
+    content = (content or "").strip()
+    first = content.splitlines()[0][:120] if content else ""
+    status = "error" if block.is_error else "ok"
+    return f"   = {status}, {len(content):,} chars" + (f": {first}" if first else "")
 
 
 def parse_verdict(text):
@@ -455,7 +525,7 @@ async def keep_alive(dg, lease_id):
         try:
             dg.heartbeat(lease_id)
         except RuntimeError as e:
-            print(f"  !! heartbeat failed: {e}", flush=True)
+            say(f"  !! heartbeat failed: {e}")
 
 
 async def with_lease(dg, lease_id, coro, timeout):
@@ -477,7 +547,7 @@ async def do_node(dg, node, lease, label, state, args):
     children = dg.list(parent=ref)
 
     if is_grouping(node, children):
-        print(f"\n  {ref}  {node['title']}  (grouping; children complete)", flush=True)
+        say(f"\n  {ref}  {node['title']}  (grouping; children complete)")
         dg.complete(ref, lease_id, "Grouping node: every child completed. See their results.")
         ns["status"] = "done"
         record(state, ref, 0, "harness", [], 0, "grouping")
@@ -488,7 +558,7 @@ async def do_node(dg, node, lease, label, state, args):
     LOGS.mkdir(parents=True, exist_ok=True)
     log_path = LOGS / f"{int(node['number']):03d}-{node['title'][:40].replace('/', '-')}.log"
 
-    print(f"\n{'=' * 70}\n  {ref}  {node['title']}\n{'=' * 70}", flush=True)
+    say(f"\n{'=' * 70}\n  {ref}  {node['title']}\n{'=' * 70}")
 
     feedback = None
     summary = ""
@@ -496,7 +566,7 @@ async def do_node(dg, node, lease, label, state, args):
         ns["attempts"] = attempt
         ns["status"] = "in_progress"
         save_state(state)
-        print(f"\n  -- implement (attempt {attempt}/{args.attempts})", flush=True)
+        say(f"\n  -- implement (attempt {attempt}/{args.attempts})")
 
         prompt = f"# Work order\n\n{order}\n"
         if feedback:
@@ -514,7 +584,7 @@ async def do_node(dg, node, lease, label, state, args):
                 args.timeout,
             )
         except asyncio.TimeoutError:
-            print(f"  !! implementer exceeded {args.timeout}s", flush=True)
+            say(f"  !! implementer exceeded {args.timeout}s")
             undo_agent_commits(before)
             record(state, ref, attempt, "implementer", [], 0, "timeout")
             feedback = f"- The previous attempt ran past {args.timeout}s and was stopped. Work in smaller steps."
@@ -526,17 +596,17 @@ async def do_node(dg, node, lease, label, state, args):
             feedback = "- The implementation modified protected paths: " + ", ".join(
                 protected
             ) + ". Revert them and satisfy the contract in application code only."
-            print(f"  !! touched protected paths: {protected}", flush=True)
+            say(f"  !! touched protected paths: {protected}")
             for path in protected:
                 git("checkout", "--", path, check=False)
             continue
 
         if not working_tree_dirty():
             feedback = "- The attempt produced no changes at all."
-            print("  !! no changes produced", flush=True)
+            say("  !! no changes produced")
             continue
 
-        print(f"\n  -- review (attempt {attempt}/{args.attempts})", flush=True)
+        say(f"\n  -- review (attempt {attempt}/{args.attempts})")
         diff = git("diff", "--stat", "HEAD")
         review_prompt = (
             f"# Node under review\n\n{order}\n\n"
@@ -550,7 +620,7 @@ async def do_node(dg, node, lease, label, state, args):
                 args.timeout,
             )
         except asyncio.TimeoutError:
-            print(f"  !! reviewer exceeded {args.timeout}s; treating as fail", flush=True)
+            say(f"  !! reviewer exceeded {args.timeout}s; treating as fail")
             verdict_text, cost_r, turns_r, usage_r = "VERDICT: FAIL", 0.0, 0, []
         passed, feedback = parse_verdict(verdict_text)
 
@@ -559,16 +629,16 @@ async def do_node(dg, node, lease, label, state, args):
                "pass" if passed else "fail")
 
         if passed:
-            print(f"  == PASS  (${cost_i + cost_r:.2f}, {turns_i + turns_r} turns)", flush=True)
+            say(f"  == PASS  (${cost_i + cost_r:.2f}, {turns_i + turns_r} turns)")
             sha = commit_and_push(ref, node, summary, args)
             result = f"{summary.rstrip()}\n\nCommit: {sha}\nFiles:\n{diff}\n"
             dg.complete(ref, lease_id, result)
             ns["status"] = "done"
             save_state(state)
-            print(f"  ++ completed {ref}", flush=True)
+            say(f"  ++ completed {ref}")
             return True
 
-        print(f"  == FAIL\n{feedback}", flush=True)
+        say(f"  == FAIL\n{feedback}")
         save_state(state)
 
     # Out of attempts. Leave the findings on the node, take it out of scope,
@@ -672,7 +742,7 @@ async def main():
     label = f"epic-{epic_ref.rsplit('#', 1)[1]}"
     session = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
 
-    print(f"{epic_ref}: scoping by label {label}", flush=True)
+    say(f"{epic_ref}: scoping by label {label}")
     children = scope_epic(dg, epic_ref, label)
     open_children = [c for c in children if c["status"] == "STATUS_OPEN"]
 
@@ -717,13 +787,13 @@ async def main():
             dg.release(lease["id"], "crash", f"harness: {type(e).__name__}: {e}"[:500])
             raise
         total = total_cost(state)
-        print(f"\n  ${total:.2f} spent this state file", flush=True)
+        say(f"\n  ${total:.2f} spent this state file")
         if args.budget and total >= args.budget:
             STOP.write_text(f"BLOCKED: budget ${args.budget} reached at ${total:.2f}\n")
             print(f"\nStopping: budget ${args.budget:.2f} reached")
             return 2
         if not ok:
-            print(f"  {ref} blocked after {args.attempts} attempts; moving on", flush=True)
+            say(f"  {ref} blocked after {args.attempts} attempts; moving on")
         time.sleep(2)
 
     print(f"\nReached --max ({args.max}). Total: ${total:.2f}")

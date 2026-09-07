@@ -63,4 +63,16 @@ exhausted their attempts or the budget was reached.
 ## Defaults
 
 Fable 5.1 at medium effort, three attempts per node, one hour per agent,
-permission mode `auto`. Logs land in `harness/logs/`, one file per node.
+permission mode `auto`.
+
+## Watching a run
+
+```
+tail -f harness/logs/loop.log
+```
+
+Every line the harness and both agents produce, as it happens: the agent's own
+text, the intent it states for each command and the command itself, one line
+per tool result with its outcome and size, the verdict, the commit, and the
+completion. Full tool output is never logged. The same lines land in
+`harness/logs/<number>-<title>.log`, one file per node.
