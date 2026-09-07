@@ -41,6 +41,21 @@ func (f *claimFlags) bindWait(cmd *cobra.Command) {
 	cmd.Flags().Lookup("wait").NoOptDefVal = waitForever
 }
 
+// bindRetiredWait keeps --wait parseable, and hidden, on a command that no
+// longer claims. Parsing it is what lets the command answer with the verb
+// that does instead of with an unknown flag.
+func (f *claimFlags) bindRetiredWait(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&f.wait, "wait", "", `retired: use "dg claim --wait"`)
+	fl := cmd.Flags().Lookup("wait")
+	fl.NoOptDefVal = waitForever
+	fl.Hidden = true
+}
+
+// errRetiredWait answers any use of --wait on ready. Claiming is claim's.
+func errRetiredWait() error {
+	return usage(`ready never claims: use "dg claim --wait" to block until work can be claimed`)
+}
+
 func (f *claimFlags) bindClaim(cmd *cobra.Command) {
 	hostname, _ := os.Hostname()
 	fl := cmd.Flags()
@@ -77,23 +92,23 @@ func (a *app) readyCommand() *cobra.Command {
 	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "ready",
-		Short: "List the ready set of the current project, or with --wait, block until a node can be claimed",
+		Short: "List the ready set of the current project",
 		Long: `List what is ready: open, unblocked, unleased, with no open children, most
-urgent and then oldest first. Nothing is claimed.
+urgent and then oldest first. Nothing is claimed and nothing is leased, so
+this is a read of the graph.
 
-With --wait, the command instead blocks until a matching node exists and
-returns it claimed under a lease, exactly as "dg claim --wait" does. That is
-how a shell loop drives work: the lease id in the response is the fencing
-token every later write to the node carries.`,
-		Args: cobra.NoArgs,
+To take work, use "dg claim", which returns a node under a lease, and
+"dg claim --wait" to block until one matches.`,
+		// A bare --wait takes no value, so "--wait 30s" leaves the
+		// duration as an argument; both are the same mistake, and both
+		// are caught before the command runs.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if f.wait != "" {
+				return errRetiredWait()
+			}
+			return cobra.NoArgs(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			wait, waiting, err := f.waitDuration()
-			if err != nil {
-				return err
-			}
-			if waiting {
-				return a.claim(cmd, &f, wait)
-			}
 			project, err := a.project()
 			if err != nil {
 				return err
@@ -124,8 +139,7 @@ token every later write to the node carries.`,
 		},
 	}
 	f.bindFilters(cmd)
-	f.bindWait(cmd)
-	f.bindClaim(cmd)
+	f.bindRetiredWait(cmd)
 	page.bind(cmd)
 	view.bind(cmd)
 	return cmd

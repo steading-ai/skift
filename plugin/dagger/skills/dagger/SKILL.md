@@ -3,6 +3,7 @@ name: dagger
 description: Use when working with a dagger work graph — finding what is ready, claiming and completing work, decomposing work into linked nodes, or writing a node body another agent will pick up cold. Covers the dagger MCP tools and the dg CLI, when to prefer each, and the mistakes that silently build the wrong graph.
 when_to_use: dg ready, dg claim, dg patch apply, apply_patch, show_node, inputs, explain, the ready set, claim a node, blocked_by, grouping node, work graph, backlog node, work order. This is the dagger DAG project manager reached through `dg`, not dagger.io the CI tool.
 allowed-tools:
+  - Bash(dg ready:*)
   - Bash(dg node show:*)
   - Bash(dg node list:*)
   - Bash(dg explain:*)
@@ -82,7 +83,7 @@ return summaries (reference, title, kind, priority, status, labels); only
 full` when you need more or less, so filing a large patch through MCP costs
 about the same as filing a small one.
 
-Reach for the `dg` CLI for shell pipelines, hooks, and `dg ready --wait`.
+Reach for the `dg` CLI for shell pipelines, hooks, and `dg claim --wait`.
 
 Enum values are short and lowercase on every surface, in JSON as in the CLI
 flags: `"priority": "p2"`, `"assignee_kind": "user"`, `"reason": "superseded"`.
@@ -97,9 +98,6 @@ is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
 - **Edge direction is "must finish before".** Reverse it and you get a valid
   graph that is the wrong one; nothing errors.
 - **Giving a node a child takes it out of the ready set** until every child closes.
-- **`dg ready --wait` claims** — the CLI verb is overloaded, which is why
-  `Bash(dg ready:*)` is not pre-authorized above. The MCP `ready` tool takes no
-  such flag and never claims.
 - **A cascading drop takes the whole blocked subtree** in one transaction, and
   states its size first: `"cascade": {"max_nodes": 5}`, counting the node named.
   The server refuses the patch and names the real count when the subtree is

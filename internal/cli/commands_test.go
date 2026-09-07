@@ -607,7 +607,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
-	Describe("ready --wait", func() {
+	Describe("claim --wait", func() {
 		It("blocks over ClaimNext until work appears, then returns it claimed", func() {
 			s.mu.Lock()
 			s.readyGate = make(chan struct{})
@@ -616,7 +616,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			done := make(chan result, 1)
 			go func() {
 				defer GinkgoRecover()
-				done <- run(nil, "-p", "platform", "ready", "--wait", "--label", "infra", "--ttl", "5m")
+				done <- run(nil, "-p", "platform", "claim", "--wait", "--label", "infra", "--ttl", "5m")
 			}()
 
 			By("nothing returns while nothing is ready")
@@ -645,13 +645,15 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 		It("gives up after a bounded wait with an empty response", func() {
 			started := time.Now()
-			r := run(nil, "-p", "platform", "ready", "--wait=100ms")
+			r := run(nil, "-p", "platform", "claim", "--wait=100ms")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(time.Since(started)).To(BeNumerically(">=", 100*time.Millisecond))
 			Expect(r.decode()).NotTo(HaveKey("node"))
 		})
+	})
 
-		It("without --wait lists the ready set and claims nothing", func() {
+	Describe("ready reads and never claims", func() {
+		It("lists the ready set and claims nothing", func() {
 			s.newNode("Ready work")
 			r := run(nil, "-p", "platform", "ready", "--min-priority", "p1", "--kind", "bug")
 			Expect(r.code).To(Equal(0), r.stderr.String())
@@ -659,6 +661,22 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(sent.GetMinPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
 			Expect(sent.GetKind()).To(Equal("bug"))
 			Expect(s.nodes[0].GetClaimed()).To(BeFalse())
+			Expect(count[*daggerv1.ClaimNextRequest](s)).To(Equal(0))
+		})
+
+		It("refuses --wait and points at dg claim --wait", func() {
+			r := run(nil, "-p", "platform", "ready", "--wait", "30s")
+			Expect(r.code).NotTo(Equal(0))
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("dg claim --wait"))
+			Expect(count[*daggerv1.ClaimNextRequest](s)).To(Equal(0))
+			Expect(count[*daggerv1.ReadyRequest](s)).To(Equal(0))
+		})
+
+		It("refuses a bare --wait too", func() {
+			r := run(nil, "-p", "platform", "ready", "--wait")
+			Expect(r.code).To(Equal(cli.ExitUsage))
+			Expect(r.stderrError().Message).To(ContainSubstring("dg claim --wait"))
 		})
 	})
 

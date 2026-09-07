@@ -86,6 +86,19 @@ func last[T any](s *stub) T {
 	return zero
 }
 
+// count returns how many requests of type T were received.
+func count[T any](s *stub) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, req := range s.requests {
+		if _, ok := req.(T); ok {
+			n++
+		}
+	}
+	return n
+}
+
 func (s *stub) newNode(title string) *daggerv1.Node {
 	n := &daggerv1.Node{
 		Id:        fmt.Sprintf("01J%023d", len(s.nodes)+1),

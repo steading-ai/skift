@@ -10,7 +10,7 @@ and the exit code is non-zero.
 ## Finding and reading
 
 ```sh
-dg ready                          # what can be worked now, most urgent then oldest
+dg ready                          # what can be worked now, most urgent then oldest; claims nothing
 dg ready --assignee-kind user     # what is waiting on a human
 dg ready --kind bug --min-priority p1 --label backend
 dg node show '#7'                 # one node: body, edges, result, lease, artifacts, comments
