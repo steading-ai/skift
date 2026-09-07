@@ -3,13 +3,14 @@ package cli
 import (
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/ivy/dagger/internal/client"
+	"github.com/ivy/dagger/internal/codec"
 )
 
 // app is the state the CLI commands share: the global flags, the resolved
@@ -126,41 +127,51 @@ func readBody(cmd *cobra.Command, arg string) (string, error) {
 	return string(raw), nil
 }
 
-// enumFlag parses an enum name into the wire enum whose values carry the
-// given prefix. The short form ("p1", "user", "crash") and the wire form
-// ("PRIORITY_P1") are both accepted, so an argument that is otherwise a
-// proto message in JSON may spell the enum as protojson does. Empty means
+// protoEnum is a generated wire enum: an int32 that knows its own
+// descriptor, which is where every spelling of its values comes from.
+type protoEnum interface {
+	~int32
+	Descriptor() protoreflect.EnumDescriptor
+}
+
+// enumFlag parses the value of a flag into a wire enum. The short form
+// ("p1", "user", "crash"), the unprefixed name, and the canonical name are
+// all accepted, the same three spellings the JSON codec takes. Empty means
 // unspecified, which the server treats as its default.
-func enumFlag[E ~int32](flag, value, prefix string, values map[string]int32) (E, error) {
-	return parseEnum[E]("--"+flag, value, prefix, values)
+func enumFlag[E protoEnum](flag, value string) (E, error) {
+	return parseEnum[E]("--"+flag, value)
 }
 
 // parseEnum is enumFlag for an input named by something other than a flag,
 // such as an MCP tool argument. The name is how the error refers to it.
-func parseEnum[E ~int32](name, value, prefix string, values map[string]int32) (E, error) {
+func parseEnum[E protoEnum](name, value string) (E, error) {
+	var zero E
 	if value == "" {
-		return 0, nil
+		return zero, nil
 	}
-	key := strings.ToUpper(strings.ReplaceAll(value, "-", "_"))
-	if !strings.HasPrefix(key, prefix) {
-		key = prefix + key
+	ed := zero.Descriptor()
+	v, ok := codec.Value(ed, value)
+	if !ok || v.Number() == 0 {
+		return zero, usage("%s: %q is not one of %s", name, value, strings.Join(codec.EnumNames(ed), ", "))
 	}
-	n, ok := values[key]
-	if !ok || n == 0 {
-		return 0, usage("%s: %q is not one of %s", name, value, strings.Join(enumNames(values), ", "))
-	}
-	return E(n), nil
+	return E(v.Number()), nil
 }
 
-// enumNames lists the short names of an enum's non-zero values, sorted.
-func enumNames(values map[string]int32) []string {
+// enumChoices lists the short names of an enum's non-zero values, sorted:
+// the legal values of a flag or of a tool schema.
+func enumChoices[E protoEnum]() []string {
+	var zero E
+	return codec.EnumNames(zero.Descriptor())
+}
+
+// shortNames is the short name of each of a chosen few enum values, in the
+// order given, for a schema that offers a subset.
+func shortNames[E protoreflect.Enum](values ...E) []string {
 	names := make([]string, 0, len(values))
-	for name, n := range values {
-		if n != 0 {
-			names = append(names, enumName(name))
-		}
+	for _, v := range values {
+		names = append(names, codec.EnumName(v))
 	}
-	return slices.Sorted(slices.Values(names))
+	return names
 }
 
 // send runs one RPC and prints its response.

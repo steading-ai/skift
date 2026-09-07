@@ -24,7 +24,7 @@ func (a *app) projectCreate() *cobra.Command {
 		Short: "Create a project; the slug is derived from the title unless given",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			prio, err := enumFlag[daggerv1.Priority]("priority", priority, "PRIORITY_", daggerv1.Priority_value)
+			prio, err := enumFlag[daggerv1.Priority]("priority", priority)
 			if err != nil {
 				return err
 			}

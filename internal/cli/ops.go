@@ -20,10 +20,10 @@ func (a *app) createCommand() *cobra.Command {
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var err error
-			if op.Priority, err = enumFlag[daggerv1.Priority]("priority", priority, "PRIORITY_", daggerv1.Priority_value); err != nil {
+			if op.Priority, err = enumFlag[daggerv1.Priority]("priority", priority); err != nil {
 				return err
 			}
-			if op.AssigneeKind, err = enumFlag[daggerv1.AssigneeKind]("assignee-kind", assigneeKind, "ASSIGNEE_KIND_", daggerv1.AssigneeKind_value); err != nil {
+			if op.AssigneeKind, err = enumFlag[daggerv1.AssigneeKind]("assignee-kind", assigneeKind); err != nil {
 				return err
 			}
 			refs := make([]client.NodeRef, 0, 1+len(op.GetBlockedBy()))
@@ -91,7 +91,7 @@ func (a *app) linkCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			edgeKind, err := enumFlag[daggerv1.EdgeKind]("kind", kind, "EDGE_KIND_", daggerv1.EdgeKind_value)
+			edgeKind, err := enumFlag[daggerv1.EdgeKind]("kind", kind)
 			if err != nil {
 				return err
 			}

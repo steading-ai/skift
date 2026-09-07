@@ -20,11 +20,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
 	"github.com/ivy/dagger/internal/cli"
 	"github.com/ivy/dagger/internal/client"
+	"github.com/ivy/dagger/internal/codec"
 )
 
 // mcpSession drives one dg mcp server over its stdio: JSON-RPC requests
@@ -299,6 +301,42 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 	})
 
+	Describe("Enum arguments declare their values", func() {
+		It("every tool argument that maps to a proto enum lists the short forms", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+
+			By("given the enum-valued fields of the request messages, by name")
+			enums := requestEnums()
+			Expect(enums).NotTo(BeEmpty())
+
+			By("when the client lists the tool schemas")
+			checked := 0
+			for name, tool := range m.tools() {
+				schema, _ := tool["inputSchema"].(map[string]any)
+				props, _ := schema["properties"].(map[string]any)
+				for prop, raw := range props {
+					ed, ok := enums[prop]
+					if !ok {
+						continue
+					}
+					checked++
+
+					By("then " + name + "." + prop + " carries the short forms of its enum")
+					property, _ := raw.(map[string]any)
+					values, _ := property["enum"].([]any)
+					Expect(values).NotTo(BeEmpty(), "%s: %s declares no enum values", name, prop)
+					legal := codec.EnumNames(ed)
+					for _, v := range values {
+						Expect(legal).To(ContainElement(v), "%s: %s: %v is not a short name of %s", name, prop, v, ed.FullName())
+					}
+				}
+			}
+			Expect(checked).To(BeNumerically(">=", 3), "no enum argument was found to check")
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+	})
+
 	Describe("Scenario: The apply_patch description names exactly the PatchOp operations", func() {
 		It("The apply_patch description names exactly the PatchOp operations", func() {
 			m := startMCP("--socket", socket, "--project", "platform")
@@ -533,7 +571,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(m.call("claim", map[string]any{}).isError).To(BeFalse())
 			res := m.call("release", map[string]any{"reason": "gate", "detail": "needs a person"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(res.decode()["lease"]).To(HaveKeyWithValue("release_reason", "RELEASE_REASON_GATE"))
+			Expect(res.decode()["lease"]).To(HaveKeyWithValue("release_reason", "gate"))
 			Expect(m.closeStdin()).To(Equal(0))
 			s.mu.Lock()
 			defer s.mu.Unlock()
@@ -687,3 +725,28 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 	})
 })
+
+// requestEnums maps the name of every enum-valued field of a dagger.v1
+// request message to the enum it takes, which is what a tool argument of
+// that name has to declare.
+func requestEnums() map[string]protoreflect.EnumDescriptor {
+	out := map[string]protoreflect.EnumDescriptor{}
+	for _, file := range []protoreflect.FileDescriptor{
+		daggerv1.File_dagger_v1_dagger_proto,
+		daggerv1.File_dagger_v1_service_proto,
+	} {
+		for i := range file.Messages().Len() {
+			message := file.Messages().Get(i)
+			if !strings.HasSuffix(string(message.Name()), "Request") {
+				continue
+			}
+			for j := range message.Fields().Len() {
+				field := message.Fields().Get(j)
+				if field.Kind() == protoreflect.EnumKind {
+					out[string(field.Name())] = field.Enum()
+				}
+			}
+		}
+	}
+	return out
+}

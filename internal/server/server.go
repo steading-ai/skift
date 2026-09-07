@@ -23,6 +23,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
+	"github.com/ivy/dagger/internal/codec"
 	"github.com/ivy/dagger/internal/server/interceptor"
 )
 
@@ -140,7 +141,9 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 		mux:      http.NewServeMux(),
 		draining: make(chan struct{}),
 	}
-	opts := []connect.HandlerOption{connect.WithInterceptors(cfg.Interceptors...)}
+	// Every handler speaks dagger's JSON, not protojson's: the one door
+	// says what every other surface says. See internal/codec.
+	opts := append([]connect.HandlerOption{connect.WithInterceptors(cfg.Interceptors...)}, codec.HandlerOptions()...)
 	s.mux.Handle(daggerv1connect.NewGraphServiceHandler(svc.Graph, opts...))
 	s.mux.Handle(daggerv1connect.NewWorkServiceHandler(svc.Work, opts...))
 	s.mux.Handle(daggerv1connect.NewEventServiceHandler(svc.Events, opts...))

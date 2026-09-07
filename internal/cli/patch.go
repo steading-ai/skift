@@ -7,9 +7,9 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	"github.com/ivy/dagger/internal/codec"
 )
 
 func (a *app) patchCommand() *cobra.Command {
@@ -90,7 +90,7 @@ func readPatch(cmd *cobra.Command, path string) (*daggerv1.ApplyPatchRequest, er
 		return nil, fmt.Errorf("read patch: %w", err)
 	}
 	req := &daggerv1.ApplyPatchRequest{}
-	if err := protojson.Unmarshal(raw, req); err != nil {
+	if err := codec.Unmarshal(raw, req); err != nil {
 		return nil, usage("patch is not a dagger.v1.ApplyPatchRequest: %w", err)
 	}
 	return req, nil

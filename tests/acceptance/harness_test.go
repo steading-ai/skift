@@ -23,12 +23,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/internal/cli"
 	"github.com/ivy/dagger/internal/client"
+	"github.com/ivy/dagger/internal/codec"
 	"github.com/ivy/dagger/internal/domain"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
@@ -244,7 +244,7 @@ func (f face) callWithInput(res proto.Message, stdin string, args ...string) {
 	GinkgoHelper()
 	stdout, stderr, code := f.run(stdin, args...)
 	Expect(code).To(BeZero(), "%s: dg %s failed: %s", f.name, strings.Join(args, " "), stderr)
-	Expect(protojson.Unmarshal([]byte(strings.TrimSpace(stdout)), res)).To(Succeed(), "%s: dg %s wrote %q", f.name, strings.Join(args, " "), stdout)
+	Expect(codec.Unmarshal([]byte(strings.TrimSpace(stdout)), res)).To(Succeed(), "%s: dg %s wrote %q", f.name, strings.Join(args, " "), stdout)
 }
 
 // fail runs a command that must fail and returns the error the CLI wrote
@@ -261,7 +261,7 @@ func (f face) fail(stdin string, args ...string) cli.Error {
 // patch applies req through "dg patch apply -".
 func (f face) patch(req *daggerv1.ApplyPatchRequest, flags ...string) *daggerv1.ApplyPatchResponse {
 	GinkgoHelper()
-	raw, err := protojson.Marshal(req)
+	raw, err := codec.Marshal(req)
 	Expect(err).NotTo(HaveOccurred())
 	res := &daggerv1.ApplyPatchResponse{}
 	f.callWithInput(res, string(raw), append([]string{"patch", "apply", "-"}, flags...)...)
@@ -271,7 +271,7 @@ func (f face) patch(req *daggerv1.ApplyPatchRequest, flags ...string) *daggerv1.
 // failPatch applies req expecting the service to refuse it.
 func (f face) failPatch(req *daggerv1.ApplyPatchRequest, flags ...string) cli.Error {
 	GinkgoHelper()
-	raw, err := protojson.Marshal(req)
+	raw, err := codec.Marshal(req)
 	Expect(err).NotTo(HaveOccurred())
 	return f.fail(string(raw), append([]string{"patch", "apply", "-"}, flags...)...)
 }
@@ -393,7 +393,7 @@ func (s *eventStream) next() *daggerv1.WatchEventsResponse {
 	var line string
 	Eventually(s.lines, 15*time.Second).Should(Receive(&line), "no event arrived")
 	res := &daggerv1.WatchEventsResponse{}
-	Expect(protojson.Unmarshal([]byte(line), res)).To(Succeed(), "dg events wrote %q", line)
+	Expect(codec.Unmarshal([]byte(line), res)).To(Succeed(), "dg events wrote %q", line)
 	return res
 }
 
@@ -514,7 +514,7 @@ type toolResult struct {
 func (r toolResult) into(res proto.Message) {
 	GinkgoHelper()
 	Expect(r.isError).To(BeFalse(), "tool failed: %s", r.text)
-	Expect(protojson.Unmarshal([]byte(r.text), res)).To(Succeed(), "tool text was not a response: %s", r.text)
+	Expect(codec.Unmarshal([]byte(r.text), res)).To(Succeed(), "tool text was not a response: %s", r.text)
 }
 
 // call invokes one tool.
@@ -543,7 +543,7 @@ func (m *mcpSession) close() {
 // patchArgs renders req as the arguments of the apply_patch tool.
 func patchArgs(req *daggerv1.ApplyPatchRequest) map[string]any {
 	GinkgoHelper()
-	raw, err := protojson.Marshal(req)
+	raw, err := codec.Marshal(req)
 	Expect(err).NotTo(HaveOccurred())
 	var args map[string]any
 	Expect(json.Unmarshal(raw, &args)).To(Succeed())

@@ -21,6 +21,7 @@ import (
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/internal/client"
+	"github.com/ivy/dagger/internal/codec"
 	"github.com/ivy/dagger/internal/logging"
 	"github.com/ivy/dagger/internal/version"
 )
@@ -406,7 +407,7 @@ func (s *mcpServer) callTool(ctx context.Context, t *mcpTool, args json.RawMessa
 	if err != nil {
 		return mcpCallResult{IsError: true, Content: []mcpContent{{Type: "text", Text: toolErrorText(t.name, err)}}}
 	}
-	raw, err := prettyMarshaler.Marshal(msg)
+	raw, err := codec.MarshalIndent(msg)
 	if err != nil {
 		return mcpCallResult{IsError: true, Content: []mcpContent{{Type: "text", Text: t.name + ": encode response: " + err.Error()}}}
 	}

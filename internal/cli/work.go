@@ -102,7 +102,7 @@ token every later write to the node carries.`,
 			if err != nil {
 				return err
 			}
-			prio, err := enumFlag[daggerv1.Priority]("min-priority", f.minPriority, "PRIORITY_", daggerv1.Priority_value)
+			prio, err := enumFlag[daggerv1.Priority]("min-priority", f.minPriority)
 			if err != nil {
 				return err
 			}
@@ -167,7 +167,7 @@ func (a *app) claim(cmd *cobra.Command, f *claimFlags, wait time.Duration) error
 	if err != nil {
 		return err
 	}
-	prio, err := enumFlag[daggerv1.Priority]("min-priority", f.minPriority, "PRIORITY_", daggerv1.Priority_value)
+	prio, err := enumFlag[daggerv1.Priority]("min-priority", f.minPriority)
 	if err != nil {
 		return err
 	}
@@ -250,7 +250,7 @@ func (a *app) releaseCommand() *cobra.Command {
 		Short: "End a lease with a reason, returning the node to the ready set",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := enumFlag[daggerv1.ReleaseReason]("reason", reason, "RELEASE_REASON_", daggerv1.ReleaseReason_value)
+			r, err := enumFlag[daggerv1.ReleaseReason]("reason", reason)
 			if err != nil {
 				return err
 			}

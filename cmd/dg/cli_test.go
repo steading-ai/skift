@@ -13,10 +13,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
+	"github.com/ivy/dagger/internal/codec"
 	"github.com/ivy/dagger/internal/server"
 )
 
@@ -81,7 +81,7 @@ var _ = Describe("dg as a client", Label("unit"), func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(json.Valid(raw)).To(BeTrue(), "not JSON: %s", raw)
 		res := &daggerv1.ReadyResponse{}
-		Expect(protojson.Unmarshal(raw, res)).To(Succeed())
+		Expect(codec.Unmarshal(raw, res)).To(Succeed())
 		Expect(res.GetNodes()).To(HaveLen(1))
 		Expect(res.GetNodes()[0].GetNumber()).To(BeEquivalentTo(7))
 	})

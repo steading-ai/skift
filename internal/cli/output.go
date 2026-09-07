@@ -1,18 +1,16 @@
 package cli
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	"github.com/ivy/dagger/internal/codec"
 )
 
 // Output formats. JSON is what an agent parses and the default whenever
@@ -21,14 +19,6 @@ const (
 	OutputJSON = "json"
 	OutputText = "text"
 )
-
-// jsonMarshaler renders wire messages with their proto field names, which
-// are the names docs/domain-model.md uses, one message per line so a stream
-// of them is newline-delimited JSON.
-var jsonMarshaler = protojson.MarshalOptions{UseProtoNames: true}
-
-// prettyMarshaler is jsonMarshaler indented, for text mode's fallback.
-var prettyMarshaler = protojson.MarshalOptions{UseProtoNames: true, Multiline: true, Indent: "  "}
 
 // isTerminal reports whether w is a character device, which is how the
 // default output format is chosen.
@@ -53,17 +43,11 @@ func (p printer) emit(msg proto.Message) error {
 	if p.format == OutputText {
 		return p.text(msg)
 	}
-	raw, err := jsonMarshaler.Marshal(msg)
+	raw, err := codec.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("encode response: %w", err)
 	}
-	// protojson's output is stable but not canonical in whitespace;
-	// compact it so a line is a line.
-	var buf bytes.Buffer
-	if err := json.Compact(&buf, raw); err != nil {
-		return fmt.Errorf("encode response: %w", err)
-	}
-	_, err = fmt.Fprintln(p.w, buf.String())
+	_, err = fmt.Fprintf(p.w, "%s\n", raw)
 	return err
 }
 
@@ -90,7 +74,7 @@ func (p printer) text(msg proto.Message) error {
 			fmt.Fprintf(&b, "\n%s\n", body)
 		}
 		for _, e := range m.GetEdges() {
-			fmt.Fprintf(&b, "edge %s -%s-> %s\n", e.GetFrom(), enumName(e.GetKind().String()), e.GetTo())
+			fmt.Fprintf(&b, "edge %s -%s-> %s\n", e.GetFrom(), codec.EnumName(e.GetKind()), e.GetTo())
 		}
 		if l := m.GetLease(); l != nil {
 			writeLease(&b, l)
@@ -134,7 +118,7 @@ func (p printer) text(msg proto.Message) error {
 		}
 		writePageToken(&b, m.GetNextPageToken())
 	default:
-		raw, err := prettyMarshaler.Marshal(msg)
+		raw, err := codec.MarshalIndent(msg)
 		if err != nil {
 			return fmt.Errorf("encode response: %w", err)
 		}
@@ -145,19 +129,11 @@ func (p printer) text(msg proto.Message) error {
 	return err
 }
 
-// enumName strips the proto enum prefix: PRIORITY_P2 becomes p2.
-func enumName(s string) string {
-	if i := strings.LastIndexByte(s, '_'); i >= 0 {
-		s = s[i+1:]
-	}
-	return strings.ToLower(s)
-}
-
 // writeNodes renders one line per node. A node in the refs view has no
 // title to show, so its line is its number, state, and reference.
 func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 	for _, n := range nodes {
-		state := enumName(n.GetStatus().String())
+		state := codec.EnumName(n.GetStatus())
 		switch {
 		case n.GetClaimed():
 			state = "claimed"
@@ -170,7 +146,7 @@ func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 			fmt.Fprintf(b, "#%-5d %-8s %s\n", n.GetNumber(), state, n.GetReference())
 			continue
 		}
-		fmt.Fprintf(b, "#%-5d %-3s %-8s %-6s %s", n.GetNumber(), enumName(n.GetPriority().String()), state, n.GetKind(), n.GetTitle())
+		fmt.Fprintf(b, "#%-5d %-3s %-8s %-6s %s", n.GetNumber(), codec.EnumName(n.GetPriority()), state, n.GetKind(), n.GetTitle())
 		if len(n.GetLabels()) > 0 {
 			fmt.Fprintf(b, "  [%s]", strings.Join(n.GetLabels(), ", "))
 		}
@@ -189,7 +165,7 @@ func writeProject(b *strings.Builder, p *daggerv1.Project) {
 func writeLease(b *strings.Builder, l *daggerv1.Lease) {
 	fmt.Fprintf(b, "lease %s", l.GetId())
 	if l.GetReleaseReason() != daggerv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
-		fmt.Fprintf(b, " released: %s\n", enumName(l.GetReleaseReason().String()))
+		fmt.Fprintf(b, " released: %s\n", codec.EnumName(l.GetReleaseReason()))
 		return
 	}
 	fmt.Fprintf(b, " expires in %s\n", time.Until(l.GetExpiresAt().AsTime()).Round(time.Second))
@@ -198,7 +174,7 @@ func writeLease(b *strings.Builder, l *daggerv1.Lease) {
 func writeReason(b *strings.Builder, r *daggerv1.Reason) {
 	switch x := r.GetReason().(type) {
 	case *daggerv1.Reason_NotOpen:
-		fmt.Fprintf(b, "not open: %s\n", enumName(x.NotOpen.GetStatus().String()))
+		fmt.Fprintf(b, "not open: %s\n", codec.EnumName(x.NotOpen.GetStatus()))
 	case *daggerv1.Reason_Blocked:
 		gate := ""
 		if x.Blocked.GetGate() {

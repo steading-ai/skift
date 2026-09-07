@@ -1,9 +1,7 @@
 package server_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -17,23 +15,21 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
+	"github.com/ivy/dagger/internal/codec"
 	"github.com/ivy/dagger/internal/server"
 )
 
 // wireJSON renders a response the way a JSON client, and so a context
-// window, receives it: proto field names, no indentation.
+// window, receives it: the codec the handlers are mounted with.
 func wireJSON(msg proto.Message) string {
 	GinkgoHelper()
-	raw, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(msg)
+	raw, err := codec.Marshal(msg)
 	Expect(err).NotTo(HaveOccurred())
-	var buf bytes.Buffer
-	Expect(json.Compact(&buf, raw)).To(Succeed())
-	return buf.String()
+	return string(raw)
 }
 
 // pinger is a database stand-in for the unit specs.

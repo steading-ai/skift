@@ -54,11 +54,13 @@ about the same as filing a small one.
 
 Reach for the `dg` CLI for shell pipelines, hooks, and `dg ready --wait`.
 
+Enum values are short and lowercase on every surface, in JSON as in the CLI
+flags: `"priority": "p2"`, `"assignee_kind": "user"`, `"reason": "superseded"`.
+The proto spellings (`PRIORITY_P2`) are accepted too. `kind` is not an enum: it
+is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
+
 ## Traps
 
-- **Patch enums are proto names**: `"PRIORITY_P2"`, not `"p2"`; likewise
-  `ASSIGNEE_KIND_USER`, `DROP_REASON_SUPERSEDED`. The CLI's `--priority p2`
-  takes the short form, the patch API does not. `kind` is a free string.
 - **`update_node` names its target `node`, not `ref`** — as do `drop_node`,
   `complete_node`, `reopen_node`, `add_comment`. Only `add_edge` differs
   (`from`/`to`).

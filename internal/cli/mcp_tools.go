@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/internal/client"
+	"github.com/ivy/dagger/internal/codec"
 )
 
 // The tools dg mcp offers. Each is one CLI command with its flags as
@@ -32,9 +32,9 @@ func filterSchema() map[string]any {
 	return map[string]any{
 		"project":       stringProp("Project to look in, by slug or org/slug. Defaults to the current project."),
 		"kind":          stringProp("Only nodes of this kind, such as task, bug, spike, or chore."),
-		"assignee_kind": enumProp("Only nodes completable by this kind of principal.", enumNames(daggerv1.AssigneeKind_value)),
+		"assignee_kind": enumProp("Only nodes completable by this kind of principal.", enumChoices[daggerv1.AssigneeKind]()),
 		"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
-		"min_priority":  enumProp("Only nodes at this priority or more urgent.", enumNames(daggerv1.Priority_value)),
+		"min_priority":  enumProp("Only nodes at this priority or more urgent.", enumChoices[daggerv1.Priority]()),
 	}
 }
 
@@ -93,10 +93,10 @@ func (f *filterArgs) resolve(a *app) (project string, kind daggerv1.AssigneeKind
 			return "", 0, 0, err
 		}
 	}
-	if kind, err = parseEnum[daggerv1.AssigneeKind]("assignee_kind", f.AssigneeKind, "ASSIGNEE_KIND_", daggerv1.AssigneeKind_value); err != nil {
+	if kind, err = parseEnum[daggerv1.AssigneeKind]("assignee_kind", f.AssigneeKind); err != nil {
 		return "", 0, 0, err
 	}
-	if prio, err = parseEnum[daggerv1.Priority]("min_priority", f.MinPriority, "PRIORITY_", daggerv1.Priority_value); err != nil {
+	if prio, err = parseEnum[daggerv1.Priority]("min_priority", f.MinPriority); err != nil {
 		return "", 0, 0, err
 	}
 	return project, kind, prio, nil
@@ -269,7 +269,7 @@ a node you hold a lease on must carry that lease_id.`,
 					return nil, err
 				}
 				req := &daggerv1.ApplyPatchRequest{}
-				if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(rest, req); err != nil {
+				if err := codec.Unmarshal(rest, req); err != nil {
 					return nil, usage("arguments are not a dagger.v1.ApplyPatchRequest: %v", err)
 				}
 				req.View = view
@@ -432,8 +432,13 @@ finished; complete it instead. Leases still held when this session ends
 are released as "crash" automatically.`,
 			schema: objectSchema(map[string]any{
 				"lease_id": stringProp("The lease to release. Defaults to the one lease this session holds, if exactly one."),
-				"reason":   enumProp("Why the attempt ended.", []string{"gate", "crash", "budget", "preempted"}),
-				"detail":   stringProp("Free text expanding on the reason, recorded on the event: what was tried, what is left."),
+				"reason": enumProp("Why the attempt ended.", shortNames(
+					daggerv1.ReleaseReason_RELEASE_REASON_GATE,
+					daggerv1.ReleaseReason_RELEASE_REASON_CRASH,
+					daggerv1.ReleaseReason_RELEASE_REASON_BUDGET,
+					daggerv1.ReleaseReason_RELEASE_REASON_PREEMPTED,
+				)),
+				"detail": stringProp("Free text expanding on the reason, recorded on the event: what was tried, what is left."),
 			}, "reason"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -444,7 +449,7 @@ are released as "crash" automatically.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				reason, err := parseEnum[daggerv1.ReleaseReason]("reason", args.Reason, "RELEASE_REASON_", daggerv1.ReleaseReason_value)
+				reason, err := parseEnum[daggerv1.ReleaseReason]("reason", args.Reason)
 				if err != nil {
 					return nil, err
 				}

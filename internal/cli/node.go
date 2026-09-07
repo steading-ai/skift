@@ -64,7 +64,7 @@ func (a *app) nodeList() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := enumFlag[daggerv1.Status]("status", status, "STATUS_", daggerv1.Status_value)
+			st, err := enumFlag[daggerv1.Status]("status", status)
 			if err != nil {
 				return err
 			}
@@ -125,5 +125,5 @@ func (f *nodeFilters) bind(cmd *cobra.Command) {
 }
 
 func (f *nodeFilters) assigneeKind() (daggerv1.AssigneeKind, error) {
-	return enumFlag[daggerv1.AssigneeKind]("assignee-kind", f.assigneeKind_, "ASSIGNEE_KIND_", daggerv1.AssigneeKind_value)
+	return enumFlag[daggerv1.AssigneeKind]("assignee-kind", f.assigneeKind_)
 }

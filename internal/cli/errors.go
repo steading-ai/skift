@@ -7,6 +7,8 @@ import (
 	"io"
 
 	"connectrpc.com/connect"
+
+	"github.com/ivy/dagger/internal/codec"
 )
 
 // Every failure leaves the binary as a JSON object on stderr and a non-zero
@@ -60,7 +62,7 @@ func ToError(err error) *Error {
 			if err != nil {
 				continue
 			}
-			if raw, err := jsonMarshaler.Marshal(msg); err == nil {
+			if raw, err := codec.Marshal(msg); err == nil {
 				e.Details = append(e.Details, raw)
 			}
 		}

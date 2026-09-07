@@ -12,11 +12,11 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/internal/cli"
 	"github.com/ivy/dagger/internal/client"
+	"github.com/ivy/dagger/internal/codec"
 )
 
 // run executes dg with args against the stub's socket, with stdin as its
@@ -86,7 +86,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			By("then the response lists both created nodes with their numbers")
 			Expect(r.stderr.String()).To(BeEmpty())
 			res := &daggerv1.ApplyPatchResponse{}
-			Expect(protojson.Unmarshal(r.stdout.Bytes(), res)).To(Succeed())
+			Expect(codec.Unmarshal(r.stdout.Bytes(), res)).To(Succeed())
 			Expect(res.GetNodes()).To(HaveLen(2))
 			Expect(res.GetNodes()[0].GetNumber()).To(BeEquivalentTo(1))
 			Expect(res.GetNodes()[0].GetTitle()).To(Equal("Spike the parser"))
@@ -154,7 +154,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(json.Valid(raw)).To(BeTrue(), "not JSON: %s", raw)
 			res := &daggerv1.ReadyResponse{}
-			Expect(protojson.Unmarshal(raw, res)).To(Succeed())
+			Expect(codec.Unmarshal(raw, res)).To(Succeed())
 			Expect(res.GetNodes()).To(HaveLen(1))
 			Expect(res.GetNodes()[0].GetTitle()).To(Equal("Ready work"))
 		})
@@ -350,7 +350,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Eventually(done, 5*time.Second).Should(Receive(&r))
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			res := &daggerv1.ClaimNextResponse{}
-			Expect(protojson.Unmarshal(r.stdout.Bytes(), res)).To(Succeed())
+			Expect(codec.Unmarshal(r.stdout.Bytes(), res)).To(Succeed())
 			Expect(res.GetNode().GetTitle()).To(Equal("Appeared"))
 			Expect(res.GetNode().GetClaimed()).To(BeTrue())
 			Expect(res.GetLease().GetId()).NotTo(BeEmpty())
@@ -456,7 +456,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 			r = run(nil, "release", id, "--reason", "crash", "--detail", "oom")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			Expect(r.decode()["lease"]).To(HaveKeyWithValue("release_reason", "RELEASE_REASON_CRASH"))
+			Expect(r.decode()["lease"]).To(HaveKeyWithValue("release_reason", "crash"))
 
 			r = run(nil, "release", id)
 			Expect(r.code).To(Equal(cli.ExitUsage))

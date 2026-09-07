@@ -74,7 +74,7 @@ with no round trip to learn its number:
 ```json
 {"ops": [
   {"create_node": {"alias": "spike", "title": "Spike the parser", "kind": "spike",
-                   "priority": "PRIORITY_P1"}},
+                   "priority": "p1"}},
   {"create_node": {"alias": "impl", "title": "Implement it", "blocked_by": ["spike"]}},
   {"create_node": {"alias": "docs", "title": "Document it", "parent": "impl"}},
   {"add_edge":    {"from": "impl", "to": "docs"}}
@@ -99,8 +99,8 @@ and `remove_edge` use `from` and `to`. Reparenting and reprioritising are
 `update_node` fields (`parent`, `priority`):
 
 ```json
-{"update_node":   {"node": "#7", "body": "…", "priority": "PRIORITY_P0"}}
-{"drop_node":     {"node": "#7", "reason": "DROP_REASON_SUPERSEDED",
+{"update_node":   {"node": "#7", "body": "…", "priority": "p0"}}
+{"drop_node":     {"node": "#7", "reason": "superseded",
                    "detail": "folded into #9", "cascade": false}}
 {"complete_node": {"node": "#7", "result": {"body": "…"}}}
 {"add_comment":   {"node": "#7", "body": "…", "in_reply_to": "<comment id>"}}
