@@ -129,6 +129,10 @@ type Node struct {
 	Labels       []string
 	ContextID    pgtype.UUID
 	CreatedAt    time.Time
+	HeldAt       *time.Time
+	HeldBy       *string
+	HeldReason   *string
+	HoldGroup    *string
 }
 
 type Organization struct {
@@ -175,6 +179,10 @@ type Project struct {
 	NodeCounter int64
 	ArchivedAt  *time.Time
 	CreatedAt   time.Time
+	HeldAt      *time.Time
+	HeldBy      *string
+	HeldReason  *string
+	HoldGroup   *string
 }
 
 type ProjectSlug struct {

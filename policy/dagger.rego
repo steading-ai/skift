@@ -43,6 +43,19 @@ reasons contains msg if {
 	msg := sprintf("no rule permits %s %s", [input.principal.kind, input.action])
 }
 
+# A refusal an agent reads is the next move it makes, so an action that a
+# principal kind is simply not permitted may say what to do instead. The
+# hint is guidance attached to a refusal, never a second rule about who
+# may act: an organization that permits the action stops seeing it.
+hints := {"hold_node": next_move, "unhold_node": next_move, "hold_project": next_move, "unhold_project": next_move}
+
+next_move := "parking work is a person's call; comment where you think it should be parked and why, and leave it in the ready set"
+
+reasons contains msg if {
+	not permitted
+	msg := hints[input.action]
+}
+
 reasons contains msg if {
 	some msg in vetoes
 }
@@ -63,6 +76,13 @@ usage_actions := {"report_usage", "estimate_node"}
 # and it is free to create: a user or an agent opens one without ceremony.
 # Archiving is a deliberate lifecycle act, so it is a person's.
 project_actions := {"create_project", "archive_project"}
+
+# Parking work is a person's call. A hold decides what everyone may work
+# on next and is also a way to hide work from other agents, so it is a
+# user action and the veto below refuses every other kind of principal.
+# An agent running under a person's uid is that person's principal and
+# holds with their authority; see ADR-009 and ADR-010.
+hold_actions := {"hold_node", "unhold_node", "hold_project", "unhold_project"}
 
 # Users act for the organization: every action within its scope, except
 # what the vetoes below refuse everyone.
@@ -95,6 +115,11 @@ permitted if {
 permitted if {
 	input.principal.kind == "user"
 	input.action in project_actions
+}
+
+permitted if {
+	input.principal.kind == "user"
+	input.action in hold_actions
 }
 
 permitted if {

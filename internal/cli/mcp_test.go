@@ -39,7 +39,18 @@ import (
 // carries reference material. The ceiling keeps them a briefing rather
 // than a manual: a description that needs more room is a sign the room
 // belongs in the skill.
-const toolDescriptionBudget = 6000
+//
+// It is a flat total because a context window is a flat resource: what a
+// session pays for loading dagger does not get larger because dagger
+// gained a tool. Moving it is a deliberate decision about that cost, not
+// a consequence of adding one. toolDescriptionCeiling keeps any single
+// description from eating the shared total; apply_patch is measured
+// instead by the ceiling on its whole definition, because its
+// description documents the patch language rather than one operation.
+const (
+	toolDescriptionBudget  = 7000
+	toolDescriptionCeiling = 900
+)
 
 // mcpSession drives one dg mcp server over its stdio: JSON-RPC requests
 // in, responses matched by id out. The server runs either in-process
@@ -533,6 +544,14 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 				}
 			}
 			Expect(checked).To(BeNumerically(">=", 3), "no enum argument was found to check")
+
+			By("and release.reason still declares release reasons, which the name alone no longer proves")
+			schema, _ := m.tools()["release"]["inputSchema"].(map[string]any)
+			props, _ := schema["properties"].(map[string]any)
+			reason, _ := props["reason"].(map[string]any)
+			values, _ := reason["enum"].([]any)
+			Expect(values).NotTo(BeEmpty())
+			Expect(toAny(codec.EnumNames(daggerv1.ReleaseReason(0).Descriptor()))).To(ContainElements(values...))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})
@@ -662,8 +681,12 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			serialised, err := json.Marshal(m.tools()["apply_patch"])
 			Expect(err).NotTo(HaveOccurred())
 
-			By("then name, description, and schema together stay under 12 KB")
-			Expect(len(serialised)).To(BeNumerically("<", 12*1024),
+			By("then name, description, and schema together stay under 13 KB")
+			// Most of it is the generated ops schema, which is why this
+			// is the largest tool by far. The ceiling is flat for the
+			// same reason the description budget is: it is what every
+			// session pays, and raising it is a decision about that cost.
+			Expect(len(serialised)).To(BeNumerically("<", 13*1024),
 				"the apply_patch tool definition is %d bytes; it is in every context window that loads dagger", len(serialised))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
@@ -743,8 +766,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("then the tool names are exactly these, and none of them reports usage")
 			Expect(slices.Sorted(maps.Keys(tools))).To(HaveExactElements(
-				"apply_patch", "claim", "comment", "complete", "explain", "heartbeat",
-				"inputs", "node_list", "project_create", "project_list", "project_show",
+				"apply_patch", "claim", "comment", "complete", "explain", "focus", "heartbeat",
+				"hold", "inputs", "node_list", "project_create", "project_list", "project_show",
 				"ready", "release", "search", "show_node",
 			), "the tool list changed; usage is the orchestrator's to report, so no tool here reports it")
 			for name := range tools {
@@ -773,12 +796,23 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("given every tool description the server advertises")
 			total := 0
+			sizes := map[string]int{}
 			for name, tool := range m.tools() {
 				Expect(tool["description"]).To(BeAssignableToTypeOf(""), name)
-				total += len(tool["description"].(string))
+				sizes[name] = len(tool["description"].(string))
+				total += sizes[name]
 			}
 
-			By("then they come to less than the ceiling together")
+			By("then no one description takes more than its share")
+			for name, size := range sizes {
+				if name == "apply_patch" {
+					continue
+				}
+				Expect(size).To(BeNumerically("<", toolDescriptionCeiling),
+					"the %s description is %d characters; a description that needs more room is a sign the room belongs in the skill", name, size)
+			}
+
+			By("and they come to less than the ceiling together")
 			Expect(total).To(BeNumerically("<", toolDescriptionBudget),
 				"the tool descriptions total %d characters against a budget of %d; they are in every context window that loads dagger, so intent belongs here and reference material belongs in the dagger skill",
 				total, toolDescriptionBudget)
@@ -924,8 +958,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m := startMCP("--socket", socket)
 			m.initialize()
 			tools := m.tools()
-			Expect(tools).To(HaveLen(15))
-			for _, name := range []string{"search", "show_node", "inputs", "node_list", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment", "project_list", "project_show", "project_create"} {
+			Expect(tools).To(HaveLen(17))
+			for _, name := range []string{"search", "show_node", "inputs", "node_list", "explain", "apply_patch", "ready", "claim", "heartbeat", "release", "complete", "comment", "hold", "focus", "project_list", "project_show", "project_create"} {
 				Expect(tools).To(HaveKey(name))
 				Expect(tools[name]["description"]).NotTo(BeEmpty())
 				Expect(tools[name]["inputSchema"]).To(HaveKeyWithValue("type", "object"))
@@ -1300,6 +1334,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 // that name has to declare.
 func requestEnums() map[string]protoreflect.EnumDescriptor {
 	out := map[string]protoreflect.EnumDescriptor{}
+	free := map[string]bool{}
 	for _, file := range []protoreflect.FileDescriptor{
 		daggerv1.File_dagger_v1_dagger_proto,
 		daggerv1.File_dagger_v1_service_proto,
@@ -1313,9 +1348,18 @@ func requestEnums() map[string]protoreflect.EnumDescriptor {
 				field := message.Fields().Get(j)
 				if field.Kind() == protoreflect.EnumKind {
 					out[string(field.Name())] = field.Enum()
+					continue
 				}
+				free[string(field.Name())] = true
 			}
 		}
+	}
+	// A name that is an enum on one request and free text on another says
+	// nothing about a tool argument that carries it: "reason" is a
+	// release reason from a vocabulary and a hold's free-text
+	// explanation. Ambiguous names are checked per tool instead.
+	for name := range free {
+		delete(out, name)
 	}
 	return out
 }

@@ -58,6 +58,9 @@ func (p printer) text(msg proto.Message) error {
 	switch m := msg.(type) {
 	case *daggerv1.ReadyResponse:
 		writeNodes(&b, m.GetNodes())
+		if len(m.GetNodes()) == 0 && m.GetHeldCount() > 0 {
+			fmt.Fprintf(&b, "nothing ready; %d open nodes are held\n", m.GetHeldCount())
+		}
 		writePageToken(&b, m.GetNextPageToken())
 	case *daggerv1.ListNodesResponse:
 		writeNodes(&b, m.GetNodes())
@@ -123,6 +126,15 @@ func (p printer) text(msg proto.Message) error {
 		writeProject(&b, m.GetProject())
 	case *daggerv1.ArchiveProjectResponse:
 		writeProject(&b, m.GetProject())
+	case *daggerv1.HoldProjectResponse:
+		writeProject(&b, m.GetProject())
+		fmt.Fprintf(&b, "%d open nodes left the ready set\n", m.GetHeldCount())
+	case *daggerv1.UnholdProjectResponse:
+		writeProject(&b, m.GetProject())
+	case *daggerv1.FocusResponse:
+		fmt.Fprintf(&b, "focus %s: %d held, %d released\n", m.GetGroup(), m.GetHeldCount(), m.GetReleasedCount())
+	case *daggerv1.ClearFocusResponse:
+		fmt.Fprintf(&b, "focus cleared: %d released\n", m.GetReleasedCount())
 	case *daggerv1.SearchResponse:
 		for _, h := range m.GetHits() {
 			writeNodes(&b, []*daggerv1.Node{h.GetNode()})
@@ -153,6 +165,8 @@ func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 			state = "claimed"
 		case n.GetReady():
 			state = "ready"
+		case n.GetHeld():
+			state = "held"
 		case n.GetBlocked():
 			state = "blocked"
 		}
@@ -172,6 +186,9 @@ func writeProject(b *strings.Builder, p *daggerv1.Project) {
 	fmt.Fprintf(b, "%-24s %s", p.GetSlug(), p.GetTitle())
 	if p.GetArchivedAt() != nil {
 		b.WriteString("  (archived)")
+	}
+	if h := p.GetHold(); h != nil {
+		fmt.Fprintf(b, "  (held: %s)", h.GetReason())
 	}
 	b.WriteByte('\n')
 }
@@ -233,6 +250,15 @@ func writeReason(b *strings.Builder, r *daggerv1.Reason) {
 		fmt.Fprintf(b, "open child #%d %s\n", x.OpenChild.GetChild().GetNumber(), x.OpenChild.GetChild().GetTitle())
 	case *daggerv1.Reason_Archived:
 		fmt.Fprintf(b, "project %s is archived\n", x.Archived.GetProject().GetSlug())
+	case *daggerv1.Reason_ProjectHeld:
+		fmt.Fprintf(b, "project %s is held: %s\n", x.ProjectHeld.GetProject().GetSlug(), x.ProjectHeld.GetProject().GetHold().GetReason())
+	case *daggerv1.Reason_Held:
+		where := fmt.Sprintf("held by #%d %s", x.Held.GetNumber(), x.Held.GetTitle())
+		if x.Held.GetSelf() {
+			where = "held"
+		}
+		fmt.Fprintf(b, "%s since %s: %s\n", where,
+			x.Held.GetHold().GetAt().AsTime().Format(time.RFC3339), x.Held.GetHold().GetReason())
 	}
 }
 

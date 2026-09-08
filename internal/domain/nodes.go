@@ -23,11 +23,14 @@ type Derived struct {
 	// Blocked: an open node blocks this one through a `blocks` edge, or a
 	// gate blocking it has not been completed.
 	Blocked bool
-	// Ready: open, not blocked, no live lease, no open children, and its
-	// project is not archived.
+	// Ready: open, not blocked, not held, no live lease, no open
+	// children, and its project is neither archived nor held.
 	Ready bool
 	// Claimed: a live lease holds the node.
 	Claimed bool
+	// Held: the node, a node containing it, or its project carries a
+	// hold. See the Hold section of docs/domain-model.md.
+	Held bool
 	// HumanTouched: a user principal has written to the node at least
 	// once, according to the event log.
 	HumanTouched bool
@@ -52,18 +55,29 @@ type derivedRow struct {
 	Claimed      bool   `db:"claimed"`
 	OpenChild    bool   `db:"open_child"`
 	Archived     bool   `db:"archived"`
+	Held         bool   `db:"held"`
+	ProjectHeld  bool   `db:"project_held"`
+	Ready        bool   `db:"ready"`
 	HumanTouched bool   `db:"human_touched"`
 }
 
 // derivedSQL computes every flag of a set of nodes in one statement, from
 // the readiness fragments Ready and Explain share. $1 is the organization,
 // $2 the node ids.
+//
+// Readiness itself is the ready query's own predicate rather than a
+// conjunction restated in Go, so the flag on a node and its membership of
+// the ready set cannot disagree. The per-condition flags stay because
+// they say which condition holds, which the predicate alone does not.
 const derivedSQL = `
 SELECT n.id, n.number, pr.slug, n.status,
+       (` + readyWhere + `) AS ready,
        EXISTS (` + unsatisfiedBlockers + `) AS blocked,
        EXISTS (` + liveLease + `) AS claimed,
        EXISTS (` + openChildren + `) AS open_child,
        EXISTS (` + archivedProject + `) AS archived,
+       EXISTS (` + heldAncestors + `) AS held,
+       EXISTS (` + heldProject + `) AS project_held,
        EXISTS (SELECT 1 FROM events ev
                WHERE ev.org_id = $1 AND ev.node_id = n.id AND ev.principal_kind = 'user') AS human_touched
 FROM nodes n
@@ -91,8 +105,9 @@ func derive(ctx context.Context, tx store.Tx, orgID string, nodes []store.Node) 
 	for _, d := range derived {
 		out[d.ID] = Derived{
 			Blocked:      d.Blocked,
-			Ready:        d.Status == "open" && !d.Blocked && !d.Claimed && !d.OpenChild && !d.Archived,
+			Ready:        d.Ready,
 			Claimed:      d.Claimed,
+			Held:         d.Held || d.ProjectHeld,
 			HumanTouched: d.HumanTouched,
 			Ref:          NodeRef{Project: d.Slug, Number: d.Number}.String(),
 		}
@@ -227,6 +242,10 @@ type NodeListQuery struct {
 	Labels []string
 	// Parent keeps the children of one node, as a node reference.
 	Parent string
+	// Held keeps only the nodes a hold parks, whether the hold is on the
+	// node, on something containing it, or on its project. It is how
+	// parked work is found again.
+	Held bool
 	// Limit caps the page, at most [Limits.PageSize]. Zero takes that
 	// ceiling.
 	Limit int
@@ -307,6 +326,9 @@ func (q NodeListQuery) sql(orgID, projectID, parentID string) (string, []any, er
 	}
 	if len(q.Labels) > 0 {
 		where("n.labels @> $%d::text[]", q.Labels)
+	}
+	if q.Held {
+		b.WriteString(" AND " + heldWhere)
 	}
 	if parentID != "" {
 		where("n.parent_id = $%d", parentID)

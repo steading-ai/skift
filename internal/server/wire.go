@@ -224,6 +224,12 @@ func fromOp(op *daggerv1.PatchOp) domain.Op {
 				CacheReadTokens: e.GetCacheReadTokens(), CacheWriteTokens: e.GetCacheWriteTokens(),
 			},
 		}}
+	case *daggerv1.PatchOp_HoldNode:
+		h := o.HoldNode
+		return domain.Op{HoldNode: &domain.HoldNode{Node: h.GetNode(), Reason: h.GetReason()}}
+	case *daggerv1.PatchOp_UnholdNode:
+		u := o.UnholdNode
+		return domain.Op{UnholdNode: &domain.UnholdNode{Node: u.GetNode(), Reason: u.GetReason()}}
 	}
 	// An empty operation reaches the domain as one, which rejects it by
 	// index.
@@ -299,8 +305,10 @@ func toNode(n domain.NodeState) *daggerv1.Node {
 		Blocked:      n.Blocked,
 		Ready:        n.Ready,
 		Claimed:      n.Claimed,
+		Held:         n.Held,
 		HumanTouched: n.HumanTouched,
 		Reference:    n.Ref,
+		Hold:         toHold(n.HeldAt, n.HeldBy, n.HeldReason, n.HoldGroup),
 	}
 	if n.ContextID.Valid {
 		out.ContextId = n.ContextID.String()
@@ -330,7 +338,22 @@ func toProject(p domain.Project) *daggerv1.Project {
 	if p.ArchivedAt != nil {
 		out.ArchivedAt = timestamppb.New(*p.ArchivedAt)
 	}
+	out.Hold = toHold(p.HeldAt, p.HeldBy, p.HeldReason, p.HoldGroup)
 	return out
+}
+
+// toHold renders the hold a node or project carries, or nil when it
+// carries none.
+func toHold(at *time.Time, by, reason, group *string) *daggerv1.Hold {
+	if at == nil {
+		return nil
+	}
+	return &daggerv1.Hold{
+		At:     timestamppb.New(*at),
+		By:     deref(by),
+		Reason: deref(reason),
+		Group:  deref(group),
+	}
 }
 
 func toLease(l domain.Lease) *daggerv1.Lease {
@@ -560,6 +583,14 @@ func toReason(r domain.Reason, derived map[string]domain.Derived) *daggerv1.Reas
 		return &daggerv1.Reason{Reason: &daggerv1.Reason_OpenChild{OpenChild: &daggerv1.OpenChildReason{Child: child}}}
 	case domain.ReasonArchived:
 		return &daggerv1.Reason{Reason: &daggerv1.Reason_Archived{Archived: &daggerv1.ArchivedReason{Project: toProject(*r.Project)}}}
+	case domain.ReasonProjectHeld:
+		return &daggerv1.Reason{Reason: &daggerv1.Reason_ProjectHeld{ProjectHeld: &daggerv1.ProjectHeldReason{Project: toProject(*r.Project)}}}
+	case domain.ReasonHeld:
+		h := r.Hold
+		return &daggerv1.Reason{Reason: &daggerv1.Reason_Held{Held: &daggerv1.HeldReason{
+			Number: h.Number, Title: h.Title, Self: h.Self,
+			Hold: toHold(&h.At, &h.By, &h.Reason, h.Group),
+		}}}
 	}
 	return &daggerv1.Reason{}
 }

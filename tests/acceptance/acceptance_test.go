@@ -439,6 +439,52 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 		})
 	})
 
+	Describe("Scenario: A person parks work the orchestrator would otherwise take", func() {
+		It("A person parks work the orchestrator would otherwise take", func(ctx SpecContext) {
+			d := deploy(ctx)
+
+			By("given two independent nodes in a project")
+			d.laptop.createProject("Platform")
+			res := d.laptop.patch(request(platform,
+				createOp("keep", "The work that matters this week"),
+				createOp("park", "The work that does not"),
+			))
+			keep, park := res.GetNodes()[0], res.GetNodes()[1]
+			Expect(numbers(d.host.ready())).To(ConsistOf(keep.GetNumber(), park.GetNumber()))
+
+			By("when a person focuses the project on one of them")
+			focus := &daggerv1.FocusResponse{}
+			d.laptop.call(focus, "focus", "--project", platform, "--reason", "this week", ref(keep))
+			Expect(focus.GetHeldCount()).To(Equal(int32(1)))
+
+			By("then the orchestrator is offered only the kept work")
+			Expect(numbers(d.host.ready())).To(Equal([]int64{keep.GetNumber()}))
+
+			By("and the parked node says who parked it and why, while staying open")
+			explained := d.host.explain(ref(park))
+			Expect(explained.GetNode().GetStatus()).To(Equal(daggerv1.Status_STATUS_OPEN))
+			Expect(explained.GetNode().GetHeld()).To(BeTrue())
+			Expect(explained.GetReasons()).To(HaveLen(1))
+			held := explained.GetReasons()[0].GetHeld()
+			Expect(held.GetSelf()).To(BeTrue())
+			Expect(held.GetHold().GetReason()).To(Equal("this week"))
+			Expect(held.GetHold().GetBy()).NotTo(BeEmpty())
+
+			By("and an agent may not park work of its own")
+			_, stderr, code := d.host.run("", "hold", "--project", platform, ref(keep), "--reason", "not now")
+			Expect(code).NotTo(Equal(0))
+			Expect(stderr).To(ContainSubstring("no rule permits agent hold_node"))
+
+			By("when the sweep is cleared without naming it")
+			cleared := &daggerv1.ClearFocusResponse{}
+			d.laptop.call(cleared, "focus", "--project", platform, "--clear", "--reason", "week over")
+			Expect(cleared.GetReleasedCount()).To(Equal(int32(1)))
+
+			By("then the parked work is offered again")
+			Expect(numbers(d.host.ready())).To(ConsistOf(keep.GetNumber(), park.GetNumber()))
+		})
+	})
+
 	Describe("Scenario: Search finds work across projects", func() {
 		It("Search finds work across projects", func(ctx SpecContext) {
 			d := deploy(ctx)

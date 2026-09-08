@@ -159,6 +159,8 @@ func BeReason(kind domain.ReasonKind, number ...int64) OmegaMatcher {
 		field = "Blocker.Number"
 	case domain.ReasonOpenChild:
 		field = "Child.Number"
+	case domain.ReasonHeld:
+		field = "Hold.Number"
 	default:
 		panic("BeReason: " + string(kind) + " names no node")
 	}

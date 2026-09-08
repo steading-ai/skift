@@ -90,6 +90,7 @@ node show".`,
 func (a *app) nodeList() *cobra.Command {
 	var f nodeFilters
 	var status, parent string
+	var held bool
 	var page pageFlags
 	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
@@ -119,7 +120,7 @@ func (a *app) nodeList() *cobra.Command {
 			}
 			return send(a, cmd, func() (*daggerv1.ListNodesResponse, error) {
 				res, err := c.Graph.ListNodes(cmd.Context(), connect.NewRequest(&daggerv1.ListNodesRequest{
-					Project: project, Status: st, Kind: f.kind, AssigneeKind: kind, Labels: f.labels, Parent: parent,
+					Project: project, Status: st, Kind: f.kind, AssigneeKind: kind, Labels: f.labels, Parent: parent, Held: held,
 					PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
@@ -129,6 +130,7 @@ func (a *app) nodeList() *cobra.Command {
 	f.bind(cmd)
 	cmd.Flags().StringVar(&status, "status", "", "only nodes in this status: open, done, dropped")
 	cmd.Flags().StringVar(&parent, "parent", "", "only children of this node, as a node reference")
+	cmd.Flags().BoolVar(&held, "held", false, "only parked nodes: held themselves, or contained in something held")
 	page.bind(cmd)
 	view.bind(cmd)
 	return cmd

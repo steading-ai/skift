@@ -144,6 +144,7 @@ func (g *GraphService) ListNodes(ctx context.Context, req *connect.Request[dagge
 		AssigneeKind: assigneeKinds.str(req.Msg.GetAssigneeKind()),
 		Labels:       req.Msg.GetLabels(),
 		Parent:       req.Msg.GetParent(),
+		Held:         req.Msg.GetHeld(),
 		Limit:        size,
 		Offset:       offset,
 	})
@@ -275,4 +276,62 @@ func (g *GraphService) ArchiveProject(ctx context.Context, req *connect.Request[
 		return nil, connectError(err)
 	}
 	return connect.NewResponse(&daggerv1.ArchiveProjectResponse{Project: toProject(*project)}), nil
+}
+
+// HoldProject implements daggerv1connect.GraphServiceHandler.
+func (g *GraphService) HoldProject(ctx context.Context, req *connect.Request[daggerv1.HoldProjectRequest]) (*connect.Response[daggerv1.HoldProjectResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	project, held, err := g.svc.HoldProject(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetReason())
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&daggerv1.HoldProjectResponse{
+		Project: toProject(*project), HeldCount: int32(held), //nolint:gosec // a project's open nodes
+	}), nil
+}
+
+// UnholdProject implements daggerv1connect.GraphServiceHandler.
+func (g *GraphService) UnholdProject(ctx context.Context, req *connect.Request[daggerv1.UnholdProjectRequest]) (*connect.Response[daggerv1.UnholdProjectResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	project, err := g.svc.UnholdProject(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetReason())
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&daggerv1.UnholdProjectResponse{Project: toProject(*project)}), nil
+}
+
+// Focus implements daggerv1connect.GraphServiceHandler.
+func (g *GraphService) Focus(ctx context.Context, req *connect.Request[daggerv1.FocusRequest]) (*connect.Response[daggerv1.FocusResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result, err := g.svc.Focus(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetKeep(), req.Msg.GetReason())
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&daggerv1.FocusResponse{
+		Group:         result.Group,
+		HeldCount:     int32(result.Held),     //nolint:gosec // bounded by the organization's projects or a project's nodes
+		ReleasedCount: int32(result.Released), //nolint:gosec // same
+	}), nil
+}
+
+// ClearFocus implements daggerv1connect.GraphServiceHandler.
+func (g *GraphService) ClearFocus(ctx context.Context, req *connect.Request[daggerv1.ClearFocusRequest]) (*connect.Response[daggerv1.ClearFocusResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	released, err := g.svc.ClearFocus(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetGroup(), req.Msg.GetReason())
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&daggerv1.ClearFocusResponse{ReleasedCount: int32(released)}), nil //nolint:gosec // bounded as above
 }

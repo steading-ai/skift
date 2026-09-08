@@ -43,3 +43,39 @@ UPDATE projects
 SET node_counter = node_counter + sqlc.arg(count)::bigint
 WHERE org_id = $1 AND id = $2
 RETURNING node_counter - sqlc.arg(count)::bigint AS first_number;
+
+-- Parks a project: every node in it leaves the ready set, and unlike
+-- archiving the project stays writable.
+-- name: HoldProject :one
+UPDATE projects
+SET held_at = now(), held_by = $3, held_reason = $4
+WHERE org_id = $1 AND id = $2
+RETURNING *;
+
+-- name: UnholdProject :one
+UPDATE projects
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND id = $2
+RETURNING *;
+
+-- The projects a sweep would park: everything outside the keep-set that is
+-- not archived and not already held.
+-- name: HoldProjectsOutside :many
+UPDATE projects
+SET held_at = now(), held_by = $2, held_reason = $3, hold_group = $4
+WHERE org_id = $1 AND archived_at IS NULL AND held_at IS NULL
+  AND NOT (id = ANY(sqlc.arg(keep)::text[]))
+RETURNING *;
+
+-- name: ReleaseProjectHoldGroup :many
+UPDATE projects
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND hold_group = $2
+RETURNING *;
+
+-- The sweeps with live project holds, so the active one can be found
+-- without a caller remembering its id.
+-- name: ProjectHoldGroups :many
+SELECT DISTINCT hold_group::text AS hold_group FROM projects
+WHERE org_id = $1 AND hold_group IS NOT NULL
+ORDER BY hold_group;

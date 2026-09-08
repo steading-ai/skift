@@ -11,9 +11,10 @@ import (
 func (a *app) projectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "Create, list, show, and archive projects",
+		Short: "Create, list, show, archive, hold, and release projects",
 	}
-	cmd.AddCommand(a.projectCreate(), a.projectList(), a.projectShow(), a.projectArchive())
+	cmd.AddCommand(a.projectCreate(), a.projectList(), a.projectShow(), a.projectArchive(),
+		a.projectHold(), a.projectUnhold())
 	return cmd
 }
 
@@ -75,7 +76,7 @@ func (a *app) projectShow() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show [project]",
 		Short: "Show one project by slug, org/slug, or id (default: the current project)",
-		Args:  rangeArgs(0, 1),
+		Args:  usageArgs(cobra.RangeArgs(0, 1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			project, err := a.projectArg(args)
 			if err != nil {
@@ -98,7 +99,7 @@ func (a *app) projectArchive() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "archive [project]",
 		Short: "Make a project read-only (default: the current project)",
-		Args:  rangeArgs(0, 1),
+		Args:  usageArgs(cobra.RangeArgs(0, 1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			project, err := a.projectArg(args)
 			if err != nil {
@@ -166,19 +167,80 @@ func unwrap[T any](res *connect.Response[T], err error) (*T, error) {
 
 // exactArgs and rangeArgs are cobra's validators reported as usage errors.
 func exactArgs(n int) cobra.PositionalArgs {
+	return usageArgs(cobra.ExactArgs(n))
+}
+
+// usageArgs reports a command's arity error as a usage error, so every
+// command's argument checking exits the same way whatever shape it takes.
+func usageArgs(v cobra.PositionalArgs) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
-		if err := cobra.ExactArgs(n)(cmd, args); err != nil {
+		if err := v(cmd, args); err != nil {
 			return &usageError{err: err}
 		}
 		return nil
 	}
 }
 
-func rangeArgs(lo, hi int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if err := cobra.RangeArgs(lo, hi)(cmd, args); err != nil {
-			return &usageError{err: err}
-		}
-		return nil
+// projectHold and projectUnhold are the same command in two directions:
+// the RPC and the wording differ, nothing else does.
+func (a *app) projectHold() *cobra.Command {
+	cmd := a.projectHoldCommand("hold", "Park a project, with a reason (default: the current project)",
+		`Park a project. Every node in it leaves the ready set and no status
+changes. Unlike archiving, the project stays writable, so parked work can
+still be planned, decomposed, and commented on.
+
+The response says how many open nodes left the ready set.`,
+		"why the work is parked; required", reasonRequired,
+		func(cmd *cobra.Command, c *client.Client, req *daggerv1.HoldProjectRequest) error {
+			return send(a, cmd, func() (*daggerv1.HoldProjectResponse, error) {
+				return unwrap(c.Graph.HoldProject(cmd.Context(), connect.NewRequest(req)))
+			})
+		})
+	return cmd
+}
+
+func (a *app) projectUnhold() *cobra.Command {
+	return a.projectHoldCommand("unhold", "Release a project's hold, with a reason (default: the current project)",
+		"", "why the work is coming back; required",
+		"--reason is required: the event log keeps why the work came back",
+		func(cmd *cobra.Command, c *client.Client, req *daggerv1.HoldProjectRequest) error {
+			return send(a, cmd, func() (*daggerv1.UnholdProjectResponse, error) {
+				return unwrap(c.Graph.UnholdProject(cmd.Context(), connect.NewRequest(&daggerv1.UnholdProjectRequest{
+					RequestId: req.GetRequestId(), Project: req.GetProject(), Reason: req.GetReason(),
+				})))
+			})
+		})
+}
+
+// projectHoldCommand builds one project-level hold command over the call
+// that distinguishes it.
+func (a *app) projectHoldCommand(use, short, long, reasonHelp, missingReason string,
+	call func(*cobra.Command, *client.Client, *daggerv1.HoldProjectRequest) error,
+) *cobra.Command {
+	var reason, requestID string
+	cmd := &cobra.Command{
+		Use:   use + " [project]",
+		Short: short,
+		Long:  long,
+		Args:  usageArgs(cobra.RangeArgs(0, 1)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := a.projectArg(args)
+			if err != nil {
+				return err
+			}
+			if reason == "" {
+				return usage("%s", missingReason)
+			}
+			c, err := a.connect()
+			if err != nil {
+				return err
+			}
+			return call(cmd, c, &daggerv1.HoldProjectRequest{
+				RequestId: orMint(requestID), Project: project, Reason: reason,
+			})
+		},
 	}
+	cmd.Flags().StringVar(&reason, "reason", "", reasonHelp)
+	requestIDFlag(cmd, &requestID)
+	return cmd
 }

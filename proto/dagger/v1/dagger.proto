@@ -153,6 +153,28 @@ message Project {
   google.protobuf.Timestamp archived_at = 7;
   // Output only. When the project was created.
   google.protobuf.Timestamp created_at = 8;
+  // The hold on this project, if it carries one. Every node in a held
+  // project leaves the ready set; unlike archiving, the project stays
+  // writable.
+  Hold hold = 9;
+}
+
+// Hold is the stored decision to park work: which principal applied it,
+// when, and why. A held node leaves the ready set and nothing else about
+// it changes, the way a live lease does. See the Hold section of the
+// domain model.
+message Hold {
+  // Output only. When the hold was applied.
+  google.protobuf.Timestamp at = 1;
+  // Output only. Id of the user principal that applied it.
+  string by = 2;
+  // Why the work is parked. Always set: a hold nobody can explain is one
+  // nobody dares release.
+  string reason = 3;
+  // Output only. The focus sweep that placed this hold, if a sweep did.
+  // Empty for a hold placed on its own, which is what keeps a sweep from
+  // adopting it and clearing a sweep from releasing it.
+  string group = 4;
 }
 
 // Node is a unit of work: the one entity a human or agent thinks about
@@ -200,8 +222,8 @@ message Node {
   // Output only. Derived: an open node blocks this one through a BLOCKS
   // edge, or a gate blocking it has not been completed.
   bool blocked = 16;
-  // Output only. Derived: open, not blocked, no live lease, and no open
-  // children.
+  // Output only. Derived: open, not blocked, not held, no live lease, and
+  // no open children.
   bool ready = 17;
   // Output only. Derived: a live lease exists on the node.
   bool claimed = 18;
@@ -211,6 +233,13 @@ message Node {
   // Output only. The node's reference as a request names it: slug#7, the
   // project's current slug and the node's number.
   string reference = 20;
+  // The hold on this node, if it carries one. A node can be kept out of
+  // the ready set by a hold on something containing it, which this does
+  // not report; see held.
+  Hold hold = 21;
+  // Output only. Derived: this node, a node containing it, or its project
+  // carries a hold. Explain says which.
+  bool held = 22;
 }
 
 // Edge is a directed relation between two nodes in the same organization.

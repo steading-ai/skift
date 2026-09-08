@@ -46,10 +46,15 @@ func (a Actor) validate() error {
 }
 
 // requiresReason reports whether an operation is a transition that must
-// say why. Dropping and reopening are assertions about the work rather
-// than edits to it, and the log is where that assertion lives.
+// say why. Dropping, reopening, and parking are assertions about the work
+// rather than edits to it, and the log is where that assertion lives. A
+// hold nobody can explain is also one nobody dares release.
 func requiresReason(op string) bool {
-	return op == OpDropNode || op == OpReopenNode
+	switch op {
+	case OpDropNode, OpReopenNode, OpHoldNode, OpUnholdNode, OpHoldProject, OpUnholdProject:
+		return true
+	}
+	return false
 }
 
 // recorder writes the events of one transaction for one actor, and keeps
@@ -98,6 +103,13 @@ func (r *recorder) event(ctx context.Context, op, nodeID, projectID string, reas
 	}
 	r.events = append(r.events, ev)
 	return nil
+}
+
+// projectEvent authorizes a project operation and writes its event,
+// through the same actor, policy and request this transaction's other
+// events use.
+func (r *recorder) projectEvent(ctx context.Context, op string, before, after any) error {
+	return projectEvent(ctx, r.tx, r.policy, r.orgID, r.actor, r.request, op, before, after)
 }
 
 func encodeChange(v any) ([]byte, error) {

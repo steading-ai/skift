@@ -81,6 +81,16 @@ const (
 	// GraphServiceArchiveProjectProcedure is the fully-qualified name of the GraphService's
 	// ArchiveProject RPC.
 	GraphServiceArchiveProjectProcedure = "/dagger.v1.GraphService/ArchiveProject"
+	// GraphServiceHoldProjectProcedure is the fully-qualified name of the GraphService's HoldProject
+	// RPC.
+	GraphServiceHoldProjectProcedure = "/dagger.v1.GraphService/HoldProject"
+	// GraphServiceUnholdProjectProcedure is the fully-qualified name of the GraphService's
+	// UnholdProject RPC.
+	GraphServiceUnholdProjectProcedure = "/dagger.v1.GraphService/UnholdProject"
+	// GraphServiceFocusProcedure is the fully-qualified name of the GraphService's Focus RPC.
+	GraphServiceFocusProcedure = "/dagger.v1.GraphService/Focus"
+	// GraphServiceClearFocusProcedure is the fully-qualified name of the GraphService's ClearFocus RPC.
+	GraphServiceClearFocusProcedure = "/dagger.v1.GraphService/ClearFocus"
 	// WorkServiceReadyProcedure is the fully-qualified name of the WorkService's Ready RPC.
 	WorkServiceReadyProcedure = "/dagger.v1.WorkService/Ready"
 	// WorkServiceClaimNextProcedure is the fully-qualified name of the WorkService's ClaimNext RPC.
@@ -128,6 +138,22 @@ type GraphServiceClient interface {
 	// ArchiveProject makes a project read-only. Keys stay valid forever and
 	// existing edges keep their meaning.
 	ArchiveProject(context.Context, *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error)
+	// HoldProject parks a project: every node in it leaves the ready set and
+	// none of their statuses change. Unlike archiving, the project stays
+	// writable, so parked work can still be planned.
+	HoldProject(context.Context, *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error)
+	// UnholdProject releases a project's hold, returning its work to the
+	// ready set unless something else holds it back.
+	UnholdProject(context.Context, *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error)
+	// Focus parks everything outside a keep-set: the projects of an
+	// organization, or the nodes of one project. It is declarative and
+	// replacing, so calling it again in a scope retires the previous sweep
+	// in the same transaction, and it holds only what is not already held.
+	Focus(context.Context, *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error)
+	// ClearFocus releases the holds one focus sweep placed, leaving holds
+	// placed on their own alone. It needs no sweep id: at most one sweep is
+	// active per scope.
+	ClearFocus(context.Context, *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error)
 }
 
 // NewGraphServiceClient constructs a client for the dagger.v1.GraphService service. By default, it
@@ -201,6 +227,30 @@ func NewGraphServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(graphServiceMethods.ByName("ArchiveProject")),
 			connect.WithClientOptions(opts...),
 		),
+		holdProject: connect.NewClient[v1.HoldProjectRequest, v1.HoldProjectResponse](
+			httpClient,
+			baseURL+GraphServiceHoldProjectProcedure,
+			connect.WithSchema(graphServiceMethods.ByName("HoldProject")),
+			connect.WithClientOptions(opts...),
+		),
+		unholdProject: connect.NewClient[v1.UnholdProjectRequest, v1.UnholdProjectResponse](
+			httpClient,
+			baseURL+GraphServiceUnholdProjectProcedure,
+			connect.WithSchema(graphServiceMethods.ByName("UnholdProject")),
+			connect.WithClientOptions(opts...),
+		),
+		focus: connect.NewClient[v1.FocusRequest, v1.FocusResponse](
+			httpClient,
+			baseURL+GraphServiceFocusProcedure,
+			connect.WithSchema(graphServiceMethods.ByName("Focus")),
+			connect.WithClientOptions(opts...),
+		),
+		clearFocus: connect.NewClient[v1.ClearFocusRequest, v1.ClearFocusResponse](
+			httpClient,
+			baseURL+GraphServiceClearFocusProcedure,
+			connect.WithSchema(graphServiceMethods.ByName("ClearFocus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -216,6 +266,10 @@ type graphServiceClient struct {
 	getProject     *connect.Client[v1.GetProjectRequest, v1.GetProjectResponse]
 	listProjects   *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	archiveProject *connect.Client[v1.ArchiveProjectRequest, v1.ArchiveProjectResponse]
+	holdProject    *connect.Client[v1.HoldProjectRequest, v1.HoldProjectResponse]
+	unholdProject  *connect.Client[v1.UnholdProjectRequest, v1.UnholdProjectResponse]
+	focus          *connect.Client[v1.FocusRequest, v1.FocusResponse]
+	clearFocus     *connect.Client[v1.ClearFocusRequest, v1.ClearFocusResponse]
 }
 
 // ApplyPatch calls dagger.v1.GraphService.ApplyPatch.
@@ -268,6 +322,26 @@ func (c *graphServiceClient) ArchiveProject(ctx context.Context, req *connect.Re
 	return c.archiveProject.CallUnary(ctx, req)
 }
 
+// HoldProject calls dagger.v1.GraphService.HoldProject.
+func (c *graphServiceClient) HoldProject(ctx context.Context, req *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error) {
+	return c.holdProject.CallUnary(ctx, req)
+}
+
+// UnholdProject calls dagger.v1.GraphService.UnholdProject.
+func (c *graphServiceClient) UnholdProject(ctx context.Context, req *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error) {
+	return c.unholdProject.CallUnary(ctx, req)
+}
+
+// Focus calls dagger.v1.GraphService.Focus.
+func (c *graphServiceClient) Focus(ctx context.Context, req *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error) {
+	return c.focus.CallUnary(ctx, req)
+}
+
+// ClearFocus calls dagger.v1.GraphService.ClearFocus.
+func (c *graphServiceClient) ClearFocus(ctx context.Context, req *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error) {
+	return c.clearFocus.CallUnary(ctx, req)
+}
+
 // GraphServiceHandler is an implementation of the dagger.v1.GraphService service.
 type GraphServiceHandler interface {
 	// ApplyPatch applies a flat list of operations in one transaction. Cycle
@@ -300,6 +374,22 @@ type GraphServiceHandler interface {
 	// ArchiveProject makes a project read-only. Keys stay valid forever and
 	// existing edges keep their meaning.
 	ArchiveProject(context.Context, *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error)
+	// HoldProject parks a project: every node in it leaves the ready set and
+	// none of their statuses change. Unlike archiving, the project stays
+	// writable, so parked work can still be planned.
+	HoldProject(context.Context, *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error)
+	// UnholdProject releases a project's hold, returning its work to the
+	// ready set unless something else holds it back.
+	UnholdProject(context.Context, *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error)
+	// Focus parks everything outside a keep-set: the projects of an
+	// organization, or the nodes of one project. It is declarative and
+	// replacing, so calling it again in a scope retires the previous sweep
+	// in the same transaction, and it holds only what is not already held.
+	Focus(context.Context, *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error)
+	// ClearFocus releases the holds one focus sweep placed, leaving holds
+	// placed on their own alone. It needs no sweep id: at most one sweep is
+	// active per scope.
+	ClearFocus(context.Context, *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error)
 }
 
 // NewGraphServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -369,6 +459,30 @@ func NewGraphServiceHandler(svc GraphServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(graphServiceMethods.ByName("ArchiveProject")),
 		connect.WithHandlerOptions(opts...),
 	)
+	graphServiceHoldProjectHandler := connect.NewUnaryHandler(
+		GraphServiceHoldProjectProcedure,
+		svc.HoldProject,
+		connect.WithSchema(graphServiceMethods.ByName("HoldProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	graphServiceUnholdProjectHandler := connect.NewUnaryHandler(
+		GraphServiceUnholdProjectProcedure,
+		svc.UnholdProject,
+		connect.WithSchema(graphServiceMethods.ByName("UnholdProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	graphServiceFocusHandler := connect.NewUnaryHandler(
+		GraphServiceFocusProcedure,
+		svc.Focus,
+		connect.WithSchema(graphServiceMethods.ByName("Focus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	graphServiceClearFocusHandler := connect.NewUnaryHandler(
+		GraphServiceClearFocusProcedure,
+		svc.ClearFocus,
+		connect.WithSchema(graphServiceMethods.ByName("ClearFocus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/dagger.v1.GraphService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GraphServiceApplyPatchProcedure:
@@ -391,6 +505,14 @@ func NewGraphServiceHandler(svc GraphServiceHandler, opts ...connect.HandlerOpti
 			graphServiceListProjectsHandler.ServeHTTP(w, r)
 		case GraphServiceArchiveProjectProcedure:
 			graphServiceArchiveProjectHandler.ServeHTTP(w, r)
+		case GraphServiceHoldProjectProcedure:
+			graphServiceHoldProjectHandler.ServeHTTP(w, r)
+		case GraphServiceUnholdProjectProcedure:
+			graphServiceUnholdProjectHandler.ServeHTTP(w, r)
+		case GraphServiceFocusProcedure:
+			graphServiceFocusHandler.ServeHTTP(w, r)
+		case GraphServiceClearFocusProcedure:
+			graphServiceClearFocusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -438,6 +560,22 @@ func (UnimplementedGraphServiceHandler) ListProjects(context.Context, *connect.R
 
 func (UnimplementedGraphServiceHandler) ArchiveProject(context.Context, *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.ArchiveProject is not implemented"))
+}
+
+func (UnimplementedGraphServiceHandler) HoldProject(context.Context, *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.HoldProject is not implemented"))
+}
+
+func (UnimplementedGraphServiceHandler) UnholdProject(context.Context, *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.UnholdProject is not implemented"))
+}
+
+func (UnimplementedGraphServiceHandler) Focus(context.Context, *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.Focus is not implemented"))
+}
+
+func (UnimplementedGraphServiceHandler) ClearFocus(context.Context, *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dagger.v1.GraphService.ClearFocus is not implemented"))
 }
 
 // WorkServiceClient is a client for the dagger.v1.WorkService service.

@@ -301,6 +301,96 @@ reopen undoing the drop works from.`,
 	return cmd
 }
 
+func (a *app) holdCommand() *cobra.Command {
+	var reason, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	cmd := &cobra.Command{
+		Use:   "hold <ref>",
+		Short: "Park a node and everything under it, with a reason",
+		Long: `Park a node. It leaves the ready set and nothing else about it changes:
+its status stays open, and it comes back the moment the hold is released.
+Containment carries the hold, so everything under the node is parked too,
+including work filed under it later.
+
+A held node still blocks what depends on it, so parking one node stalls
+everything downstream of it. Read the graph first.
+
+Parking work is a person's call, and an agent in its own trust zone is
+refused.`,
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.setHold(cmd, args[0], reason, requestID, view, false)
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "why the work is parked; required")
+	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
+	return cmd
+}
+
+func (a *app) unholdCommand() *cobra.Command {
+	var reason, requestID string
+	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	cmd := &cobra.Command{
+		Use:   "unhold <ref>",
+		Short: "Release a node's hold, with a reason",
+		Long: `Release the hold on a node. A hold on something containing it is left
+alone, so the node stays parked until that one is released too; explain
+says which holds are in the way.`,
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.setHold(cmd, args[0], reason, requestID, view, true)
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "why the work is coming back; required")
+	requestIDFlag(cmd, &requestID)
+	view.bind(cmd)
+	return cmd
+}
+
+// reasonRequired is what every surface says when a hold carries no
+// reason, worded once because a person reads it.
+const reasonRequired = "--reason is required: a hold nobody can explain is one nobody dares release"
+
+// holdOp is the patch operation that parks a node, or releases it. Both
+// the CLI and the MCP tool build it here, so the two surfaces cannot
+// disagree about which verb they sent.
+func holdOp(node, reason string, release bool) *daggerv1.PatchOp {
+	if release {
+		return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_UnholdNode{
+			UnholdNode: &daggerv1.UnholdNodeOp{Node: node, Reason: reason},
+		}}
+	}
+	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_HoldNode{
+		HoldNode: &daggerv1.HoldNodeOp{Node: node, Reason: reason},
+	}}
+}
+
+// setHold applies or releases one node's hold, as a patch of one operation.
+func (a *app) setHold(cmd *cobra.Command, arg, reason, requestID string, view viewFlag, release bool) error {
+	ref, err := parseRef(arg)
+	if err != nil {
+		return err
+	}
+	if reason == "" {
+		return usage("%s", reasonRequired)
+	}
+	project, err := a.projectFor(ref)
+	if err != nil {
+		return err
+	}
+	v, err := view.view()
+	if err != nil {
+		return err
+	}
+	return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+		RequestId: orMint(requestID),
+		Project:   project,
+		Ops:       []*daggerv1.PatchOp{holdOp(ref.String(), reason, release)},
+		View:      v,
+	})
+}
+
 func (a *app) completeCommand() *cobra.Command {
 	var lease, result, requestID string
 	view := viewFlag{def: daggerv1.View_VIEW_REFS}

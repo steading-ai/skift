@@ -77,6 +77,9 @@ type Op struct {
 
 	ReportUsage  *ReportUsage  `json:"report_usage,omitempty"`
 	EstimateNode *EstimateNode `json:"estimate_node,omitempty"`
+
+	HoldNode   *HoldNode   `json:"hold_node,omitempty"`
+	UnholdNode *UnholdNode `json:"unhold_node,omitempty"`
 }
 
 // Name is the operation's name as events record it, or empty when no
@@ -109,6 +112,10 @@ func (o Op) Name() string {
 		return OpReportUsage
 	case o.EstimateNode != nil:
 		return OpEstimateNode
+	case o.HoldNode != nil:
+		return OpHoldNode
+	case o.UnholdNode != nil:
+		return OpUnholdNode
 	}
 	return ""
 }
@@ -140,6 +147,10 @@ func (o Op) validate(l Limits) error {
 		return o.ReportUsage.validate()
 	case o.EstimateNode != nil:
 		return o.EstimateNode.validate()
+	case o.HoldNode != nil && o.HoldNode.Reason == "":
+		return ErrReasonRequired
+	case o.UnholdNode != nil && o.UnholdNode.Reason == "":
+		return ErrReasonRequired
 	}
 	return nil
 }
@@ -490,6 +501,31 @@ func applyOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID strin
 // until this transaction ends: on commit it fails with a key conflict, and
 // the caller restarts it to replay; on rollback it proceeds as the first
 // application.
+// idempotent runs one mutation under its request id: in a transaction,
+// deduplicated by [withRequest], retried once when two callers race for
+// the key, and with a policy denial audited on the way out. Every service
+// method that is not a patch has this shape, and the retry policy is one
+// decision rather than one per method.
+func idempotent[T any](ctx context.Context, s *store.Store, orgID string, actor Actor, requestID, hash string, run func(context.Context, store.Tx) (*T, error)) (*T, error) {
+	for attempt := 0; ; attempt++ {
+		var out *T
+		err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+			result, _, err := withRequest(ctx, tx, orgID, requestID, hash, func(ctx context.Context) (*T, error) {
+				return run(ctx, tx)
+			})
+			out = result
+			return err
+		})
+		if isKeyConflict(err) && attempt == 0 {
+			continue
+		}
+		if err != nil {
+			return nil, auditDenial(ctx, s, orgID, actor, &requestID, err)
+		}
+		return out, nil
+	}
+}
+
 func withRequest[T any](ctx context.Context, tx store.Tx, orgID, requestID, hash string, run func(context.Context) (*T, error)) (result *T, replayed bool, err error) {
 	stored, err := storedResponse(ctx, tx, orgID, requestID, hash)
 	if err != nil {
@@ -813,6 +849,10 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 		return a.reportUsage(ctx, op.ReportUsage)
 	case op.EstimateNode != nil:
 		return a.estimateNode(ctx, op.EstimateNode)
+	case op.HoldNode != nil:
+		return a.holdNode(ctx, op.HoldNode)
+	case op.UnholdNode != nil:
+		return a.unholdNode(ctx, op.UnholdNode)
 	}
 	return errors.New("no operation set")
 }

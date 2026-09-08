@@ -4,9 +4,11 @@ Decision filters for dagger. Each one can be violated, and violating it should f
 
 ## 1. The graph is the truth
 
-Stored state is only what cannot be derived: a node's status (`open`, `done`, `dropped`), its edges, and its leases. Blocked, ready, and claimed are views computed from those facts. Rollups over a subtree are queries.
+Stored state is only what cannot be derived: a node's status (`open`, `done`, `dropped`), its edges, its leases, and its holds. Blocked, ready, claimed, and held are views computed from those facts. Rollups over a subtree are queries.
 
-**Says no to**: A `blocked` column. A `ready` flag maintained by triggers. Any cached derivation that can drift from the edges that define it.
+A hold is stored because a decision to park work follows from nothing else in the graph. Whether a node is *effectively* held, because it, an ancestor, or its project carries one, is derived on every read and never written down.
+
+**Says no to**: A `blocked` column. A `ready` flag maintained by triggers. A hold propagated to descendants at write time. Any cached derivation that can drift from the facts that define it.
 
 ## 2. One door
 
@@ -34,9 +36,11 @@ Dagger knows what should be done, what is ready, and who holds a lease. It does 
 
 ## 6. Ready is dumb
 
-`Ready` returns the set of unblocked, unclaimed nodes, filtered by what the caller asks for and sorted by priority and age. It carries the numbers a consumer needs, such as cost and estimate rollups, and makes no decision with them. Budget enforcement, model selection, and scheduling are the consumer's policy.
+`Ready` returns the set of eligible nodes, open and unblocked and unclaimed and unheld with no open children, filtered by what the caller asks for and sorted by priority and age. It carries the numbers a consumer needs, such as cost and estimate rollups, and makes no decision with them. Budget enforcement, model selection, and scheduling are the consumer's policy.
 
-**Says no to**: Budget logic inside `Ready`. A scheduler in the store. A default that two reasonable organizations would want to differ on.
+Eligibility and ordering are different things. Eligibility is a fact about the graph, and every client sees the same answer. Ordering is a hint: priority orders the eligible set and never gates it, and a consumer may take dagger's order or compute its own.
+
+**Says no to**: Budget logic inside `Ready`. A scheduler in the store. An order that mixes priority scales from two projects. A default that two reasonable organizations would want to differ on.
 
 ## 7. Nothing is deleted
 

@@ -19,10 +19,12 @@ A unit of work. The only entity a human or agent thinks about directly.
 | `assignee_kind` | `agent` or `user`, matching `Principal.kind`. Unset means agent-eligible, never nobody's problem. A user-assigned node is a gate |
 | `assignee` | Optional specific principal |
 | `labels` | Free strings for projection and filtering |
+| `held_at`, `held_by`, `held_reason` | Set while the node is parked. See [Hold](#hold) |
+| `hold_group` | The focus sweep that placed the hold, if a sweep did. Unset for a hold placed by hand |
 | `created_at` | Explicit, not inferred from the ULID. Identifier layout is not a business contract |
 | `context_id` | Opaque UUID minted by dagger at creation. Travels unchanged to the orchestrator and the agent as the A2A context id or harness session id |
 
-Derived, never stored: `blocked` (has an unfinished blocking predecessor), `ready` (open, not blocked, no live lease, no open children), `claimed` (has a live lease).
+Derived, never stored: `blocked` (has an unfinished blocking predecessor), `held` (it, an ancestor, or its project carries a hold), `ready` (open, not blocked, not held, no live lease, no open children), `claimed` (has a live lease).
 
 ### Node kinds
 
@@ -36,11 +38,13 @@ Consumers may use any other value. Dagger validates nothing and behaves identica
 
 `p0` through `p4`, defaulting to `p2`. The scale is chosen because models are steeped in it and will use it without instruction, not because dagger derives anything from it.
 
-Priority is comparable only within a project. A `p0` in a two-day spike and a `p2` in the platform project say nothing about each other, and with projects this cheap and numerous a global priority sort would be actively misleading. Ordering across projects is the orchestrator's business, because only the orchestrator knows which projects matter this week.
+Priority is comparable only within a project. A `p0` in a two-day spike and a `p2` in the platform project say nothing about each other, and with projects this cheap and numerous a global priority sort would be actively misleading. Ordering across projects is the orchestrator's business, because combining two project-scoped scales needs a rule dagger has no basis to choose. Which projects matter this week is a different question: that is intent, it is recorded here as a [hold](#hold), and every client sees the same answer.
 
 Dagger uses it as the first sort key in `Ready` within a project and derives nothing else from it. Expect inflation, and note that the counter-pressure is not a rule in the store: a consumer that stops trusting the field can sort however it likes.
 
 Projects carry a priority of their own, and dagger never sorts by it. Storing it is worth doing because people want to record which project matters. Sorting by it would require dagger to decide how a project's priority combines with a node's, and a `p0` node in a `p3` project against a `p2` node in a `p0` project is exactly the question two reasonable organizations answer differently. That combination is the orchestrator's.
+
+Hold is what keeps this field honest. Without it, `p4` has to mean both "low value" and "not now", and the second meaning is what drives the inflation. With somewhere to record "not now", a priority can go back to meaning one thing.
 
 At scale the signal that actually governs this is allocation rather than priority: how much of a finite weekly capacity a project may consume. That is the deferred budget work, it has a natural home in the cost rollups, and it does not collapse into a two-level sort nobody can reason about.
 
@@ -70,13 +74,14 @@ A project is an authorization *scope*, not a unit that requires a grant. It inhe
 | `title` | Human-readable name |
 | `node_counter` | Next node number. A column, not a sequence |
 | `archived_at` | Archiving is a deliberate act, not a timer. Keys stay valid forever |
+| `held_at`, `held_by`, `held_reason`, `hold_group` | Set while the project is parked. See [Hold](#hold) |
 | `priority` | Advisory. Dagger never sorts by it |
 
 Creating a project requires no provisioning, no DDL, and no name adjudication.
 
 Abandonment, not archival, is how most short-lived projects end, and nothing reclaims them. A failed spike often holds the most useful record in the store: what was tried and why it did not work. Listing defaults to activity order rather than to an archived filter, and finding old work is retrieval's job rather than lifecycle's.
 
-An archived project is read-only: no claims, no patches, no new edges into or out of it. Existing edges keep their meaning, so an archived node that was never completed still blocks whatever depended on it, which is visible through `Explain` rather than silently stalling. Archived projects drop out of listing and search by default.
+Archiving is the terminal point of the axis a [hold](#hold) occupies: a permanent park that also closes the project to writes. An archived project is read-only: no claims, no patches, no new edges into or out of it. Existing edges keep their meaning, so an archived node that was never completed still blocks whatever depended on it, which is visible through `Explain` rather than silently stalling. Archived projects drop out of listing and search by default.
 
 **A project is not a node.** The tempting unification is that everything is a graph, so a project should be a root node with sub-projects as children. It should not. The project id is the indexed tenancy column on every query, and making it a graph traversal costs both performance and the isolation property [ADR-006](adrs/006-provenance-not-authority.md) rests on. Nesting also gives a node two candidate number namespaces.
 
@@ -122,6 +127,7 @@ A node is ready when all of the following hold:
 - no `blocks` edge into it whose source is `open`
 - no live lease on it
 - no open children
+- no hold on it, on any ancestor, or on its project
 - the caller's filters match (project, kind, assignee kind, labels, minimum priority)
 
 The children rule is what makes an epic behave without anyone declaring one. A node that groups work is not itself work, and without this rule it sits in the ready set waiting for an agent to claim it and discover there is nothing to do. Since an epic is derived from having children rather than declared as a kind, the readiness rule has to be derived the same way. It is one more anti-join on `parent_id`.
@@ -130,9 +136,39 @@ The children rule is what makes an epic behave without anyone declaring one. A n
 
 ### Why not ready
 
-Readiness is derived, so un-readiness is derivable too: the same anti-join, un-negated. `Explain` answers it for one node as blocked by these open nodes, held by this lease until this time, or waiting on a person.
+Readiness is derived, so un-readiness is derivable too: the same anti-join, un-negated. `Explain` answers it for one node as blocked by these open nodes, leased until this time, parked by this hold, or waiting on a person.
 
-This exists because of node limbo. A node disappears when it is blocked by something that will never complete, assigned to a human who never looks, held by a lease whose orchestrator died, or sitting in a project everyone forgot. Most of those are visible once you can ask. The one worth detecting on its own is a node with no possible path to readiness, which is always a bug rather than a state.
+This exists because of node limbo. A node disappears when it is blocked by something that will never complete, assigned to a human who never looks, leased by an orchestrator that died, parked by a hold nobody remembers placing, or sitting in a project everyone forgot. Most of those are visible once you can ask. The one worth detecting on its own is a node with no possible path to readiness, which is always a bug rather than a state.
+
+## Hold
+
+A stored decision to park work. A held node leaves the ready set and nothing else about it changes: its status is still `open`, its blockers are still satisfied or not on their own terms, and it returns the moment the hold is released.
+
+Hold is an eligibility axis, not a stage. A lease already removes a node from the ready set without touching its status, and so does a blocking predecessor; a hold is the third fact of that kind. This is why it is not a fourth `status`: a parked node has not moved through anything. See [ADR-010](adrs/010-hold-is-eligibility-not-status.md).
+
+**Containment carries a hold.** A node is *effectively held* when it, any ancestor through `parent_id`, or its project carries one. Holding an epic that did not hold its children would hold nothing claimable, and a child filed under a parked epic tomorrow must be parked too. The inheritance is a walk at read time, never a flag written down the subtree.
+
+**A hold blocks claiming, not writing.** Held work is read, decomposed, commented on, re-linked, and re-estimated as usual; only `Claim` and `ClaimNext` refuse, naming the hold and the next move. This is the whole difference between a hold and archiving, which makes a project read-only.
+
+**A held node still blocks its dependents.** Parking one node stalls everything downstream of it, and the cone is not itself held. `Hold` reports the number of nodes it parks, and `Explain` on a stalled dependent traces to the hold rather than stopping at the blocker.
+
+**Only user principals may hold.** Parking work is a person's call, and a hold is also a way to hide work from other agents. Identity is a trust zone, so an agent running under a person's uid is that person's principal and holds with their authority; a headless agent in its own zone is refused, and the refusal names what to do instead. See [ADR-009](adrs/009-the-default-gate-policy-is-notification.md) and [ADR-006](adrs/006-provenance-not-authority.md).
+
+Every hold and release is an event carrying the principal and the reason. A reason is required, because a hold nobody can explain is one nobody dares release.
+
+### Focus
+
+Saying "only these projects this week" is the complement of a hold, and it is one call: `Focus` takes a keep-set and holds everything outside it; `ClearFocus` releases what that sweep held.
+
+Focus is server-side. A client computing the complement itself would exceed the operations-per-patch ceiling on a large workspace, and a semantic operation reimplemented per client drifts between versions.
+
+Its scope is an organization, where the keep-set is projects, or a single project, where the keep-set is nodes. The two compose: an organization-wide focus says which projects are live, and a project-scoped one refines it to part of the graph.
+
+Focus is declarative and replacing. Calling it again in a scope retires the previous sweep in the same transaction, so exactly one sweep is ever active per scope and `ClearFocus` needs no sweep id. That matters because a sweep outlives every session that observes it, unlike a lease, whose fencing token works only because it belongs to one live session: **state that outlives sessions has to be discoverable, not carried.** A sweep is discoverable because it is nothing but its holds, grouped by `hold_group`.
+
+A sweep holds only what is not already held. A node parked by hand carries no `hold_group`, and `ClearFocus` releases only its own group, so a hold placed months ago for its own reason survives both a sweep and the clearing of it. There are no stacked holds and nothing to reference-count.
+
+A project created after a sweep is live, not held. It was created because someone cared about it.
 
 ## Lease
 
@@ -186,6 +222,7 @@ It is **not in v1**. A field the client asserts is not client-assertable provena
 The unit of mutation. A flat list of operations applied in one transaction:
 
 - `create_node`, `update_node`, `drop_node { reason, cascade { max_nodes } }`, `complete_node { result }`, `reopen_node { reason }`
+- `hold_node { reason }`, `unhold_node { reason }`
 - `add_edge`, `remove_edge`
 - `attach_artifact`, `add_comment`
 
@@ -272,7 +309,7 @@ Filing a gate and releasing the lease is one atomic operation. Doing it in two c
 
 A credential gate asks a person to perform an action or to place a secret where the agent's environment can reach it. It never carries the credential as a result, because results are durable and readable by everything downstream.
 
-Notifiers subscribe to ready user-assigned nodes.
+Notifiers subscribe to ready user-assigned nodes. A held gate is therefore silent: parking an ask is what parking means, and the hold is what `Explain` reports when someone asks why nobody was told.
 
 ## Usage
 
@@ -385,6 +422,7 @@ The default Rego policy for an agent:
 - May not add edges out of its node without link permission on the target
 - Cross-project edges require write on the source and link permission on the target
 - May not dispose of a gate it filed. See [Gates](#gates)
+- May not hold or release anything. Parking work is a user's call; an agent that thinks work should be parked says so in a comment. See [Hold](#hold)
 - Anything else is rejected; the agent files a gate node to ask
 
 Policy is evaluated on the resolved patch inside its transaction. See [Authorization](#authorization).
@@ -402,6 +440,7 @@ Fixed structural ceilings, distinct from adaptive rate limiting. These need no p
 | Statement timeout | A pathological recursive query cannot stall the service |
 | Lease TTL ceiling | An unbounded TTL defeats expiry |
 | Page size | Unbounded reads are a denial of service with extra steps |
+| Keep-set size in a focus sweep | One call should not rewrite an organization unboundedly |
 
 Per-principal rate limiting is **not** here. Realistic limits cannot be chosen before observing real workloads, and the interceptor is the seam for adding them when they can.
 

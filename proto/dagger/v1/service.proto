@@ -62,6 +62,22 @@ service GraphService {
   // ArchiveProject makes a project read-only. Keys stay valid forever and
   // existing edges keep their meaning.
   rpc ArchiveProject(ArchiveProjectRequest) returns (ArchiveProjectResponse);
+  // HoldProject parks a project: every node in it leaves the ready set and
+  // none of their statuses change. Unlike archiving, the project stays
+  // writable, so parked work can still be planned.
+  rpc HoldProject(HoldProjectRequest) returns (HoldProjectResponse);
+  // UnholdProject releases a project's hold, returning its work to the
+  // ready set unless something else holds it back.
+  rpc UnholdProject(UnholdProjectRequest) returns (UnholdProjectResponse);
+  // Focus parks everything outside a keep-set: the projects of an
+  // organization, or the nodes of one project. It is declarative and
+  // replacing, so calling it again in a scope retires the previous sweep
+  // in the same transaction, and it holds only what is not already held.
+  rpc Focus(FocusRequest) returns (FocusResponse);
+  // ClearFocus releases the holds one focus sweep placed, leaving holds
+  // placed on their own alone. It needs no sweep id: at most one sweep is
+  // active per scope.
+  rpc ClearFocus(ClearFocusRequest) returns (ClearFocusResponse);
 }
 
 // WorkService is the lease side of the contract: what is ready, claiming it
@@ -193,6 +209,10 @@ message PatchOp {
     ResolveCommentOp resolve_comment = 11;
     // Record what a node is expected to cost, and why.
     EstimateNodeOp estimate_node = 12;
+    // Park a node and everything it contains.
+    HoldNodeOp hold_node = 13;
+    // Release a node's hold.
+    UnholdNodeOp unhold_node = 14;
   }
 }
 
@@ -390,6 +410,27 @@ message EstimateNodeOp {
   string basis = 7;
 }
 
+// HoldNodeOp parks a node. Containment carries the hold, so everything
+// under it is parked too, and nothing is written to those descendants.
+// Only a user principal may hold.
+message HoldNodeOp {
+  // Node reference of the node to park.
+  string node = 1;
+  // Why the work is parked. Required: a hold nobody can explain is one
+  // nobody dares release.
+  string reason = 2;
+}
+
+// UnholdNodeOp releases the hold on a node. It does not touch a hold on
+// something containing it, which keeps the node parked until that one is
+// released too.
+message UnholdNodeOp {
+  // Node reference of the node to release.
+  string node = 1;
+  // Why the work is coming back. Required.
+  string reason = 2;
+}
+
 // GetNodeRequest names one node.
 message GetNodeRequest {
   // The project a bare "#7" reference resolves in, by slug, org/slug, or
@@ -491,6 +532,10 @@ message ListNodesRequest {
   // Only children of this node, as a node reference. Empty means every
   // node.
   string parent = 6;
+  // Only nodes that are effectively held: parked by a hold on the node,
+  // on something containing it, or on its project. This is how parked
+  // work is found again, since it is absent from the ready set.
+  bool held = 10;
   // Maximum nodes to return. The server bounds it.
   int32 page_size = 7;
   // The next_page_token of the previous response. Empty for the first
@@ -541,6 +586,10 @@ message Reason {
     OpenChildReason open_child = 4;
     // The node's project is archived and read-only.
     ArchivedReason archived = 5;
+    // The node, or a node containing it, carries a hold.
+    HeldReason held = 6;
+    // The node's project carries a hold.
+    ProjectHeldReason project_held = 7;
   }
 }
 
@@ -575,6 +624,27 @@ message OpenChildReason {
 // ArchivedReason names the archived project the node belongs to.
 message ArchivedReason {
   // The project.
+  Project project = 1;
+}
+
+// HeldReason names one hold keeping the node parked. Explain reports
+// every hold in the chain, because the node becomes ready only when all
+// of them are released.
+message HeldReason {
+  // Number of the node carrying the hold, within the project.
+  int64 number = 1;
+  // Title of that node, so a caller need not look it up.
+  string title = 2;
+  // Whether the hold is on this node rather than on something containing
+  // it.
+  bool self = 3;
+  // The hold itself: who parked the work, when, and why.
+  Hold hold = 4;
+}
+
+// ProjectHeldReason names the held project the node belongs to.
+message ProjectHeldReason {
+  // The project, with its hold set.
   Project project = 1;
 }
 
@@ -677,6 +747,88 @@ message ArchiveProjectResponse {
   Project project = 1;
 }
 
+// HoldProjectRequest parks a project.
+message HoldProjectRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project, by slug, org/slug, or id.
+  string project = 2;
+  // Why the work is parked. Required.
+  string reason = 3;
+}
+
+// HoldProjectResponse is the held project.
+message HoldProjectResponse {
+  // The project, with its hold set.
+  Project project = 1;
+  // How many open nodes of the project left the ready set.
+  int32 held_count = 2;
+}
+
+// UnholdProjectRequest releases a project's hold.
+message UnholdProjectRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project, by slug, org/slug, or id.
+  string project = 2;
+  // Why the work is coming back. Required.
+  string reason = 3;
+}
+
+// UnholdProjectResponse is the released project.
+message UnholdProjectResponse {
+  // The project, with no hold.
+  Project project = 1;
+}
+
+// FocusRequest parks everything outside the keep-set of one scope. The
+// scope is the organization when project is empty and the keep-set names
+// projects; otherwise it is that project and the keep-set names its
+// nodes.
+message FocusRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project the sweep is scoped to, by slug, org/slug, or id. Empty
+  // sweeps the organization's projects.
+  string project = 2;
+  // What stays live. Projects when project is empty, otherwise nodes of
+  // that project. Everything else in scope is held.
+  repeated string keep = 3;
+  // Why everything else is parked. Required.
+  string reason = 4;
+}
+
+// FocusResponse reports the sweep that is now active.
+message FocusResponse {
+  // The sweep's id, recorded on every hold it placed. A caller needs it
+  // for nothing: ClearFocus finds the active sweep of a scope on its own.
+  string group = 1;
+  // How many projects or nodes this sweep parked.
+  int32 held_count = 2;
+  // How many holds the sweep it replaced released.
+  int32 released_count = 3;
+}
+
+// ClearFocusRequest releases the active sweep of one scope.
+message ClearFocusRequest {
+  // Client-supplied idempotency key. Required.
+  string request_id = 1;
+  // The project whose sweep to clear, by slug, org/slug, or id. Empty
+  // clears the organization's sweep over projects.
+  string project = 2;
+  // The sweep to clear. Empty clears the scope's active sweep, which is
+  // the ordinary case; give it only to disambiguate.
+  string group = 3;
+  // Why the work is coming back. Required.
+  string reason = 4;
+}
+
+// ClearFocusResponse reports what came back.
+message ClearFocusResponse {
+  // How many holds were released.
+  int32 released_count = 1;
+}
+
 // ReadyRequest asks for the ready set of one project. Ordering is by
 // priority then age, and priority is project-scoped, so a project is
 // required.
@@ -706,6 +858,10 @@ message ReadyResponse {
   repeated Node nodes = 1;
   // Token for the next page. Empty when this is the last.
   string next_page_token = 2;
+  // How many open nodes matching the same filters are held rather than
+  // ready. Counted only when the first page is empty, so that an empty
+  // answer says whether the work is finished or parked. Zero otherwise.
+  int32 held_count = 3;
 }
 
 // ClaimNextRequest asks for the next ready node matching the filters,

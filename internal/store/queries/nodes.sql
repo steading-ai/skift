@@ -64,3 +64,46 @@ SELECT c.id, c.parent_id, c.project_id,
               ORDER BY e.id LIMIT 1), '')::text AS created_by
 FROM chain c
 ORDER BY array_length(c.path, 1);
+
+-- Parks a node. Containment carries the hold at read time, so nothing is
+-- written to its descendants. See the Hold section of docs/domain-model.md.
+-- name: HoldNode :one
+UPDATE nodes
+SET held_at = now(), held_by = $3, held_reason = $4
+WHERE org_id = $1 AND id = $2
+RETURNING *;
+
+-- name: UnholdNode :one
+UPDATE nodes
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND id = $2
+RETURNING *;
+
+-- Parks the nodes a sweep selected, skipping any that already carry a
+-- hold: a node held on its own carries no hold_group and is left alone,
+-- so clearing the sweep does not release it.
+-- name: HoldNodeSet :many
+UPDATE nodes
+SET held_at = now(), held_by = $2, held_reason = $3, hold_group = $4
+WHERE org_id = $1 AND held_at IS NULL AND id = ANY(sqlc.arg(ids)::text[])
+RETURNING *;
+
+-- The containment of every open node of a project, which is all a sweep
+-- needs to choose what to park.
+-- name: OpenNodesOfProject :many
+SELECT id, parent_id FROM nodes
+WHERE org_id = $1 AND project_id = $2 AND status = 'open';
+
+-- Releases every node hold one sweep placed, and only those.
+-- name: ReleaseNodeHoldGroup :many
+UPDATE nodes
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND hold_group = $2
+RETURNING *;
+
+-- The sweeps with live node holds in a project, so the active one can be
+-- found without a caller remembering its id.
+-- name: NodeHoldGroups :many
+SELECT DISTINCT hold_group::text AS hold_group FROM nodes
+WHERE org_id = $1 AND project_id = $2 AND hold_group IS NOT NULL
+ORDER BY hold_group;

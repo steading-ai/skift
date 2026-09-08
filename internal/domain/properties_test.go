@@ -127,7 +127,7 @@ func (h *history) drawOp(aliases *[]string) domain.Op {
 	refs := h.refs(*aliases)
 	kind := "create"
 	if len(refs) > 0 {
-		kind = rapid.SampledFrom([]string{"create", "link", "unlink", "drop", "reopen", "reparent"}).Draw(t, "op")
+		kind = rapid.SampledFrom([]string{"create", "link", "unlink", "drop", "reopen", "reparent", "hold", "unhold"}).Draw(t, "op")
 	}
 	ref := func(label string) string { return rapid.SampledFrom(refs).Draw(t, label) }
 
@@ -151,6 +151,10 @@ func (h *history) drawOp(aliases *[]string) domain.Op {
 		return domain.Op{DropNode: op}
 	case "reopen":
 		return domain.Op{ReopenNode: &domain.ReopenNode{Node: ref("node"), Reason: "again"}}
+	case "hold":
+		return domain.Op{HoldNode: &domain.HoldNode{Node: ref("node"), Reason: "parked"}}
+	case "unhold":
+		return domain.Op{UnholdNode: &domain.UnholdNode{Node: ref("node"), Reason: "back"}}
 	case "reparent":
 		parent := ""
 		if rapid.IntRange(0, 3).Draw(t, "root") > 0 {
@@ -469,7 +473,7 @@ func (st *state) findCycle() []string {
 // recomputeReady derives the ready set from the rows alone, by the
 // definition in the Readiness section of docs/domain-model.md: open, in a
 // live project, every `blocks` predecessor satisfied, no live lease, no
-// open child.
+// hold on it or on anything containing it, and no open child.
 func (st *state) recomputeReady(now time.Time) []store.Node {
 	byID := map[string]store.Node{}
 	for _, n := range st.nodes {
@@ -479,10 +483,35 @@ func (st *state) recomputeReady(now time.Time) []store.Node {
 	for _, p := range st.projects {
 		archived[p.ID] = p.ArchivedAt != nil
 	}
-	held := map[string]bool{}
+	leased := map[string]bool{}
 	for _, l := range st.leases {
 		if l.ReleasedAt == nil && l.ExpiresAt.After(now) {
-			held[l.NodeID] = true
+			leased[l.NodeID] = true
+		}
+	}
+	projectHeld := map[string]bool{}
+	for _, p := range st.projects {
+		projectHeld[p.ID] = p.HeldAt != nil
+	}
+	// A node is effectively held when it, anything containing it, or its
+	// project carries a hold. The walk goes to the root, as the query's
+	// does.
+	held := map[string]bool{}
+	for _, n := range st.nodes {
+		held[n.ID] = projectHeld[n.ProjectID]
+		for at, ok := n.ID, true; ok && !held[n.ID]; {
+			node, exists := byID[at]
+			if !exists {
+				break
+			}
+			if node.HeldAt != nil {
+				held[n.ID] = true
+				break
+			}
+			if node.ParentID == nil {
+				break
+			}
+			at, ok = *node.ParentID, true
 		}
 	}
 	hasOpenChild := map[string]bool{}
@@ -505,7 +534,7 @@ func (st *state) recomputeReady(now time.Time) []store.Node {
 
 	var ready []store.Node
 	for _, n := range st.nodes {
-		if n.Status == "open" && !archived[n.ProjectID] && !blocked[n.ID] && !held[n.ID] && !hasOpenChild[n.ID] {
+		if n.Status == "open" && !archived[n.ProjectID] && !blocked[n.ID] && !leased[n.ID] && !held[n.ID] && !hasOpenChild[n.ID] {
 			ready = append(ready, n)
 		}
 	}
@@ -580,6 +609,78 @@ func (h *history) checkReady(st *state) {
 			h.fatalf("ready order drifted\n  query:       %s\n  recomputed:  %s", describeNodes(st.readyOrdered), describeNodes(ordered))
 		}
 	}
+}
+
+// checkDerived asserts the three answers to "is this node ready" agree:
+// membership in the ready set, the Ready flag on the node's derived state,
+// and Explain reporting no reason it is not.
+//
+// They are three separate statements of one rule. The ready set is a SQL
+// conjunction of anti-joins, the flag is a Go expression over
+// independently selected booleans, and Explain runs the same fragments
+// un-negated. A readiness condition added to one and not the others
+// compiles and passes every example spec, so this is what catches it.
+//
+// Everything is read in one transaction, because the conditions include a
+// lease expiring and the three answers must be taken from one snapshot.
+func (h *history) checkDerived(st *state) {
+	type answer struct {
+		inSet   bool
+		flag    bool
+		explain bool
+		reasons []domain.Reason
+	}
+	answers := map[string]answer{}
+	err := h.s.WithTx(h.ctx, func(ctx context.Context, tx store.Tx) error {
+		ready, err := domain.ReadySet(ctx, tx, h.org, domain.ReadyQuery{})
+		if err != nil {
+			return err
+		}
+		inSet := map[string]bool{}
+		for _, n := range ready {
+			inSet[n.ID] = true
+		}
+		derived, err := domain.Derive(ctx, tx, h.org, st.nodes)
+		if err != nil {
+			return err
+		}
+		for _, n := range st.nodes {
+			e, err := domain.Explain(ctx, tx, h.org, n.ID)
+			if err != nil {
+				return err
+			}
+			answers[n.ID] = answer{
+				inSet:   inSet[n.ID],
+				flag:    derived[n.ID].Ready,
+				explain: e.Ready(),
+				reasons: e.Reasons,
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		h.fatalf("derive and explain: %v", err)
+	}
+	for _, n := range st.nodes {
+		a := answers[n.ID]
+		if a.inSet == a.flag && a.flag == a.explain {
+			continue
+		}
+		h.fatalf("the three readiness answers disagree for #%d\n  ready set:   %t\n  Ready flag:  %t\n  Explain:     %t (%s)",
+			n.Number, a.inSet, a.flag, a.explain, describeReasons(a.reasons))
+	}
+}
+
+// describeReasons renders why a node is not ready, for a failure message.
+func describeReasons(reasons []domain.Reason) string {
+	if len(reasons) == 0 {
+		return "no reasons"
+	}
+	parts := make([]string, 0, len(reasons))
+	for _, r := range reasons {
+		parts = append(parts, string(r.Kind))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // newHistory starts a run in a fresh organization with one project, a
@@ -698,6 +799,14 @@ var _ = Describe("Graph properties", Label(testsupport.DBLabel), func() {
 		By("then the ready query result matches an independent recomputation every time")
 		checkProperty(func(t *rapid.T) {
 			run(ctx, t, s, (*history).checkReady)
+		})
+	})
+
+	It("The ready set, the Ready flag, and Explain agree", func(ctx SpecContext) {
+		By("given 1000 random patch sequences")
+		By("then every node is ready in all three views or in none of them")
+		checkProperty(func(t *rapid.T) {
+			run(ctx, t, s, (*history).checkDerived)
 		})
 	})
 })

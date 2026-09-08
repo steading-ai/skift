@@ -31,14 +31,20 @@ agents, schedule work, or define workflows.
 
 ## The model
 
-Ready = open, unblocked, unleased, **and no open children**. It is derived on
-every query, never stored, so you change readiness only by changing its inputs.
+Ready = open, unblocked, **unheld**, unleased, **and no open children**. It is
+derived on every query, never stored, so you change readiness only by changing
+its inputs.
 
 | Relation | Means |
 |---|---|
 | edge / `blocked_by` | dependency — an edge from A to B makes **B wait for A** |
 | `parent` | containment — a node with open children is a grouping node, never ready |
 | lease | possession — claiming returns a lease id, the fencing token for every later write to that node |
+| hold | a person parked this work — it leaves the ready set, its status untouched, until they release it |
+
+Priority orders the ready set; a hold decides what is in it. A hold is carried
+by containment, so parking a node parks everything under it, including work
+filed there later, and a held node still blocks what depends on it.
 
 A predecessor satisfies a dependency by being `done` **or** `dropped` — except a
 **gate** (`assignee_kind: user`), satisfied only by a user completing it. A
@@ -64,8 +70,10 @@ transitive: a predecessor's result is the summary of its own inputs.
 
 MCP tools are the default: `ready`, `search`, `show_node`, `inputs`,
 `node_list`, `explain`, `claim`, `heartbeat`, `release`, `complete`, `comment`,
-`apply_patch`, `project_list`, `project_show`, `project_create`. A lease taken
-through them renews in the background, and is released if the session ends.
+`apply_patch`, `hold`, `focus`, `project_list`, `project_show`,
+`project_create`. A lease taken through them renews in the background, and is
+released if the session ends. `hold` and `focus` are there for a person working
+through you; an agent principal is refused.
 
 `ready` is what you can work on; `node_list` is everything else — what is open,
 what is done, what a label or a parent covers. Triage and reporting go through
@@ -103,6 +111,15 @@ is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
   The server refuses the patch and names the real count when the subtree is
   larger, so read the graph before choosing the number. The response lists every
   reference dropped, which is what a `reopen_node` undoing it works from.
+- **An empty `ready` is not a finished project.** The response carries
+  `held_count`: work someone parked is absent, not done. `explain` on any node
+  says who parked it, when, and why, and names every hold in the way — a node
+  comes back only when all of them are released. Releasing a node's own hold
+  does not touch a hold on something containing it.
+- **Only a user may hold or release.** Parking work decides what everyone works
+  on next, and an agent that could park could hide work from the people and
+  agents around it. If you think something should be parked, comment where a
+  person will read it and leave it in the ready set.
 - **A node whose `assignee_kind` is `user` is a gate**, and policy refuses an
   agent that claims one: `an agent may not claim gate 01J…`. A gate is work
   only a person can perform — signing up for a service, minting a token,

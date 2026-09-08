@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -97,12 +98,60 @@ SELECT p.*
 FROM projects p
 WHERE p.org_id = $1 AND p.id = n.project_id AND p.archived_at IS NOT NULL`
 
+// heldAncestors are n itself and the nodes containing it, up through
+// parent_id, that carry a hold: a stored decision to park work. A hold
+// takes a node out of the ready set without changing its status, the way
+// a live lease does, and containment carries it, because holding an epic
+// that did not hold its children would hold nothing claimable. See the
+// Hold section of docs/domain-model.md.
+//
+// The walk goes to the root. There is no depth ceiling on the parent
+// chain, and a bounded walk would return a node held from further up to
+// the ready set, which is the failure the hold exists to prevent. UNION
+// rather than UNION ALL for the reason waitReach uses it: re-expanding a
+// node reproduces a row already emitted, so the walk terminates rather
+// than spinning to the statement timeout. The step is the (project_id,
+// id) lookup nodes_project_id_id_key serves, and nodes_parent_fkey pins a
+// parent to its child's project, so the walk cannot leave the project the
+// seed scoped it to.
+//
+// The chain carries only what the walk needs, because UNION de-duplicates
+// on every column it selects; the hold itself is joined back once at the
+// end, where Explain scans these rows into a struct by name. EXISTS
+// ignores that final list, so the other call sites pay nothing for it.
+const heldAncestors = `
+WITH RECURSIVE chain AS (
+    SELECT a.id, a.parent_id, a.project_id
+    FROM nodes a
+    WHERE a.org_id = $1 AND a.id = n.id
+  UNION
+    SELECT p.id, p.parent_id, p.project_id
+    FROM chain
+    JOIN nodes p ON p.project_id = chain.project_id AND p.id = chain.parent_id
+)
+SELECT h.number, h.title, h.held_at, h.held_by, h.held_reason,
+       h.hold_group, (h.id = n.id) AS self
+FROM chain c
+JOIN nodes h ON h.project_id = c.project_id AND h.id = c.id
+WHERE h.held_at IS NOT NULL`
+
+// heldProject is n's project when it is held: every node in it leaves the
+// ready set and none of their statuses change. Unlike an archived
+// project, a held one is still writable. projects_held_idx serves the
+// lookup.
+const heldProject = `
+SELECT p.*
+FROM projects p
+WHERE p.org_id = $1 AND p.id = n.project_id AND p.held_at IS NOT NULL`
+
 // readyWhere is the readiness predicate on n, with $1 the organization.
 const readyWhere = `n.org_id = $1 AND n.status = 'open'
   AND NOT EXISTS (` + unsatisfiedBlockers + `)
   AND NOT EXISTS (` + liveLease + `)
   AND NOT EXISTS (` + openChildren + `)
-  AND NOT EXISTS (` + archivedProject + `)`
+  AND NOT EXISTS (` + archivedProject + `)
+  AND NOT EXISTS (` + heldProject + `)
+  AND NOT EXISTS (` + heldAncestors + `)`
 
 // Ready returns the ready nodes of one project that match q, most urgent
 // and then oldest first: priority, created_at, id. The outer scan is
@@ -225,7 +274,30 @@ const (
 	ReasonLeased ReasonKind = "leased"
 	// ReasonOpenChild: an open child keeps the node from being ready.
 	ReasonOpenChild ReasonKind = "open_child"
+	// ReasonHeld: the node, or a node containing it, carries a hold.
+	ReasonHeld ReasonKind = "held"
+	// ReasonProjectHeld: the node's project carries a hold.
+	ReasonProjectHeld ReasonKind = "project_held"
 )
+
+// Hold is the stored decision that keeps work out of the ready set: which
+// node carries it, who applied it, when, and why. A hold is never
+// permanent, so a held node is parked rather than stuck.
+type Hold struct {
+	// Number and Title identify the node carrying the hold.
+	Number int64
+	Title  string
+	// Self reports that the hold is on the node being explained rather
+	// than on something containing it.
+	Self bool
+	At   time.Time
+	By   string
+	// Reason is why the work was parked. Always set: a hold nobody can
+	// explain is one nobody dares release.
+	Reason string
+	// Group is the focus sweep that placed the hold, if a sweep did.
+	Group *string
+}
 
 // Reason is one structured answer to why a node is not ready. Kind says
 // which of the optional fields is set.
@@ -243,8 +315,11 @@ type Reason struct {
 	Lease *store.Lease
 	// Child is the open child, for [ReasonOpenChild].
 	Child *store.Node
-	// Project is the archived project, for [ReasonArchived].
+	// Project is the project, for [ReasonArchived] and
+	// [ReasonProjectHeld].
 	Project *store.Project
+	// Hold is the hold keeping the node parked, for [ReasonHeld].
+	Hold *Hold
 	// Permanent reports that no transition of the graph can clear this
 	// reason: a dropped gate, since dropped is terminal and a gate is
 	// satisfied only by completion; or the node itself being dropped.
@@ -267,6 +342,15 @@ func (r Reason) String() string {
 		return fmt.Sprintf("it is held by lease %s until %s", r.Lease.ID, r.Lease.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z"))
 	case ReasonOpenChild:
 		return fmt.Sprintf("its child #%d is open", r.Child.Number)
+	case ReasonHeld:
+		where := fmt.Sprintf("it is contained in #%d, which is", r.Hold.Number)
+		if r.Hold.Self {
+			where = "it is"
+		}
+		return fmt.Sprintf("%s held since %s: %s", where,
+			r.Hold.At.UTC().Format("2006-01-02T15:04:05Z"), r.Hold.Reason)
+	case ReasonProjectHeld:
+		return fmt.Sprintf("its project %s is held: %s", r.Project.Slug, *r.Project.HeldReason)
 	}
 	return string(r.Kind)
 }
@@ -300,8 +384,9 @@ func (e *Explanation) Stuck() bool {
 
 // Explain answers why the node is not ready, as the same conditions Ready
 // checks, un-negated. Reasons come in a fixed order: not open, archived,
+// the project's hold, the holds on the node and what contains it, then
 // blockers by project then number, the live lease, open children by
-// number.
+// number. Project-scoped facts come before node-scoped ones.
 func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanation, error) {
 	node, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -322,6 +407,33 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 	}
 	for i := range projects {
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonArchived, Project: &projects[i]})
+	}
+
+	heldProjects, err := explainRows[store.Project](ctx, tx, heldProject, "", orgID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range heldProjects {
+		e.Reasons = append(e.Reasons, Reason{Kind: ReasonProjectHeld, Project: &heldProjects[i]})
+	}
+
+	// Every hold in the chain, not only the nearest: the node becomes
+	// ready when all of them are released, so reporting one would leave
+	// an item off the list.
+	holds, err := explainRows[heldRow](ctx, tx, heldAncestors, "ORDER BY x.self DESC, x.number", orgID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range holds {
+		e.Reasons = append(e.Reasons, Reason{Kind: ReasonHeld, Hold: &Hold{
+			Number: h.Number,
+			Title:  h.Title,
+			Self:   h.Self,
+			At:     h.HeldAt,
+			By:     h.HeldBy,
+			Reason: h.HeldReason,
+			Group:  h.HoldGroup,
+		}})
 	}
 
 	blockers, err := explainRows[store.Node](ctx, tx, unsatisfiedBlockers, "ORDER BY x.project_id, x.number", orgID, nodeID)
@@ -350,6 +462,18 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonOpenChild, Child: &children[i]})
 	}
 	return e, nil
+}
+
+// heldRow is one row of heldAncestors: a node in the chain that carries a
+// hold. Its fields match that fragment's select list.
+type heldRow struct {
+	Number     int64     `db:"number"`
+	Title      string    `db:"title"`
+	HeldAt     time.Time `db:"held_at"`
+	HeldBy     string    `db:"held_by"`
+	HeldReason string    `db:"held_reason"`
+	HoldGroup  *string   `db:"hold_group"`
+	Self       bool      `db:"self"`
 }
 
 // explainRows runs one readiness subquery for the node $2 of organization

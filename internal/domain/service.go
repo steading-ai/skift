@@ -178,11 +178,12 @@ func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q Searc
 // Ready returns one page of the ready set of the project ref names, most
 // urgent and then oldest first. q.Projects is replaced by the resolved
 // project. See [Ready].
-func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery) ([]NodeState, error) {
+func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery) ([]NodeState, int, error) {
 	if project == "" {
-		return nil, ErrProjectRequired
+		return nil, 0, ErrProjectRequired
 	}
 	var out []NodeState
+	var held int
 	err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 		p, err := resolveProject(ctx, tx, orgID, project)
 		if err != nil {
@@ -193,10 +194,24 @@ func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery
 		if err != nil {
 			return err
 		}
+		// An empty first page owes its caller the difference between
+		// finished and parked, and nothing else has to pay for the
+		// count.
+		if len(nodes) == 0 && q.Offset == 0 {
+			if held, err = HeldCount(ctx, tx, orgID, p.ID); err != nil {
+				return err
+			}
+		}
 		out, err = annotate(ctx, tx, orgID, nodes)
 		return err
 	})
-	return out, err
+	return out, held, err
+}
+
+// recorder is the event writer for one transaction, carrying the actor,
+// the policy and the request every event of that transaction shares.
+func (g *Service) recorder(tx store.Tx, orgID string, actor Actor, requestID *string) *recorder {
+	return &recorder{tx: tx, orgID: orgID, actor: actor, policy: g.pol, request: requestID}
 }
 
 // ClaimOutcome is what a claim produced, with the claimed node's derived

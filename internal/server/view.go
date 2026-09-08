@@ -20,9 +20,10 @@ func viewOr(v, def daggerv1.View) daggerv1.View {
 
 // projectNode returns n as view shows it. VIEW_FULL is n itself. VIEW_REFS
 // is what names the node and says where it stands: number, reference,
-// status, and the blocked, ready, and claimed flags. VIEW_SUMMARY adds the
-// id, the project (search crosses projects), and what choosing work reads.
-// Neither carries the body.
+// status, and the blocked, ready, claimed, and held flags. VIEW_SUMMARY
+// adds the id, the project (search crosses projects), the hold parking the
+// node if it carries one, and what choosing work reads. Neither carries the
+// body.
 func projectNode(n *daggerv1.Node, view daggerv1.View) *daggerv1.Node {
 	if n == nil || view == daggerv1.View_VIEW_FULL {
 		return n
@@ -34,6 +35,7 @@ func projectNode(n *daggerv1.Node, view daggerv1.View) *daggerv1.Node {
 		Blocked:   n.GetBlocked(),
 		Ready:     n.GetReady(),
 		Claimed:   n.GetClaimed(),
+		Held:      n.GetHeld(),
 	}
 	if view == daggerv1.View_VIEW_SUMMARY {
 		out.Id = n.GetId()
@@ -45,6 +47,7 @@ func projectNode(n *daggerv1.Node, view daggerv1.View) *daggerv1.Node {
 		out.Assignee = n.GetAssignee()
 		out.Labels = n.GetLabels()
 		out.HumanTouched = n.GetHumanTouched()
+		out.Hold = n.GetHold()
 	}
 	return out
 }

@@ -36,7 +36,7 @@ const archiveProject = `-- name: ArchiveProject :one
 UPDATE projects
 SET archived_at = coalesce(archived_at, now())
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
 `
 
 type ArchiveProjectParams struct {
@@ -56,6 +56,10 @@ func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) 
 		&i.NodeCounter,
 		&i.ArchivedAt,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
@@ -63,7 +67,7 @@ func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) 
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (id, org_id, slug, title, priority)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
 `
 
 type CreateProjectParams struct {
@@ -92,12 +96,16 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.NodeCounter,
 		&i.ArchivedAt,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at FROM projects
+SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group FROM projects
 WHERE org_id = $1 AND id = $2
 `
 
@@ -118,12 +126,16 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 		&i.NodeCounter,
 		&i.ArchivedAt,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT p.id, p.org_id, p.slug, p.title, p.priority, p.node_counter, p.archived_at, p.created_at FROM projects AS p
+SELECT p.id, p.org_id, p.slug, p.title, p.priority, p.node_counter, p.archived_at, p.created_at, p.held_at, p.held_by, p.held_reason, p.hold_group FROM projects AS p
 JOIN project_slugs AS s ON s.org_id = p.org_id AND s.project_id = p.id
 WHERE p.org_id = $1 AND s.slug = $2
 `
@@ -147,12 +159,114 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, arg GetProjectBySlugPara
 		&i.NodeCounter,
 		&i.ArchivedAt,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
 
+const holdProject = `-- name: HoldProject :one
+UPDATE projects
+SET held_at = now(), held_by = $3, held_reason = $4
+WHERE org_id = $1 AND id = $2
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type HoldProjectParams struct {
+	OrgID      string
+	ID         string
+	HeldBy     *string
+	HeldReason *string
+}
+
+// Parks a project: every node in it leaves the ready set, and unlike
+// archiving the project stays writable.
+func (q *Queries) HoldProject(ctx context.Context, arg HoldProjectParams) (Project, error) {
+	row := q.db.QueryRow(ctx, holdProject,
+		arg.OrgID,
+		arg.ID,
+		arg.HeldBy,
+		arg.HeldReason,
+	)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Title,
+		&i.Priority,
+		&i.NodeCounter,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
+	)
+	return i, err
+}
+
+const holdProjectsOutside = `-- name: HoldProjectsOutside :many
+UPDATE projects
+SET held_at = now(), held_by = $2, held_reason = $3, hold_group = $4
+WHERE org_id = $1 AND archived_at IS NULL AND held_at IS NULL
+  AND NOT (id = ANY($5::text[]))
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type HoldProjectsOutsideParams struct {
+	OrgID      string
+	HeldBy     *string
+	HeldReason *string
+	HoldGroup  *string
+	Keep       []string
+}
+
+// The projects a sweep would park: everything outside the keep-set that is
+// not archived and not already held.
+func (q *Queries) HoldProjectsOutside(ctx context.Context, arg HoldProjectsOutsideParams) ([]Project, error) {
+	rows, err := q.db.Query(ctx, holdProjectsOutside,
+		arg.OrgID,
+		arg.HeldBy,
+		arg.HeldReason,
+		arg.HoldGroup,
+		arg.Keep,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Slug,
+			&i.Title,
+			&i.Priority,
+			&i.NodeCounter,
+			&i.ArchivedAt,
+			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
-SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at FROM projects
+SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group FROM projects
 WHERE org_id = $1
   AND (archived_at IS NULL OR $2::boolean)
 ORDER BY created_at DESC, id DESC
@@ -191,6 +305,83 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 			&i.NodeCounter,
 			&i.ArchivedAt,
 			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const projectHoldGroups = `-- name: ProjectHoldGroups :many
+SELECT DISTINCT hold_group::text AS hold_group FROM projects
+WHERE org_id = $1 AND hold_group IS NOT NULL
+ORDER BY hold_group
+`
+
+// The sweeps with live project holds, so the active one can be found
+// without a caller remembering its id.
+func (q *Queries) ProjectHoldGroups(ctx context.Context, orgID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, projectHoldGroups, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var hold_group string
+		if err := rows.Scan(&hold_group); err != nil {
+			return nil, err
+		}
+		items = append(items, hold_group)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const releaseProjectHoldGroup = `-- name: ReleaseProjectHoldGroup :many
+UPDATE projects
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND hold_group = $2
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type ReleaseProjectHoldGroupParams struct {
+	OrgID     string
+	HoldGroup *string
+}
+
+func (q *Queries) ReleaseProjectHoldGroup(ctx context.Context, arg ReleaseProjectHoldGroupParams) ([]Project, error) {
+	rows, err := q.db.Query(ctx, releaseProjectHoldGroup, arg.OrgID, arg.HoldGroup)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Slug,
+			&i.Title,
+			&i.Priority,
+			&i.NodeCounter,
+			&i.ArchivedAt,
+			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -206,7 +397,7 @@ const renameProject = `-- name: RenameProject :one
 UPDATE projects
 SET slug = $3, title = $4
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
 `
 
 type RenameProjectParams struct {
@@ -233,6 +424,42 @@ func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (P
 		&i.NodeCounter,
 		&i.ArchivedAt,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
+	)
+	return i, err
+}
+
+const unholdProject = `-- name: UnholdProject :one
+UPDATE projects
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND id = $2
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type UnholdProjectParams struct {
+	OrgID string
+	ID    string
+}
+
+func (q *Queries) UnholdProject(ctx context.Context, arg UnholdProjectParams) (Project, error) {
+	row := q.db.QueryRow(ctx, unholdProject, arg.OrgID, arg.ID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Title,
+		&i.Priority,
+		&i.NodeCounter,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }

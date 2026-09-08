@@ -213,7 +213,8 @@ var _ = Describe("service.proto", func() {
 	It("defines every service and RPC the work order names", func() {
 		want := map[string][]string{
 			"GraphService": {"ApplyPatch", "GetNode", "GetInputs", "ListNodes", "Explain", "Search",
-				"CreateProject", "GetProject", "ListProjects", "ArchiveProject"},
+				"CreateProject", "GetProject", "ListProjects", "ArchiveProject",
+				"HoldProject", "UnholdProject", "Focus", "ClearFocus"},
 			"WorkService":  {"Ready", "ClaimNext", "Heartbeat", "Release", "ReportUsage"},
 			"EventService": {"WatchEvents"},
 		}
@@ -250,7 +251,7 @@ var _ = Describe("service.proto", func() {
 		}
 		Expect(got).To(ConsistOf("create_node", "update_node", "drop_node", "complete_node",
 			"reopen_node", "add_edge", "remove_edge", "attach_artifact", "add_comment",
-			"edit_comment", "resolve_comment", "estimate_node"))
+			"edit_comment", "resolve_comment", "estimate_node", "hold_node", "unhold_node"))
 		for _, name := range []string{"alias", "parent", "blocked_by"} {
 			Expect(c.field("CreateNodeOp", name).typ).To(Equal("string"), name)
 		}

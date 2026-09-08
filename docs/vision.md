@@ -37,7 +37,7 @@ Cheap projects trade a curation problem for a discovery problem. Hundreds of sho
 
 ## What dagger is not
 
-- **Not an orchestrator.** Dagger exposes ready work and leases. Deciding which agent runs what, where, and with what budget belongs to the orchestrator. Hive and its successors are consumers.
+- **Not an orchestrator.** Dagger stores which work is live and exposes it with leases. Deciding which live work runs next, which agent, where, in what order, and against what budget, belongs to the orchestrator. What is live is intent, and intent is recorded here; what runs next is scheduling, and it is not. Hive and its successors are consumers.
 - **Not an agent runtime.** Dagger never spawns, supervises, or talks to an agent. Agents and orchestrators talk to dagger.
 - **Not a model of the organization.** Departments, teams, objectives, and company goals are not dagger's to represent. Group membership arrives as an input to policy from wherever the organization already keeps it, and a project management agent can work with a separate system for high-level priorities. The graph is work decomposition; conflating it with reporting lines or intent hierarchies is how trackers acquire their reputation.
 - **Not a workflow engine.** There are no stages, columns, or state machines in dagger. A pipeline of define, plan, build, and review is four nodes and three edges. A gate that only a human can pass is a node assigned to a human.
@@ -53,8 +53,8 @@ A planning session can look at what completed work actually cost, in tokens by m
 
 ## How to stay honest
 
-- The core is nodes, edges, leases, atomic patches, and the ready set. Everything else is a client or a column. If a feature needs more than that in the service, ask why.
+- The core is nodes, edges, leases, holds, atomic patches, and the ready set. Everything else is a client or a column. If a feature needs more than that in the service, ask why.
 - Fit for one server, shaped for a thousand. Tenancy columns exist from the first migration. Tenancy features do not exist until a second organization does.
-- If `Ready` grows an opinion about which node should run first, an orchestrator's policy has leaked into the store.
+- If `Ready` grows an opinion about which node should run *first*, an orchestrator's policy has leaked into the store. Leaving out work that someone recorded a decision to park is not that opinion.
 - The proto contract is the design artifact. Spend design time there, not on tables.
 - Build the minimum that lets one orchestrator run one node end to end. Then use it daily.

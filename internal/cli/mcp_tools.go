@@ -30,6 +30,12 @@ set, not a gate. A backlog where everything is p1 orders by age.`
 const kindIdiom = `kind is a free string dagger never interprets, task the default, bug,
 spike and chore the rest of a conventional, open vocabulary.`
 
+// holdIdiom is what a hold means, stated once. Held work is absent from
+// the ready set rather than finished, which is the conclusion an agent
+// would otherwise draw from an empty answer.
+const holdIdiom = `Held work is parked, not finished, and only a user may park or release
+it. If you think work should be parked, say so in a comment.`
+
 // filterSchema is the filter arguments ready and claim share.
 func filterSchema() map[string]any {
 	return map[string]any{
@@ -47,6 +53,16 @@ func stringProp(description string) map[string]any {
 
 func enumProp(description string, values []string) map[string]any {
 	return map[string]any{"type": "string", "enum": values, "description": description}
+}
+
+func boolProp(description string) map[string]any {
+	return map[string]any{"type": "boolean", "description": description}
+}
+
+// requestIDProp is the idempotency key every mutating tool takes, worded
+// once.
+func requestIDProp() map[string]any {
+	return stringProp("Idempotency key. Defaults to a fresh one; pass the same one to retry safely.")
 }
 
 func objectSchema(properties map[string]any, required ...string) map[string]any {
@@ -238,6 +254,7 @@ whole backlog. Summaries, no bodies.`,
 				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
 				"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
 				"parent":        stringProp(`Only the children of this node, as a node reference such as "#7".`),
+				"held":          boolProp("Only parked nodes: held themselves, contained in something held, or in a held project. This is how held work is found again, since it is absent from the ready set."),
 				"view":          viewProp(daggerv1.View_VIEW_SUMMARY),
 			})),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
@@ -248,6 +265,7 @@ whole backlog. Summaries, no bodies.`,
 					AssigneeKind string   `json:"assignee_kind"`
 					Labels       []string `json:"labels"`
 					Parent       string   `json:"parent"`
+					Held         bool     `json:"held"`
 					View         string   `json:"view"`
 					pageArgs
 				}
@@ -275,7 +293,7 @@ whole backlog. Summaries, no bodies.`,
 				}
 				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{
 					Project: project, Status: status, Kind: args.Kind, AssigneeKind: assigneeKind,
-					Labels: args.Labels, Parent: args.Parent,
+					Labels: args.Labels, Parent: args.Parent, Held: args.Held,
 					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
@@ -311,7 +329,7 @@ whole, all or none. The one way to change the graph.
 Operations, each shaped by the ops schema: create_node, update_node,
 drop_node, complete_node, reopen_node, add_edge, remove_edge,
 attach_artifact, add_comment, edit_comment, resolve_comment,
-estimate_node. Name a node
+estimate_node, hold_node, unhold_node. Name a node
 by reference (` + "`#7`, `slug#7`, `org/slug#7`" + `) or by an alias a create_node
 declared earlier:
 
@@ -335,12 +353,14 @@ the real count when the subtree is larger. A patch touching a node you
 hold a lease on must carry that lease_id.
 
 estimate_node records an expected cost with a basis; the orchestrator
-reports actuals, so no tool here does.`,
+reports actuals, so no tool here does.
+
+hold_node and unhold_node park work; the hold tool is the shorter way.`,
 			schema: objectSchema(map[string]any{
 				"ops":        opsProperty(),
 				"project":    stringProp("Project the patch applies to and bare references resolve in. Defaults to the current project."),
 				"lease_id":   stringProp("Fencing token of the lease you hold, required when the patch touches a leased node. Defaults to the one lease this session holds, if exactly one."),
-				"request_id": stringProp("Idempotency key. Defaults to a fresh one; pass the same one to retry safely."),
+				"request_id": requestIDProp(),
 				"view":       viewProp(daggerv1.View_VIEW_REFS),
 			}, "ops"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
@@ -370,10 +390,13 @@ reports actuals, so no tool here does.`,
 		},
 		{
 			name: "ready",
-			description: `List the ready set: nodes open, unblocked, unleased and with no open
-children, most urgent first and then oldest. Nothing is claimed. Use it
-to see what could be worked on next; use claim to take one. Summaries,
+			description: `List the ready set: nodes open, unblocked, unheld, unleased and with no
+open children, most urgent first and then oldest. Nothing is claimed. Use
+it to see what could be worked on next; use claim to take one. Summaries,
 no bodies.
+
+An empty answer carries held_count: held work is parked, not done, and
+explain says who parked it.
 
 ` + priorityIdiom + `
 It is the first sort key here, and the only thing dagger does with it.`,
@@ -637,6 +660,84 @@ agent or person reads them. Use it for anything that is not the result.`,
 			},
 		},
 		{
+			name: "hold",
+			description: `Park a node, or release it with release: true. It leaves the ready set
+with its status untouched, everything it contains is parked with it, and
+it still blocks what depends on it.
+
+` + holdIdiom,
+			schema: objectSchema(map[string]any{
+				"node":       stringProp(`The node, as "#7", "slug#7", or "org/slug#7".`),
+				"reason":     stringProp("Why the work is parked, or why it is coming back. Required: a hold nobody can explain is one nobody dares release."),
+				"release":    boolProp("Release the node's hold instead of placing one."),
+				"request_id": requestIDProp(),
+			}, "node", "reason"),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					Node      string `json:"node"`
+					Reason    string `json:"reason"`
+					Release   bool   `json:"release"`
+					RequestID string `json:"request_id"`
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				ref, err := parseRef(args.Node)
+				if err != nil {
+					return nil, err
+				}
+				project, err := a.projectFor(ref)
+				if err != nil {
+					return nil, err
+				}
+				return unwrap(c.Graph.ApplyPatch(ctx, connect.NewRequest(&daggerv1.ApplyPatchRequest{
+					RequestId: orMint(args.RequestID), Project: project,
+					Ops:  []*daggerv1.PatchOp{holdOp(ref.String(), args.Reason, args.Release)},
+					View: daggerv1.View_VIEW_SUMMARY,
+				})))
+			},
+		},
+		{
+			name: "focus",
+			description: `Park everything outside the keep-set, or release that sweep with
+release: true. Without project the keep-set names projects; with one it
+names that project's nodes, and keeping a node keeps its whole lineage.
+
+Focus replaces rather than stacks, so release needs no sweep id, and
+touches only its own holds.`,
+			schema: objectSchema(map[string]any{
+				"keep":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "What stays live: project slugs when no project is given, otherwise node references within it. Everything else in scope is parked."},
+				"project":    stringProp("Scope the sweep to this project, by slug or org/slug, so the keep-set names its nodes. Omit to sweep the organization's projects."),
+				"reason":     stringProp("Why everything else is parked, or why it is coming back. Required."),
+				"release":    boolProp("Release the scope's active sweep instead of placing one. Takes no keep-set."),
+				"group":      stringProp("The sweep to release. Only needed to disambiguate; a scope has at most one active sweep."),
+				"request_id": requestIDProp(),
+			}, "reason"),
+			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
+				var args struct {
+					Keep      []string `json:"keep"`
+					Project   string   `json:"project"`
+					Reason    string   `json:"reason"`
+					Release   bool     `json:"release"`
+					Group     string   `json:"group"`
+					RequestID string   `json:"request_id"`
+				}
+				if err := decodeArgs(raw, &args); err != nil {
+					return nil, err
+				}
+				if args.Release {
+					return unwrap(c.Graph.ClearFocus(ctx, connect.NewRequest(&daggerv1.ClearFocusRequest{
+						RequestId: orMint(args.RequestID), Project: args.Project,
+						Group: args.Group, Reason: args.Reason,
+					})))
+				}
+				return unwrap(c.Graph.Focus(ctx, connect.NewRequest(&daggerv1.FocusRequest{
+					RequestId: orMint(args.RequestID), Project: args.Project,
+					Keep: args.Keep, Reason: args.Reason,
+				})))
+			},
+		},
+		{
 			name: "project_list",
 			description: `List the projects this caller may read, most recently active first, with
 slug, title, advisory priority and node counter. Use it to find the slug
@@ -644,7 +745,7 @@ a reference needs, and whenever a bare "#7" cannot resolve for want of a
 current project. It lists projects, not work; archived ones are read-only
 and left out unless asked for.`,
 			schema: objectSchema(pageSchema(map[string]any{
-				"include_archived": map[string]any{"type": "boolean", "description": "Also list archived projects, which are read-only."},
+				"include_archived": boolProp("Also list archived projects, which are read-only."),
 			})),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -699,7 +800,7 @@ wrong project.`,
 				"title":      stringProp("Human-readable name of the project. The slug is derived from it."),
 				"slug":       stringProp("Requested slug. Defaults to one derived from the title; lowercased and disambiguated either way."),
 				"priority":   enumProp("Advisory priority of the project as a whole. Dagger never sorts by it; p2 is the default.", enumChoices[daggerv1.Priority]()),
-				"request_id": stringProp("Idempotency key. Defaults to a fresh one; pass the same one to retry safely."),
+				"request_id": requestIDProp(),
 			}, "title"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {

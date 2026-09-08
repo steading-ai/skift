@@ -38,3 +38,26 @@ func AgeCursor(cursor string, at time.Time) string {
 
 // ReplayWindowStart is the earliest moment a cursor may point at.
 var ReplayWindowStart = replayWindowStart
+
+// ReadyFragments are the readiness conditions, each one subquery over the
+// node n. ReadyWhere negates every one of them and DerivedSQL selects
+// every one un-negated, which is what the structural spec asserts.
+var ReadyFragments = map[string]string{
+	"unsatisfied blockers": unsatisfiedBlockers,
+	"live lease":           liveLease,
+	"open children":        openChildren,
+	"archived project":     archivedProject,
+	"held ancestors":       heldAncestors,
+	"held project":         heldProject,
+}
+
+// ReadyWhere and DerivedSQL are the two statements every fragment must
+// appear in, for the spec that checks they cannot drift apart.
+const (
+	ReadyWhere = readyWhere
+	DerivedSQL = derivedSQL
+)
+
+// Derive computes the derived flags of nodes, for specs that check the
+// flags against the ready query they must agree with.
+var Derive = derive

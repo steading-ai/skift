@@ -37,7 +37,7 @@ WITH hits AS (
            row_number() OVER (PARTITION BY node_id ORDER BY rank DESC, source) AS position
     FROM hits
 )
-SELECT n.id, n.number, n.org_id, n.project_id, n.parent_id, n.kind, n.title, n.body, n.status, n.priority, n.assignee_kind, n.assignee, n.labels, n.context_id, n.created_at,
+SELECT n.id, n.number, n.org_id, n.project_id, n.parent_id, n.kind, n.title, n.body, n.status, n.priority, n.assignee_kind, n.assignee, n.labels, n.context_id, n.created_at, n.held_at, n.held_by, n.held_reason, n.hold_group,
        p.slug::text AS project_slug,
        h.rank::real AS rank,
        h.source::text AS source,
@@ -114,6 +114,10 @@ func (q *Queries) SearchNodes(ctx context.Context, arg SearchNodesParams) ([]Sea
 			&i.Node.Labels,
 			&i.Node.ContextID,
 			&i.Node.CreatedAt,
+			&i.Node.HeldAt,
+			&i.Node.HeldBy,
+			&i.Node.HeldReason,
+			&i.Node.HoldGroup,
 			&i.ProjectSlug,
 			&i.Rank,
 			&i.Source,

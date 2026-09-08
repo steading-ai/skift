@@ -87,39 +87,25 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 		base = normalizeSlug(in.Slug)
 	}
 
-	var project *store.Project
-	for attempt := 0; ; attempt++ {
-		err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-			created, _, err := withRequest(ctx, tx, orgID, in.RequestID, hash, func(ctx context.Context) (*store.Project, error) {
-				if err := lockProjects(ctx, tx, orgID); err != nil {
-					return nil, err
-				}
-				slug, err := freeSlug(ctx, tx, orgID, base)
-				if err != nil {
-					return nil, err
-				}
-				p, err := tx.CreateProject(ctx, store.CreateProjectParams{
-					ID: newULID(), OrgID: orgID, Slug: slug, Title: in.Title, Priority: in.Priority,
-				})
-				if err != nil {
-					return nil, fmt.Errorf("create project %q: %w", slug, err)
-				}
-				if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpCreateProject, nil, p); err != nil {
-					return nil, err
-				}
-				return &p, nil
-			})
-			project = created
-			return err
-		})
-		if isKeyConflict(err) && attempt == 0 {
-			continue
+	return idempotent(ctx, g.s, orgID, actor, in.RequestID, hash, func(ctx context.Context, tx store.Tx) (*store.Project, error) {
+		if err := lockProjects(ctx, tx, orgID); err != nil {
+			return nil, err
 		}
+		slug, err := freeSlug(ctx, tx, orgID, base)
 		if err != nil {
-			return nil, auditDenial(ctx, g.s, orgID, actor, &in.RequestID, err)
+			return nil, err
 		}
-		return project, nil
-	}
+		p, err := tx.CreateProject(ctx, store.CreateProjectParams{
+			ID: newULID(), OrgID: orgID, Slug: slug, Title: in.Title, Priority: in.Priority,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create project %q: %w", slug, err)
+		}
+		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpCreateProject, nil, p); err != nil {
+			return nil, err
+		}
+		return &p, nil
+	})
 }
 
 // GetProject returns the project ref names: a slug, live or retired, an
@@ -181,37 +167,23 @@ func (g *Service) ArchiveProject(ctx context.Context, orgID string, actor Actor,
 		return nil, err
 	}
 
-	var project *store.Project
-	for attempt := 0; ; attempt++ {
-		err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-			archived, _, err := withRequest(ctx, tx, orgID, requestID, hash, func(ctx context.Context) (*store.Project, error) {
-				before, err := resolveProject(ctx, tx, orgID, ref)
-				if err != nil {
-					return nil, err
-				}
-				if before.ArchivedAt != nil {
-					return before, nil
-				}
-				after, err := tx.ArchiveProject(ctx, store.ArchiveProjectParams{OrgID: orgID, ID: before.ID})
-				if err != nil {
-					return nil, fmt.Errorf("archive project %s: %w", before.Slug, err)
-				}
-				if err := projectEvent(ctx, tx, g.pol, orgID, actor, &requestID, OpArchiveProject, before, after); err != nil {
-					return nil, err
-				}
-				return &after, nil
-			})
-			project = archived
-			return err
-		})
-		if isKeyConflict(err) && attempt == 0 {
-			continue
-		}
+	return idempotent(ctx, g.s, orgID, actor, requestID, hash, func(ctx context.Context, tx store.Tx) (*store.Project, error) {
+		before, err := resolveProject(ctx, tx, orgID, ref)
 		if err != nil {
-			return nil, auditDenial(ctx, g.s, orgID, actor, &requestID, err)
+			return nil, err
 		}
-		return project, nil
-	}
+		if before.ArchivedAt != nil {
+			return before, nil
+		}
+		after, err := tx.ArchiveProject(ctx, store.ArchiveProjectParams{OrgID: orgID, ID: before.ID})
+		if err != nil {
+			return nil, fmt.Errorf("archive project %s: %w", before.Slug, err)
+		}
+		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &requestID, OpArchiveProject, before, after); err != nil {
+			return nil, err
+		}
+		return &after, nil
+	})
 }
 
 // projectEvent authorizes a project operation and writes its event. A

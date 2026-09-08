@@ -75,7 +75,8 @@ nothing in the patch happened.
 
 Operations: `create_node`, `update_node`, `drop_node`, `complete_node`,
 `reopen_node`, `add_edge`, `remove_edge`, `attach_artifact`, `add_comment`,
-`edit_comment`, `resolve_comment`, `estimate_node`.
+`edit_comment`, `resolve_comment`, `estimate_node`, `hold_node`,
+`unhold_node`.
 
 **Aliases make one patch a whole subgraph.** A `create_node` declares an
 `alias`; any later operation in the same patch refers to the new node by it,
@@ -151,6 +152,51 @@ and names the real count when the subtree is larger.
 Every write takes `--request-id` as an idempotency key. Retrying with the same
 one returns the original response and writes no second set of events; retrying
 with the same id and *different* content is rejected as a conflict.
+
+## Parking work
+
+A hold parks work: it leaves the ready set, its status untouched, and comes
+back when the hold is released. Containment carries it, so parking a node parks
+everything under it, including work filed there later, and a parked node still
+blocks whatever depends on it. Unlike archiving a project, a hold leaves
+everything writable — parked work can still be planned, decomposed, and
+commented on.
+
+Only a user principal may hold or release. An agent in its own trust zone is
+refused and told to comment instead.
+
+```sh
+dg hold '#12' --reason 'not this quarter'
+dg unhold '#12' --reason 'back on the roadmap'
+dg project hold platform --reason 'paused while the spike runs'
+dg project unhold platform --reason 'spike landed'
+```
+
+`explain` names every hold in the way, which node carries each one, and who
+placed it. A node comes back only when all of them are released; releasing a
+node's own hold leaves a hold on its parent alone.
+
+**Focus is the complement.** It parks everything outside a keep-set in one
+call:
+
+```sh
+dg focus platform infra --reason 'this quarter'      # projects; everything else parked
+dg -p platform focus '#12' --reason 'this week'      # nodes of one project
+dg focus --clear --reason 'quarter over'
+```
+
+Without `--project` the sweep covers the organization and the keep-set names
+projects; with one it covers that project and names its nodes. Keeping a node
+keeps its whole lineage live, what it contains and what contains it, since
+parking a parent would park the node.
+
+A sweep replaces rather than stacks: focusing again in a scope releases the
+sweep already there in the same transaction, so `--clear` never needs to be
+told which sweep it means. A sweep parks only what is not parked already and
+releases only what it parked, so a hold placed on its own outlives both.
+
+An empty `dg ready` says how many open nodes are held, so a parked project is
+never mistaken for a finished one.
 
 ## References and settings
 

@@ -12,7 +12,7 @@ import (
 const createNode = `-- name: CreateNode :one
 INSERT INTO nodes (id, number, org_id, project_id, parent_id, kind, title, body, priority, assignee_kind, assignee, labels)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
 `
 
 type CreateNodeParams struct {
@@ -62,12 +62,16 @@ func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) (Node, e
 		&i.Labels,
 		&i.ContextID,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
 
 const getNode = `-- name: GetNode :one
-SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at FROM nodes
+SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group FROM nodes
 WHERE org_id = $1 AND id = $2
 `
 
@@ -95,12 +99,16 @@ func (q *Queries) GetNode(ctx context.Context, arg GetNodeParams) (Node, error) 
 		&i.Labels,
 		&i.ContextID,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
 
 const getNodeByNumber = `-- name: GetNodeByNumber :one
-SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at FROM nodes
+SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group FROM nodes
 WHERE org_id = $1 AND project_id = $2 AND number = $3
 `
 
@@ -129,12 +137,16 @@ func (q *Queries) GetNodeByNumber(ctx context.Context, arg GetNodeByNumberParams
 		&i.Labels,
 		&i.ContextID,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
 
 const getNodesForUpdate = `-- name: GetNodesForUpdate :many
-SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at FROM nodes
+SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group FROM nodes
 WHERE org_id = $1 AND id = ANY($2::text[])
 ORDER BY id
 FOR UPDATE
@@ -170,6 +182,122 @@ func (q *Queries) GetNodesForUpdate(ctx context.Context, arg GetNodesForUpdatePa
 			&i.Labels,
 			&i.ContextID,
 			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const holdNode = `-- name: HoldNode :one
+UPDATE nodes
+SET held_at = now(), held_by = $3, held_reason = $4
+WHERE org_id = $1 AND id = $2
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type HoldNodeParams struct {
+	OrgID      string
+	ID         string
+	HeldBy     *string
+	HeldReason *string
+}
+
+// Parks a node. Containment carries the hold at read time, so nothing is
+// written to its descendants. See the Hold section of docs/domain-model.md.
+func (q *Queries) HoldNode(ctx context.Context, arg HoldNodeParams) (Node, error) {
+	row := q.db.QueryRow(ctx, holdNode,
+		arg.OrgID,
+		arg.ID,
+		arg.HeldBy,
+		arg.HeldReason,
+	)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeKind,
+		&i.Assignee,
+		&i.Labels,
+		&i.ContextID,
+		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
+	)
+	return i, err
+}
+
+const holdNodeSet = `-- name: HoldNodeSet :many
+UPDATE nodes
+SET held_at = now(), held_by = $2, held_reason = $3, hold_group = $4
+WHERE org_id = $1 AND held_at IS NULL AND id = ANY($5::text[])
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type HoldNodeSetParams struct {
+	OrgID      string
+	HeldBy     *string
+	HeldReason *string
+	HoldGroup  *string
+	Ids        []string
+}
+
+// Parks the nodes a sweep selected, skipping any that already carry a
+// hold: a node held on its own carries no hold_group and is left alone,
+// so clearing the sweep does not release it.
+func (q *Queries) HoldNodeSet(ctx context.Context, arg HoldNodeSetParams) ([]Node, error) {
+	rows, err := q.db.Query(ctx, holdNodeSet,
+		arg.OrgID,
+		arg.HeldBy,
+		arg.HeldReason,
+		arg.HoldGroup,
+		arg.Ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Node{}
+	for rows.Next() {
+		var i Node
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Priority,
+			&i.AssigneeKind,
+			&i.Assignee,
+			&i.Labels,
+			&i.ContextID,
+			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -182,7 +310,7 @@ func (q *Queries) GetNodesForUpdate(ctx context.Context, arg GetNodesForUpdatePa
 }
 
 const listChildren = `-- name: ListChildren :many
-SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at FROM nodes
+SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group FROM nodes
 WHERE org_id = $1 AND parent_id = $2::text
 ORDER BY number
 `
@@ -217,6 +345,10 @@ func (q *Queries) ListChildren(ctx context.Context, arg ListChildrenParams) ([]N
 			&i.Labels,
 			&i.ContextID,
 			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -229,7 +361,7 @@ func (q *Queries) ListChildren(ctx context.Context, arg ListChildrenParams) ([]N
 }
 
 const listNodes = `-- name: ListNodes :many
-SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at FROM nodes
+SELECT id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group FROM nodes
 WHERE org_id = $1 AND project_id = $2
 ORDER BY number
 LIMIT $4 OFFSET $3
@@ -272,10 +404,47 @@ func (q *Queries) ListNodes(ctx context.Context, arg ListNodesParams) ([]Node, e
 			&i.Labels,
 			&i.ContextID,
 			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const nodeHoldGroups = `-- name: NodeHoldGroups :many
+SELECT DISTINCT hold_group::text AS hold_group FROM nodes
+WHERE org_id = $1 AND project_id = $2 AND hold_group IS NOT NULL
+ORDER BY hold_group
+`
+
+type NodeHoldGroupsParams struct {
+	OrgID     string
+	ProjectID string
+}
+
+// The sweeps with live node holds in a project, so the active one can be
+// found without a caller remembering its id.
+func (q *Queries) NodeHoldGroups(ctx context.Context, arg NodeHoldGroupsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, nodeHoldGroups, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var hold_group string
+		if err := rows.Scan(&hold_group); err != nil {
+			return nil, err
+		}
+		items = append(items, hold_group)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -345,11 +514,101 @@ func (q *Queries) NodeLineage(ctx context.Context, arg NodeLineageParams) ([]Nod
 	return items, nil
 }
 
+const openNodesOfProject = `-- name: OpenNodesOfProject :many
+SELECT id, parent_id FROM nodes
+WHERE org_id = $1 AND project_id = $2 AND status = 'open'
+`
+
+type OpenNodesOfProjectParams struct {
+	OrgID     string
+	ProjectID string
+}
+
+type OpenNodesOfProjectRow struct {
+	ID       string
+	ParentID *string
+}
+
+// The containment of every open node of a project, which is all a sweep
+// needs to choose what to park.
+func (q *Queries) OpenNodesOfProject(ctx context.Context, arg OpenNodesOfProjectParams) ([]OpenNodesOfProjectRow, error) {
+	rows, err := q.db.Query(ctx, openNodesOfProject, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenNodesOfProjectRow{}
+	for rows.Next() {
+		var i OpenNodesOfProjectRow
+		if err := rows.Scan(&i.ID, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const releaseNodeHoldGroup = `-- name: ReleaseNodeHoldGroup :many
+UPDATE nodes
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND hold_group = $2
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type ReleaseNodeHoldGroupParams struct {
+	OrgID     string
+	HoldGroup *string
+}
+
+// Releases every node hold one sweep placed, and only those.
+func (q *Queries) ReleaseNodeHoldGroup(ctx context.Context, arg ReleaseNodeHoldGroupParams) ([]Node, error) {
+	rows, err := q.db.Query(ctx, releaseNodeHoldGroup, arg.OrgID, arg.HoldGroup)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Node{}
+	for rows.Next() {
+		var i Node
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Priority,
+			&i.AssigneeKind,
+			&i.Assignee,
+			&i.Labels,
+			&i.ContextID,
+			&i.CreatedAt,
+			&i.HeldAt,
+			&i.HeldBy,
+			&i.HeldReason,
+			&i.HoldGroup,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setNodeStatus = `-- name: SetNodeStatus :one
 UPDATE nodes
 SET status = $3
 WHERE org_id = $1 AND id = $2
-RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
 `
 
 type SetNodeStatusParams struct {
@@ -377,6 +636,49 @@ func (q *Queries) SetNodeStatus(ctx context.Context, arg SetNodeStatusParams) (N
 		&i.Labels,
 		&i.ContextID,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
+	)
+	return i, err
+}
+
+const unholdNode = `-- name: UnholdNode :one
+UPDATE nodes
+SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
+WHERE org_id = $1 AND id = $2
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
+`
+
+type UnholdNodeParams struct {
+	OrgID string
+	ID    string
+}
+
+func (q *Queries) UnholdNode(ctx context.Context, arg UnholdNodeParams) (Node, error) {
+	row := q.db.QueryRow(ctx, unholdNode, arg.OrgID, arg.ID)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeKind,
+		&i.Assignee,
+		&i.Labels,
+		&i.ContextID,
+		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }
@@ -386,7 +688,7 @@ UPDATE nodes
 SET parent_id = $3, kind = $4, title = $5, body = $6, priority = $7,
     assignee_kind = $8, assignee = $9, labels = $10
 WHERE org_id = $1 AND id = $2
-RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at
+RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, priority, assignee_kind, assignee, labels, context_id, created_at, held_at, held_by, held_reason, hold_group
 `
 
 type UpdateNodeParams struct {
@@ -432,6 +734,10 @@ func (q *Queries) UpdateNode(ctx context.Context, arg UpdateNodeParams) (Node, e
 		&i.Labels,
 		&i.ContextID,
 		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
 	)
 	return i, err
 }

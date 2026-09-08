@@ -37,7 +37,7 @@ func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.R
 		return nil, err
 	}
 	size := pageSize(req.Msg.GetPageSize())
-	nodes, err := w.svc.Ready(ctx, orgID, req.Msg.GetProject(), domain.ReadyQuery{
+	nodes, held, err := w.svc.Ready(ctx, orgID, req.Msg.GetProject(), domain.ReadyQuery{
 		Kind:         req.Msg.GetKind(),
 		AssigneeKind: assigneeKinds.str(req.Msg.GetAssigneeKind()),
 		Labels:       req.Msg.GetLabels(),
@@ -51,6 +51,7 @@ func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.R
 	return connect.NewResponse(&daggerv1.ReadyResponse{
 		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), daggerv1.View_VIEW_SUMMARY)),
 		NextPageToken: nextPageToken(offset, size, len(nodes)),
+		HeldCount:     int32(held), //nolint:gosec // a project's open nodes
 	}), nil
 }
 

@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"time"
 )
@@ -46,6 +47,9 @@ type Limits struct {
 	// PageSize bounds one page of any list. A read that asks for no
 	// particular size gets a page this large.
 	PageSize int
+	// KeepSet bounds what one focus sweep may name as staying live, so a
+	// single call cannot rewrite an organization unboundedly.
+	KeepSet int
 }
 
 // Default ceilings, high enough that ordinary work never meets them.
@@ -60,6 +64,7 @@ const (
 	MaxBlobBytes       = 64 << 20
 	MaxLeaseTTL        = time.Hour
 	MaxPageSize        = 1000
+	MaxKeepSet         = 1000
 )
 
 // DefaultLimits are the ceilings in force until [SetLimits] replaces them.
@@ -75,6 +80,7 @@ func DefaultLimits() Limits {
 		BlobBytes:       MaxBlobBytes,
 		LeaseTTL:        MaxLeaseTTL,
 		PageSize:        MaxPageSize,
+		KeepSet:         MaxKeepSet,
 	}
 }
 
@@ -93,6 +99,7 @@ const (
 	LimitBlobBytes       Limit = "blob bytes"
 	LimitLeaseTTL        Limit = "lease ttl"
 	LimitPageSize        Limit = "page size"
+	LimitKeepSet         Limit = "focus keep-set size"
 )
 
 // LimitError reports a request that exceeds a ceiling: which one, what it
@@ -122,14 +129,15 @@ func exceeded(limit Limit, value, max int64) error {
 // ErrInvalidLimits: a ceiling was set to zero or below.
 var ErrInvalidLimits = errors.New("every limit must be positive")
 
-// validate rejects a Limits with any ceiling at zero or below.
+// validate rejects a Limits with any ceiling at zero or below. It
+// reflects over the ceilings rather than listing them again, so one added
+// to the struct cannot be forgotten here and silently default to zero,
+// which is the one value that turns a ceiling off. Every ceiling is a
+// count or a duration, which is why one integer test covers them all.
 func (l Limits) validate() error {
-	for _, v := range []int64{
-		int64(l.OpsPerPatch), int64(l.NodesPerPatch), int64(l.EdgesPerPatch),
-		int64(l.BodyBytes), int64(l.ResultBytes), int64(l.CommentBytes),
-		int64(l.InlinePartBytes), l.BlobBytes, int64(l.LeaseTTL), int64(l.PageSize),
-	} {
-		if v <= 0 {
+	v := reflect.ValueOf(l)
+	for i := range v.NumField() {
+		if !v.Field(i).CanInt() || v.Field(i).Int() <= 0 {
 			return ErrInvalidLimits
 		}
 	}

@@ -140,7 +140,7 @@ func (r *recorder) policyInput(ctx context.Context, op, nodeID string, before, a
 		info.CreatedBy = r.actor.PrincipalID
 		info.Lineage[0].CreatedBy = r.actor.PrincipalID
 		in.After = &policy.Resource{Node: info}
-	case OpUpdateNode, OpDropNode, OpReopenNode, OpCompleteNode, OpAttachArtifact:
+	case OpUpdateNode, OpDropNode, OpReopenNode, OpCompleteNode, OpAttachArtifact, OpHoldNode, OpUnholdNode:
 		prior, err := as[store.Node](before)
 		if err != nil {
 			return in, err

@@ -60,12 +60,23 @@ func (a *app) connect() (*client.Client, error) {
 // project is the current project, or an error naming how to set one when a
 // command needs it and none is configured.
 func (a *app) project() (string, error) {
-	cfg, err := a.config()
+	project, err := a.currentProject()
 	if err != nil {
 		return "", err
 	}
-	if cfg.Project == "" {
+	if project == "" {
 		return "", usage("a project is required; pass --project, set $%s, or put it in the config file", client.EnvProject)
+	}
+	return project, nil
+}
+
+// currentProject is the configured project, or empty when none is set,
+// for the command whose scope is the organization when no project is
+// named rather than an error.
+func (a *app) currentProject() (string, error) {
+	cfg, err := a.config()
+	if err != nil {
+		return "", err
 	}
 	return cfg.Project, nil
 }

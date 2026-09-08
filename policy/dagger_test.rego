@@ -400,3 +400,28 @@ test_service_touches_no_project if {
 	not authz.allow with input as {"principal": service, "action": "create_project"}
 	not authz.allow with input as {"principal": service, "action": "archive_project"}
 }
+
+# Holds
+
+test_user_parks_and_releases_work if {
+	authz.allow with input as {"principal": user, "action": "hold_node"}
+	authz.allow with input as {"principal": user, "action": "unhold_node"}
+	authz.allow with input as {"principal": user, "action": "hold_project"}
+	authz.allow with input as {"principal": user, "action": "unhold_project"}
+}
+
+test_agent_parks_nothing if {
+	not authz.allow with input as {"principal": agent_a, "action": "hold_node"}
+	not authz.allow with input as {"principal": agent_a, "action": "unhold_node"}
+	not authz.allow with input as {"principal": agent_a, "action": "hold_project"}
+	not authz.allow with input as {"principal": agent_a, "action": "unhold_project"}
+	not authz.allow with input as {"principal": service, "action": "hold_node"}
+}
+
+test_hold_refusal_names_the_next_move if {
+	decision := authz.decision with input as {"principal": agent_a, "action": "hold_node"}
+	some reason in decision.reasons
+	contains(reason, "no rule permits agent hold_node")
+	some hint in decision.reasons
+	contains(hint, "comment")
+}

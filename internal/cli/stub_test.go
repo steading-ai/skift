@@ -431,6 +431,42 @@ func (s *stub) ArchiveProject(_ context.Context, req *connect.Request[daggerv1.A
 	return connect.NewResponse(&daggerv1.ArchiveProjectResponse{Project: p}), nil
 }
 
+func (s *stub) HoldProject(_ context.Context, req *connect.Request[daggerv1.HoldProjectRequest]) (*connect.Response[daggerv1.HoldProjectResponse], error) {
+	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[req.Msg.GetProject()]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+	}
+	p.Hold = &daggerv1.Hold{At: timestamppb.Now(), By: "01HZZZZZZZZZZZZZZZZZZZZZZU", Reason: req.Msg.GetReason()}
+	return connect.NewResponse(&daggerv1.HoldProjectResponse{Project: p, HeldCount: int32(len(s.nodes))}), nil
+}
+
+func (s *stub) UnholdProject(_ context.Context, req *connect.Request[daggerv1.UnholdProjectRequest]) (*connect.Response[daggerv1.UnholdProjectResponse], error) {
+	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[req.Msg.GetProject()]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+	}
+	p.Hold = nil
+	return connect.NewResponse(&daggerv1.UnholdProjectResponse{Project: p}), nil
+}
+
+func (s *stub) Focus(_ context.Context, req *connect.Request[daggerv1.FocusRequest]) (*connect.Response[daggerv1.FocusResponse], error) {
+	s.record(req.Msg)
+	return connect.NewResponse(&daggerv1.FocusResponse{
+		Group: "01HZZZZZZZZZZZZZZZZZZZZZZF", HeldCount: int32(len(req.Msg.GetKeep())),
+	}), nil
+}
+
+func (s *stub) ClearFocus(_ context.Context, req *connect.Request[daggerv1.ClearFocusRequest]) (*connect.Response[daggerv1.ClearFocusResponse], error) {
+	s.record(req.Msg)
+	return connect.NewResponse(&daggerv1.ClearFocusResponse{ReleasedCount: 1}), nil
+}
+
 // WorkService.
 
 func (s *stub) ready() []*daggerv1.Node {

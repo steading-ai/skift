@@ -396,8 +396,10 @@ Node references are "#7" in the current project, "slug#7" in another
 project, or "org/slug#7" fully qualified; project_list names the projects
 you may read and the slugs they take.
 
-Priority is p0 to p4, p2 the default: advisory ordering within a project's
-ready set, never a gate on what may be worked.
+Priority orders the ready set; a hold decides what is in it. Priority is
+p0 to p4, p2 the default: advisory ordering within a project's ready set,
+never a gate on what may be worked. A hold parks work until a person
+releases it, and only a user may place or release one.
 kind is a free string dagger never interprets, task the default and bug,
 spike and chore the rest of the conventional vocabulary.`, project, s.sessionRef),
 	}, nil
