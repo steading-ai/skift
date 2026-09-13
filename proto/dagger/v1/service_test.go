@@ -213,7 +213,7 @@ var _ = Describe("service.proto", func() {
 	It("defines every service and RPC the work order names", func() {
 		want := map[string][]string{
 			"GraphService": {"ApplyPatch", "GetNode", "GetInputs", "ListNodes", "Explain", "Search",
-				"CreateProject", "GetProject", "ListProjects", "ArchiveProject",
+				"CreateProject", "GetProject", "ListProjects", "UpdateProject", "ArchiveProject",
 				"HoldProject", "UnholdProject", "Focus", "ClearFocus"},
 			"WorkService":  {"Ready", "ClaimNext", "Heartbeat", "Release", "ReportUsage"},
 			"EventService": {"WatchEvents"},

@@ -74,8 +74,10 @@ usage_actions := {"report_usage", "estimate_node"}
 
 # A project is an authorization scope, not a unit that requires a grant,
 # and it is free to create: a user or an agent opens one without ceremony.
-# Archiving is a deliberate lifecycle act, so it is a person's.
-project_actions := {"create_project", "archive_project"}
+# Archiving is a deliberate lifecycle act, and what a project says about
+# itself -- the repository it delivers to -- is a person's to change, so
+# both are a user's.
+project_actions := {"create_project", "update_project", "archive_project"}
 
 # Parking work is a person's call. A hold decides what everyone may work
 # on next and is also a way to hide work from other agents, so it is a

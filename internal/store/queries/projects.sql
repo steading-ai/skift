@@ -1,6 +1,6 @@
 -- name: CreateProject :one
-INSERT INTO projects (id, org_id, slug, title, priority)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO projects (id, org_id, slug, title, priority, vcs_url)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetProject :one
@@ -26,6 +26,12 @@ LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 -- name: RenameProject :one
 UPDATE projects
 SET slug = $3, title = $4
+WHERE org_id = $1 AND id = $2
+RETURNING *;
+
+-- name: SetProjectVCSURL :one
+UPDATE projects
+SET vcs_url = $3
 WHERE org_id = $1 AND id = $2
 RETURNING *;
 

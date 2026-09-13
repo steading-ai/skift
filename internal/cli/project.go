@@ -11,15 +11,15 @@ import (
 func (a *app) projectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "Create, list, show, archive, hold, and release projects",
+		Short: "Create, list, show, update, archive, hold, and release projects",
 	}
-	cmd.AddCommand(a.projectCreate(), a.projectList(), a.projectShow(), a.projectArchive(),
+	cmd.AddCommand(a.projectCreate(), a.projectList(), a.projectShow(), a.projectUpdate(), a.projectArchive(),
 		a.projectHold(), a.projectUnhold())
 	return cmd
 }
 
 func (a *app) projectCreate() *cobra.Command {
-	var slug, priority, requestID string
+	var slug, priority, vcsURL, requestID string
 	cmd := &cobra.Command{
 		Use:   "create <title>",
 		Short: "Create a project; the slug is derived from the title unless given",
@@ -35,7 +35,7 @@ func (a *app) projectCreate() *cobra.Command {
 			}
 			return send(a, cmd, func() (*daggerv1.CreateProjectResponse, error) {
 				res, err := c.Graph.CreateProject(cmd.Context(), connect.NewRequest(&daggerv1.CreateProjectRequest{
-					RequestId: orMint(requestID), Title: args[0], Slug: slug, Priority: prio,
+					RequestId: orMint(requestID), Title: args[0], Slug: slug, Priority: prio, VcsUrl: vcsURL,
 				}))
 				return unwrap(res, err)
 			})
@@ -43,6 +43,40 @@ func (a *app) projectCreate() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&slug, "slug", "", "requested slug (default: derived from the title)")
 	cmd.Flags().StringVar(&priority, "priority", "", "advisory priority: p0 to p4")
+	cmd.Flags().StringVar(&vcsURL, "vcs-url", "", "clone URL of the repository the project delivers to")
+	requestIDFlag(cmd, &requestID)
+	return cmd
+}
+
+func (a *app) projectUpdate() *cobra.Command {
+	var vcsURL, requestID string
+	cmd := &cobra.Command{
+		Use:   "update [project]",
+		Short: "Change what a project carries about itself (default: the current project)",
+		Args:  usageArgs(cobra.RangeArgs(0, 1)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := a.projectArg(args)
+			if err != nil {
+				return err
+			}
+			req := &daggerv1.UpdateProjectRequest{RequestId: orMint(requestID), Project: project}
+			// A flag left alone leaves the field alone; `--vcs-url ''` is
+			// the way to clear it, which is why presence and not the value
+			// decides.
+			if cmd.Flags().Changed("vcs-url") {
+				req.VcsUrl = &vcsURL
+			}
+			c, err := a.connect()
+			if err != nil {
+				return err
+			}
+			return send(a, cmd, func() (*daggerv1.UpdateProjectResponse, error) {
+				res, err := c.Graph.UpdateProject(cmd.Context(), connect.NewRequest(req))
+				return unwrap(res, err)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&vcsURL, "vcs-url", "", "clone URL of the repository the project delivers to; empty clears it")
 	requestIDFlag(cmd, &requestID)
 	return cmd
 }

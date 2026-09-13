@@ -125,6 +125,19 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			Expect(second.GetLease().GetId()).NotTo(Equal(first.GetLease().GetId()))
 		})
 
+		It("carries the project the node was claimed in, with the repository it delivers to", func(ctx SpecContext) {
+			f.mustApply(ctx, createOpWith(&daggerv1.CreateNodeOp{Alias: "a", Title: "A"}))
+			_, err := f.graph().UpdateProject(ctx, connect.NewRequest(&daggerv1.UpdateProjectRequest{
+				RequestId: newID(), Project: "platform", VcsUrl: ptr("https://gitlab.example/x/y.git"),
+			}))
+			Expect(err).NotTo(HaveOccurred())
+
+			claimed := f.claim(ctx, "platform", nil)
+			Expect(claimed.GetProject().GetSlug()).To(Equal("platform"))
+			Expect(claimed.GetProject().GetId()).To(Equal(claimed.GetNode().GetProjectId()))
+			Expect(claimed.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+		})
+
 		It("waits for work and returns empty when none appears", func(ctx SpecContext) {
 			f.as(f.agent)
 			started := time.Now()

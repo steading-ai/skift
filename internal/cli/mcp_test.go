@@ -896,7 +896,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m.initialize()
 
 			By("when project_create is called with a title and a slug")
-			res := m.call("project_create", map[string]any{"title": "Platform", "slug": "platform", "priority": "p1"})
+			res := m.call("project_create", map[string]any{"title": "Platform", "slug": "platform", "priority": "p1", "vcs_url": "https://gitlab.example/x/y.git"})
 
 			By("then the project is created and its slug comes back")
 			Expect(res.isError).To(BeFalse(), res.text)
@@ -904,12 +904,14 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(project).To(HaveKeyWithValue("slug", "platform"))
 			Expect(project).To(HaveKeyWithValue("title", "Platform"))
 			Expect(project).To(HaveKeyWithValue("priority", "p1"))
+			Expect(project).To(HaveKeyWithValue("vcs_url", "https://gitlab.example/x/y.git"))
 
 			By("and it carried a request id, as every write does")
 			sent := last[*daggerv1.CreateProjectRequest](s)
 			Expect(sent.GetRequestId()).NotTo(BeEmpty())
 			Expect(sent.GetSlug()).To(Equal("platform"))
 			Expect(sent.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+			Expect(sent.GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
 
 			By("and a request id given by the caller is the one sent")
 			res = m.call("project_create", map[string]any{"title": "Infra", "request_id": "01JREQUEST00000000000000000"})

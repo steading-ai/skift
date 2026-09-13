@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -22,11 +23,15 @@ import (
 // Project operation names, as written to events.op.
 const (
 	OpCreateProject  = "create_project"
+	OpUpdateProject  = "update_project"
 	OpArchiveProject = "archive_project"
 )
 
 // ErrTitleRequired: a project needs a title to derive its slug from.
 var ErrTitleRequired = errors.New("a project needs a title")
+
+// ErrVCSURLInvalid: a repository URL that is not an absolute URL.
+var ErrVCSURLInvalid = errors.New("vcs_url is not an absolute URL")
 
 // maxSlugLength is the ceiling the schema's is_slug enforces.
 const maxSlugLength = 100
@@ -45,6 +50,20 @@ type NewProject struct {
 	Slug string `json:"slug,omitempty"`
 	// Priority is advisory, `p0` through `p4`. Empty means p2.
 	Priority string `json:"priority,omitempty"`
+	// VCSURL is the clone URL of the repository the project delivers to:
+	// an absolute URL, or empty.
+	VCSURL string `json:"vcs_url,omitempty"`
+}
+
+// UpdateProject is what [Service.UpdateProject] takes. A nil field is left
+// alone; a pointer to the empty string clears it.
+type UpdateProject struct {
+	// RequestID is the client-supplied idempotency key.
+	RequestID string `json:"request_id"`
+	// Project is the project to change, by slug, org/slug, or id.
+	Project string `json:"project"`
+	// VCSURL is the new clone URL, or empty to clear it.
+	VCSURL *string `json:"vcs_url,omitempty"`
 }
 
 // ProjectListQuery is one page of an organization's projects.
@@ -78,6 +97,9 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 	if !validPriority(in.Priority) {
 		return nil, fmt.Errorf("priority %q is not p0 through p4", in.Priority)
 	}
+	if err := validVCSURL(in.VCSURL); err != nil {
+		return nil, err
+	}
 	hash, err := requestHash(in)
 	if err != nil {
 		return nil, err
@@ -96,7 +118,7 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 			return nil, err
 		}
 		p, err := tx.CreateProject(ctx, store.CreateProjectParams{
-			ID: newULID(), OrgID: orgID, Slug: slug, Title: in.Title, Priority: in.Priority,
+			ID: newULID(), OrgID: orgID, Slug: slug, Title: in.Title, Priority: in.Priority, VcsUrl: in.VCSURL,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create project %q: %w", slug, err)
@@ -105,6 +127,65 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 			return nil, err
 		}
 		return &p, nil
+	})
+}
+
+// validVCSURL admits an absolute URL with a host, or nothing. Dagger never
+// reads the URL, so the shape is all it checks: the orchestrator that
+// clones it is the one that finds out whether it answers.
+func validVCSURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("%w: %q", ErrVCSURLInvalid, raw)
+	}
+	return nil
+}
+
+// UpdateProject changes the project's own fields, idempotently under its
+// request id, and records the change as an event. A field the request
+// leaves nil is untouched; a request that changes nothing records nothing.
+func (g *Service) UpdateProject(ctx context.Context, orgID string, actor Actor, in UpdateProject) (*Project, error) {
+	if in.RequestID == "" {
+		return nil, ErrNoRequestID
+	}
+	if err := actor.validate(); err != nil {
+		return nil, err
+	}
+	if in.Project == "" {
+		return nil, ErrProjectRequired
+	}
+	if in.VCSURL != nil {
+		if err := validVCSURL(*in.VCSURL); err != nil {
+			return nil, err
+		}
+	}
+	hash, err := requestHash(struct {
+		Op string `json:"op"`
+		UpdateProject
+	}{OpUpdateProject, in})
+	if err != nil {
+		return nil, err
+	}
+
+	return idempotent(ctx, g.s, orgID, actor, in.RequestID, hash, func(ctx context.Context, tx store.Tx) (*store.Project, error) {
+		before, err := resolveProject(ctx, tx, orgID, in.Project)
+		if err != nil {
+			return nil, err
+		}
+		if in.VCSURL == nil || *in.VCSURL == before.VcsUrl {
+			return before, nil
+		}
+		after, err := tx.SetProjectVCSURL(ctx, store.SetProjectVCSURLParams{OrgID: orgID, ID: before.ID, VcsUrl: *in.VCSURL})
+		if err != nil {
+			return nil, fmt.Errorf("update project %s: %w", before.Slug, err)
+		}
+		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpUpdateProject, before, after); err != nil {
+			return nil, err
+		}
+		return &after, nil
 	})
 }
 

@@ -334,6 +334,7 @@ func toProject(p domain.Project) *daggerv1.Project {
 		Priority:    priorities.val(p.Priority),
 		NodeCounter: p.NodeCounter,
 		CreatedAt:   timestamppb.New(p.CreatedAt),
+		VcsUrl:      p.VcsUrl,
 	}
 	if p.ArchivedAt != nil {
 		out.ArchivedAt = timestamppb.New(*p.ArchivedAt)

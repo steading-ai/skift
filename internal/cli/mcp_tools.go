@@ -762,8 +762,9 @@ and left out unless asked for.`,
 		},
 		{
 			name: "project_show",
-			description: `Show one project: slug, title, advisory priority, node counter, and when
-it was archived if it was. Use it to confirm a slug before writing a
+			description: `Show one project: slug, title, advisory priority, node counter, the
+repository it delivers to (vcs_url) if one is set, and when it was archived
+if it was. Use it to confirm a slug before writing a
 cross-project reference. It never returns the project's nodes. A project
 is named by slug, "org/slug", or id, and a retired slug still resolves.`,
 			schema: objectSchema(map[string]any{
@@ -800,6 +801,7 @@ wrong project.`,
 				"title":      stringProp("Human-readable name of the project. The slug is derived from it."),
 				"slug":       stringProp("Requested slug. Defaults to one derived from the title; lowercased and disambiguated either way."),
 				"priority":   enumProp("Advisory priority of the project as a whole. Dagger never sorts by it; p2 is the default.", enumChoices[daggerv1.Priority]()),
+				"vcs_url":    stringProp("Clone URL of the repository the project delivers to, as an absolute URL. Dagger stores it for orchestrators and never reads it."),
 				"request_id": requestIDProp(),
 			}, "title"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
@@ -807,6 +809,7 @@ wrong project.`,
 					Title     string `json:"title"`
 					Slug      string `json:"slug"`
 					Priority  string `json:"priority"`
+					VCSURL    string `json:"vcs_url"`
 					RequestID string `json:"request_id"`
 				}
 				if err := decodeArgs(raw, &args); err != nil {
@@ -820,7 +823,7 @@ wrong project.`,
 					return nil, err
 				}
 				return unwrap(c.Graph.CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{
-					RequestId: orMint(args.RequestID), Title: args.Title, Slug: args.Slug, Priority: prio,
+					RequestId: orMint(args.RequestID), Title: args.Title, Slug: args.Slug, Priority: prio, VcsUrl: args.VCSURL,
 				})))
 			},
 		},

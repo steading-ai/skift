@@ -183,6 +183,7 @@ type Project struct {
 	HeldBy      *string
 	HeldReason  *string
 	HoldGroup   *string
+	VcsUrl      string
 }
 
 type ProjectSlug struct {

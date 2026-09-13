@@ -388,7 +388,22 @@ func (s *stub) CreateProject(_ context.Context, req *connect.Request[daggerv1.Cr
 	}
 	p := s.newProject(slug, req.Msg.GetTitle())
 	p.Priority = req.Msg.GetPriority()
+	p.VcsUrl = req.Msg.GetVcsUrl()
 	return connect.NewResponse(&daggerv1.CreateProjectResponse{Project: p}), nil
+}
+
+func (s *stub) UpdateProject(_ context.Context, req *connect.Request[daggerv1.UpdateProjectRequest]) (*connect.Response[daggerv1.UpdateProjectResponse], error) {
+	s.record(req.Msg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[req.Msg.GetProject()]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+	}
+	if req.Msg.VcsUrl != nil {
+		p.VcsUrl = req.Msg.GetVcsUrl()
+	}
+	return connect.NewResponse(&daggerv1.UpdateProjectResponse{Project: p}), nil
 }
 
 func (s *stub) GetProject(_ context.Context, req *connect.Request[daggerv1.GetProjectRequest]) (*connect.Response[daggerv1.GetProjectResponse], error) {

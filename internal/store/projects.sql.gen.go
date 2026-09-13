@@ -36,7 +36,7 @@ const archiveProject = `-- name: ArchiveProject :one
 UPDATE projects
 SET archived_at = coalesce(archived_at, now())
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type ArchiveProjectParams struct {
@@ -60,14 +60,15 @@ func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) 
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (id, org_id, slug, title, priority)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+INSERT INTO projects (id, org_id, slug, title, priority, vcs_url)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type CreateProjectParams struct {
@@ -76,6 +77,7 @@ type CreateProjectParams struct {
 	Slug     string
 	Title    string
 	Priority string
+	VcsUrl   string
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
@@ -85,6 +87,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		arg.Slug,
 		arg.Title,
 		arg.Priority,
+		arg.VcsUrl,
 	)
 	var i Project
 	err := row.Scan(
@@ -100,12 +103,13 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group FROM projects
+SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url FROM projects
 WHERE org_id = $1 AND id = $2
 `
 
@@ -130,12 +134,13 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT p.id, p.org_id, p.slug, p.title, p.priority, p.node_counter, p.archived_at, p.created_at, p.held_at, p.held_by, p.held_reason, p.hold_group FROM projects AS p
+SELECT p.id, p.org_id, p.slug, p.title, p.priority, p.node_counter, p.archived_at, p.created_at, p.held_at, p.held_by, p.held_reason, p.hold_group, p.vcs_url FROM projects AS p
 JOIN project_slugs AS s ON s.org_id = p.org_id AND s.project_id = p.id
 WHERE p.org_id = $1 AND s.slug = $2
 `
@@ -163,6 +168,7 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, arg GetProjectBySlugPara
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }
@@ -171,7 +177,7 @@ const holdProject = `-- name: HoldProject :one
 UPDATE projects
 SET held_at = now(), held_by = $3, held_reason = $4
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type HoldProjectParams struct {
@@ -204,6 +210,7 @@ func (q *Queries) HoldProject(ctx context.Context, arg HoldProjectParams) (Proje
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }
@@ -213,7 +220,7 @@ UPDATE projects
 SET held_at = now(), held_by = $2, held_reason = $3, hold_group = $4
 WHERE org_id = $1 AND archived_at IS NULL AND held_at IS NULL
   AND NOT (id = ANY($5::text[]))
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type HoldProjectsOutsideParams struct {
@@ -254,6 +261,7 @@ func (q *Queries) HoldProjectsOutside(ctx context.Context, arg HoldProjectsOutsi
 			&i.HeldBy,
 			&i.HeldReason,
 			&i.HoldGroup,
+			&i.VcsUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -266,7 +274,7 @@ func (q *Queries) HoldProjectsOutside(ctx context.Context, arg HoldProjectsOutsi
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group FROM projects
+SELECT id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url FROM projects
 WHERE org_id = $1
   AND (archived_at IS NULL OR $2::boolean)
 ORDER BY created_at DESC, id DESC
@@ -309,6 +317,7 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 			&i.HeldBy,
 			&i.HeldReason,
 			&i.HoldGroup,
+			&i.VcsUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -352,7 +361,7 @@ const releaseProjectHoldGroup = `-- name: ReleaseProjectHoldGroup :many
 UPDATE projects
 SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
 WHERE org_id = $1 AND hold_group = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type ReleaseProjectHoldGroupParams struct {
@@ -382,6 +391,7 @@ func (q *Queries) ReleaseProjectHoldGroup(ctx context.Context, arg ReleaseProjec
 			&i.HeldBy,
 			&i.HeldReason,
 			&i.HoldGroup,
+			&i.VcsUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -397,7 +407,7 @@ const renameProject = `-- name: RenameProject :one
 UPDATE projects
 SET slug = $3, title = $4
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type RenameProjectParams struct {
@@ -428,6 +438,41 @@ func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (P
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
+	)
+	return i, err
+}
+
+const setProjectVCSURL = `-- name: SetProjectVCSURL :one
+UPDATE projects
+SET vcs_url = $3
+WHERE org_id = $1 AND id = $2
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
+`
+
+type SetProjectVCSURLParams struct {
+	OrgID  string
+	ID     string
+	VcsUrl string
+}
+
+func (q *Queries) SetProjectVCSURL(ctx context.Context, arg SetProjectVCSURLParams) (Project, error) {
+	row := q.db.QueryRow(ctx, setProjectVCSURL, arg.OrgID, arg.ID, arg.VcsUrl)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Title,
+		&i.Priority,
+		&i.NodeCounter,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.HeldAt,
+		&i.HeldBy,
+		&i.HeldReason,
+		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }
@@ -436,7 +481,7 @@ const unholdProject = `-- name: UnholdProject :one
 UPDATE projects
 SET held_at = NULL, held_by = NULL, held_reason = NULL, hold_group = NULL
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group
+RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_at, held_at, held_by, held_reason, hold_group, vcs_url
 `
 
 type UnholdProjectParams struct {
@@ -460,6 +505,7 @@ func (q *Queries) UnholdProject(ctx context.Context, arg UnholdProjectParams) (P
 		&i.HeldBy,
 		&i.HeldReason,
 		&i.HoldGroup,
+		&i.VcsUrl,
 	)
 	return i, err
 }

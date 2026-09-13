@@ -561,6 +561,67 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			_, err = f.graph().CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{RequestId: newID()}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a title is required")
 		})
+
+		It("Scenario: A project knows its repository", func(ctx SpecContext) {
+			By("given a project created with a vcs_url")
+			res, err := f.graph().CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{
+				RequestId: newID(), Title: "Repo", VcsUrl: "https://gitlab.example/x/y.git",
+			}))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("when the project is shown")
+			shown, err := f.graph().GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: res.Msg.GetProject().GetSlug()}))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then the URL is printed")
+			Expect(shown.Msg.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+
+			_, err = f.graph().CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{RequestId: newID(), Title: "Bad", VcsUrl: "not a url"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("vcs_url"))
+		})
+	})
+
+	Describe("UpdateProject", func() {
+		It("Scenario: A malformed URL is refused", func(ctx SpecContext) {
+			By("given a project")
+			p := f.project(ctx, "Platform")
+
+			By("when it is updated with vcs_url \"not a url\"")
+			_, err := f.graph().UpdateProject(ctx, connect.NewRequest(&daggerv1.UpdateProjectRequest{
+				RequestId: newID(), Project: p.GetSlug(), VcsUrl: ptr("not a url"),
+			}))
+
+			By("then the update is refused naming vcs_url")
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("vcs_url"))
+		})
+
+		It("sets the repository, clears it on an empty value, leaves it alone when unset, and is a person's", func(ctx SpecContext) {
+			p := f.project(ctx, "Platform")
+			set, err := f.graph().UpdateProject(ctx, connect.NewRequest(&daggerv1.UpdateProjectRequest{
+				RequestId: newID(), Project: "platform", VcsUrl: ptr("https://gitlab.example/x/y.git"),
+			}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(set.Msg.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+			Expect(set.Msg.GetProject().GetId()).To(Equal(p.GetId()))
+
+			same, err := f.graph().UpdateProject(ctx, connect.NewRequest(&daggerv1.UpdateProjectRequest{RequestId: newID(), Project: "platform"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(same.Msg.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"), "an unset field is left alone")
+
+			cleared, err := f.graph().UpdateProject(ctx, connect.NewRequest(&daggerv1.UpdateProjectRequest{
+				RequestId: newID(), Project: "platform", VcsUrl: ptr(""),
+			}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleared.Msg.GetProject().GetVcsUrl()).To(BeEmpty())
+
+			f.as(f.agent)
+			_, err = f.graph().UpdateProject(ctx, connect.NewRequest(&daggerv1.UpdateProjectRequest{
+				RequestId: newID(), Project: "platform", VcsUrl: ptr("https://gitlab.example/x/y.git"),
+			}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied), "an agent may not change a project's repository")
+		})
 	})
 
 	Describe("GetProject", func() {

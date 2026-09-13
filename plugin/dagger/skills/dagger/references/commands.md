@@ -19,6 +19,9 @@ dg node list                      # the project's nodes, filtered
 dg explain '#7'                   # why it is not ready; no reasons means it is
 dg search 'socket "permission denied" -legacy'
 dg project list                   # most recently active first
+dg project show platform          # one project, its repository included
+dg project create Platform --vcs-url https://gitlab.example/x/platform.git
+dg project update platform --vcs-url ''   # clear the repository; unset flags leave fields alone
 ```
 
 `ready`, `node list` and `search` return a **summary** of each node: its

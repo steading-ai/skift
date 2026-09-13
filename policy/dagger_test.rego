@@ -386,13 +386,15 @@ test_everyone_watches_the_organization if {
 
 # Projects
 
-test_user_creates_and_archives_projects if {
+test_user_creates_updates_and_archives_projects if {
 	authz.allow with input as {"principal": user, "action": "create_project"}
+	authz.allow with input as {"principal": user, "action": "update_project"}
 	authz.allow with input as {"principal": user, "action": "archive_project"}
 }
 
-test_agent_creates_but_does_not_archive_projects if {
+test_agent_creates_but_does_not_update_or_archive_projects if {
 	authz.allow with input as {"principal": agent_a, "action": "create_project"}
+	not authz.allow with input as {"principal": agent_a, "action": "update_project"}
 	not authz.allow with input as {"principal": agent_a, "action": "archive_project"}
 }
 

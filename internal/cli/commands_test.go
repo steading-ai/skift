@@ -681,11 +681,23 @@ var _ = Describe("dg commands", Label("unit"), func() {
 	})
 
 	Describe("every command emits JSON", func() {
-		It("project create, list, show, archive", func() {
-			r := run(nil, "project", "create", "Platform", "--slug", "platform", "--priority", "p1")
+		It("project create, list, show, update, archive", func() {
+			r := run(nil, "project", "create", "Platform", "--slug", "platform", "--priority", "p1", "--vcs-url", "https://gitlab.example/x/y.git")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()["project"]).To(HaveKeyWithValue("slug", "platform"))
+			Expect(r.decode()["project"]).To(HaveKeyWithValue("vcs_url", "https://gitlab.example/x/y.git"))
 			Expect(last[*daggerv1.CreateProjectRequest](s).GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+			Expect(last[*daggerv1.CreateProjectRequest](s).GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+
+			r = run(nil, "project", "update", "platform")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(last[*daggerv1.UpdateProjectRequest](s).VcsUrl).To(BeNil(), "a flag left alone leaves the field alone")
+
+			r = run(nil, "project", "update", "platform", "--vcs-url", "")
+			Expect(r.code).To(Equal(0), r.stderr.String())
+			Expect(last[*daggerv1.UpdateProjectRequest](s).VcsUrl).NotTo(BeNil(), "an empty --vcs-url is sent, to clear the field")
+			Expect(last[*daggerv1.UpdateProjectRequest](s).GetVcsUrl()).To(BeEmpty())
+			Expect(r.decode()["project"]).NotTo(HaveKey("vcs_url"))
 
 			r = run(nil, "project", "list", "--include-archived", "--page-size", "5")
 			Expect(r.code).To(Equal(0), r.stderr.String())

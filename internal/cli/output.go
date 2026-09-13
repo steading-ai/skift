@@ -124,6 +124,8 @@ func (p printer) text(msg proto.Message) error {
 		writeProject(&b, m.GetProject())
 	case *daggerv1.GetProjectResponse:
 		writeProject(&b, m.GetProject())
+	case *daggerv1.UpdateProjectResponse:
+		writeProject(&b, m.GetProject())
 	case *daggerv1.ArchiveProjectResponse:
 		writeProject(&b, m.GetProject())
 	case *daggerv1.HoldProjectResponse:
@@ -184,6 +186,9 @@ func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 
 func writeProject(b *strings.Builder, p *daggerv1.Project) {
 	fmt.Fprintf(b, "%-24s %s", p.GetSlug(), p.GetTitle())
+	if url := p.GetVcsUrl(); url != "" {
+		fmt.Fprintf(b, "  %s", url)
+	}
 	if p.GetArchivedAt() != nil {
 		b.WriteString("  (archived)")
 	}

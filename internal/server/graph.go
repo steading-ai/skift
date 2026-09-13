@@ -219,6 +219,7 @@ func (g *GraphService) CreateProject(ctx context.Context, req *connect.Request[d
 		Title:     req.Msg.GetTitle(),
 		Slug:      req.Msg.GetSlug(),
 		Priority:  priorities.str(req.Msg.GetPriority()),
+		VCSURL:    req.Msg.GetVcsUrl(),
 	})
 	if err != nil {
 		return nil, connectError(err)
@@ -263,6 +264,23 @@ func (g *GraphService) ListProjects(ctx context.Context, req *connect.Request[da
 		res.Projects = append(res.Projects, toProject(p))
 	}
 	return connect.NewResponse(res), nil
+}
+
+// UpdateProject implements daggerv1connect.GraphServiceHandler.
+func (g *GraphService) UpdateProject(ctx context.Context, req *connect.Request[daggerv1.UpdateProjectRequest]) (*connect.Response[daggerv1.UpdateProjectResponse], error) {
+	orgID, actor, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	project, err := g.svc.UpdateProject(ctx, orgID, actor, domain.UpdateProject{
+		RequestID: req.Msg.GetRequestId(),
+		Project:   req.Msg.GetProject(),
+		VCSURL:    req.Msg.VcsUrl,
+	})
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&daggerv1.UpdateProjectResponse{Project: toProject(*project)}), nil
 }
 
 // ArchiveProject implements daggerv1connect.GraphServiceHandler.

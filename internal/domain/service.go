@@ -222,6 +222,9 @@ type ClaimOutcome struct {
 	// Inputs is how much the claimed node's inputs come to, so the
 	// claimant knows they exist without being handed them.
 	Inputs InputsHint
+	// Project is the project the node was claimed in, so the claimant
+	// reads where the work delivers without a second call.
+	Project *Project
 }
 
 // ClaimNext claims the next ready node matching req, waiting up to
@@ -238,6 +241,10 @@ func (g *Service) ClaimNext(ctx context.Context, orgID string, actor Actor, req 
 			return err
 		}
 		out.Node = &states[0]
+		out.Project, err = resolveProject(ctx, tx, orgID, claimed.Node.ProjectID)
+		if err != nil {
+			return err
+		}
 		out.Inputs, err = InputsSize(ctx, tx, orgID, claimed.Node.ID)
 		return err
 	})

@@ -62,7 +62,7 @@ A node whose children have all closed becomes ready and is claimable. That is de
 
 ## Project
 
-Cheap to create and expected to be numerous and often short-lived. A project is exactly four things: an authorization scope, a namespace for node numbers, a rollup unit for cost, and a lifecycle unit. Keeping it to those four is what keeps it free.
+Cheap to create and expected to be numerous and often short-lived. A project is exactly four things: an authorization scope, a namespace for node numbers, a rollup unit for cost, and a lifecycle unit. Keeping it to those four is what keeps it free. It also carries one annotation that is none of the four: the URL of the repository the project delivers to, stored for the orchestrators that work the graph so that two of them and a person agree on where the code lives. Dagger never reads it — it neither clones nor checks that the host answers — and validates nothing beyond "an absolute URL, or empty".
 
 A project is an authorization *scope*, not a unit that requires a grant. It inherits its policy from the organization, and diverges only when someone deliberately restricts it. If admission were required per project, the ritual removed from creation would reappear at the door.
 
@@ -76,6 +76,7 @@ A project is an authorization *scope*, not a unit that requires a grant. It inhe
 | `archived_at` | Archiving is a deliberate act, not a timer. Keys stay valid forever |
 | `held_at`, `held_by`, `held_reason`, `hold_group` | Set while the project is parked. See [Hold](#hold) |
 | `priority` | Advisory. Dagger never sorts by it |
+| `vcs_url` | Clone URL of the repository the project delivers to, or empty. An annotation for orchestrators; dagger never reads it. Set at creation or by `UpdateProject` |
 
 Creating a project requires no provisioning, no DDL, and no name adjudication.
 

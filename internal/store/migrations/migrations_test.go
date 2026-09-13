@@ -109,6 +109,20 @@ var _ = Describe("Organizations, projects, principals, identities", Label(testsu
 		})
 	})
 
+	Describe("vcs_url is an annotation every existing project already carries", func() {
+		It("is a non-null text column defaulting to the empty string", func(ctx SpecContext) {
+			db := pg.Database(ctx)
+			var dataType, isNullable, columnDefault string
+			Expect(db.QueryRow(ctx, `
+				SELECT data_type, is_nullable, column_default
+				  FROM information_schema.columns
+				 WHERE table_name = 'projects' AND column_name = 'vcs_url'`).Scan(&dataType, &isNullable, &columnDefault)).To(Succeed())
+			Expect(dataType).To(Equal("text"))
+			Expect(isNullable).To(Equal("NO"))
+			Expect(columnDefault).To(Equal("''::text"))
+		})
+	})
+
 	Describe("node_counter is a column, never a PostgreSQL sequence", func() {
 		It("is an ordinary bigint column starting at 1", func(ctx SpecContext) {
 			db := pg.Database(ctx)
