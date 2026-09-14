@@ -1,6 +1,6 @@
 {
   "name": "dagger",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agent-first project management on a DAG. Registers the dagger MCP server and teaches the model to find, claim, and complete work, and to write nodes another agent can actually pick up.",
   "author": {
     "name": "Ivy Evans"

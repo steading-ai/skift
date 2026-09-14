@@ -1,7 +1,8 @@
 # dagger plugin
 
-Registers the dagger MCP server and ships a skill teaching an agent to drive the
-graph through it, or through the `dg` CLI.
+Registers the dagger MCP server and ships two skills: one teaching an agent to
+drive the graph through it, or through the `dg` CLI, and one for planning an epic
+before it is filed.
 
 ## What it installs
 
@@ -9,6 +10,7 @@ graph through it, or through the `dg` CLI.
 |-----------|------|--------|
 | MCP server | `.mcp.json` | a `dagger` server, run as `dg mcp` over stdio |
 | Skill | `skills/dagger/SKILL.md` | `dagger:dagger`, model-invoked when the conversation touches a dagger graph |
+| Skill | `skills/epic/SKILL.md` | `dagger:epic`, model-invoked when work is planned as an epic before it is filed |
 
 ## Requirements
 
