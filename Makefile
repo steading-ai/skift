@@ -6,12 +6,20 @@
 MODULE  := github.com/ivy/dagger
 BINARY  := dg
 
-# Version is the nearest v-prefixed tag, marked dirty when the tree has local
-# changes. Without a tag the build is a 0.0.0 pre-release carrying the commit,
-# so the string is always semver-shaped.
-GIT_DESCRIBE := $(shell git describe --tags --match 'v*' --dirty 2>/dev/null | sed 's/^v//')
-GIT_SHA      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-VERSION      ?= $(if $(GIT_DESCRIBE),$(GIT_DESCRIBE),0.0.0-dev+$(GIT_SHA))
+# Version is the tag when the tree is exactly at a v-prefixed tag and clean,
+# and otherwise the nearest tag carrying a development marker: the commits
+# since it, the commit, and .dirty for local changes, as build metadata so
+# the string stays semver-shaped. Without a tag the nearest is 0.0.0, and
+# without git at all the marker is all there is.
+#
+#   v0.1.0, clean          0.1.0
+#   3 commits past v0.1.0  0.1.0+dev.3.g1a2b3c4
+#   the same, edited       0.1.0+dev.3.g1a2b3c4.dirty
+GIT_DESCRIBE := $(shell git describe --tags --match 'v*' --long --dirty 2>/dev/null || \
+  { git rev-parse --verify -q HEAD >/dev/null 2>&1 && \
+    echo "v0.0.0-$$(git rev-list --count HEAD)-g$$(git rev-parse --short HEAD)$$(git diff-index --quiet HEAD -- || echo -dirty)"; })
+VERSION      ?= $(if $(GIT_DESCRIBE),$(shell echo '$(GIT_DESCRIBE)' | sed -E \
+  's/^v//; s/^([^-]+)-0-g[0-9a-f]+$$/\1/; s/^([^-]+)-([0-9]+)-g([0-9a-f]+)$$/\1+dev.\2.g\3/; s/^([^-]+)-([0-9]+)-g([0-9a-f]+)-dirty$$/\1+dev.\2.g\3.dirty/'),0.0.0+dev.unknown)
 
 LDFLAGS := -X $(MODULE)/internal/version.version=$(VERSION)
 
@@ -21,12 +29,16 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build test test-unit test-db test-acceptance test-policy lint check-generated generate clean install-units db-up db-down db-reset db-migrate
+.PHONY: all build version test test-unit test-db test-acceptance test-policy lint check-generated generate clean install-units db-up db-down db-reset db-migrate
 
 all: build
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/dg
+
+# The version the next build would carry, as dg version will report it.
+version:
+	@echo $(VERSION)
 
 # Every spec, and the policy bundle's own suite. Database specs need
 # podman for testcontainers.
