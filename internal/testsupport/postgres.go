@@ -150,10 +150,7 @@ func (p *Postgres) Stop(ctx context.Context) error {
 // that is what lets `make test-unit` leave the container alone.
 func (p *Postgres) Database(ctx context.Context) *pgxpool.Pool {
 	ginkgo.GinkgoHelper()
-	report := ginkgo.CurrentSpecReport()
-	gomega.Expect(report.Labels()).To(gomega.ContainElement(DBLabel),
-		"spec %q uses PostgreSQL and must be labelled %q", report.FullText(), DBLabel)
-	gomega.Expect(p).NotTo(gomega.BeNil(), "PostgreSQL was not started for this suite")
+	p.requireDBSpec()
 
 	name := "spec_" + randomSuffix()
 	pool, err := p.clone(ctx, name)
@@ -166,6 +163,34 @@ func (p *Postgres) Database(ctx context.Context) *pgxpool.Pool {
 }
 
 // clone creates name from the template and opens a pool on it.
+// EmptyDatabase hands the running spec a database with no schema at all,
+// for a spec that brings one up from nothing, and drops it when the spec
+// ends. It returns the database's URL rather than a pool, since what
+// migrates it takes a URL. The spec must carry [DBLabel], as for
+// [Postgres.Database].
+func (p *Postgres) EmptyDatabase(ctx context.Context) string {
+	ginkgo.GinkgoHelper()
+	p.requireDBSpec()
+
+	name := "empty_" + randomSuffix()
+	err := p.admin(ctx, `CREATE DATABASE `+pgx.Identifier{name}.Sanitize())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	ginkgo.DeferCleanup(func(ctx context.Context) error {
+		return p.drop(ctx, name)
+	})
+	return p.databaseURL(name)
+}
+
+// requireDBSpec fails the running spec unless it carries [DBLabel] and the
+// suite started PostgreSQL.
+func (p *Postgres) requireDBSpec() {
+	ginkgo.GinkgoHelper()
+	report := ginkgo.CurrentSpecReport()
+	gomega.Expect(report.Labels()).To(gomega.ContainElement(DBLabel),
+		"spec %q uses PostgreSQL and must be labelled %q", report.FullText(), DBLabel)
+	gomega.Expect(p).NotTo(gomega.BeNil(), "PostgreSQL was not started for this suite")
+}
+
 func (p *Postgres) clone(ctx context.Context, name string) (*pgxpool.Pool, error) {
 	if err := p.admin(ctx, `CREATE DATABASE `+pgx.Identifier{name}.Sanitize()+` TEMPLATE `+templateName); err != nil {
 		return nil, fmt.Errorf("create database %s: %w", name, err)
