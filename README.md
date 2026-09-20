@@ -147,24 +147,35 @@ It("reads its own database", Label("db"), func(ctx SpecContext) {
 The harness finds the rootless podman socket on its own. Set `DOCKER_HOST`
 to point it somewhere else.
 
-### Run it under systemd
+### Install it from the rpm
 
-The service and its lease reaper ship as user units in `contrib/systemd/`,
-matching a deployment where dagger runs as one unix account:
+`make package` cross-compiles `dg` and builds an rpm for `x86_64` and
+`aarch64` into `dist/`. The package carries the binary, the system units in
+`contrib/systemd/`, and the fragments under `packaging/` that create the
+`dagger` system user and group and the socket directory:
 
 ```sh
-make build && install -D dg ~/.local/bin/dg
-mkdir -p ~/.config/dagger && echo "DATABASE_URL=..." > ~/.config/dagger/env
-make install-units
-systemctl --user enable --now dagger.service dagger-reap.timer
+make package
+sudo dnf install ./dist/dagger-*.$(uname -m).rpm
+sudo editor /etc/dagger/env            # DATABASE_URL=...
+sudo systemctl enable --now dagger.service dagger-reap.timer
 ```
 
-`dagger.service` is `Type=notify` and becomes active only once the socket is
-bound and the database has answered. `dagger-reap.timer` runs `dg reap` every
-minute, releasing leases whose TTL has passed; the command is idempotent and
-safe to run by hand alongside the timer. Set `DG=/path/to/dg` on
-`make install-units` to run a binary from somewhere other than
-`~/.local/bin`.
+The package installs but does not start anything: the service needs a
+database, which is not the package's to create. `dagger.service` runs as
+the `dagger` user and is `Type=notify`, active only once the socket is bound
+and the database has answered. `dagger-reap.timer` runs `dg reap` every
+minute, releasing leases whose TTL has passed; the command is idempotent
+and safe to run by hand alongside the timer.
+
+The service identifies a caller by the uid on its end of
+`/run/dagger/dg.sock`. The directory is group `dagger` and setgid, so the
+socket is born in that group, and its `0660` mode admits the group; add an
+account to the `dagger` group and give it a fresh session to let it call.
+
+`make version` prints what `dg version` will report: the tag on a clean
+tagged checkout, and otherwise the nearest tag carrying a development
+marker such as `+dev.3.g1a2b3c4.dirty`.
 
 ## Documentation
 

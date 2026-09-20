@@ -1,0 +1,6 @@
+# Environment for dagger.service and dagger-reap.service, one KEY=value per
+# line. Readable by the dagger group only: the URL carries a password.
+#
+# The service does not create its database or run migrations; both must be
+# in place before it can become active.
+#DATABASE_URL=postgres://dagger:password@127.0.0.1:5432/dagger

@@ -2,7 +2,7 @@
 # this interval plus the timer's accuracy before its node is ready again;
 # a claim in the meantime expires it itself rather than waiting.
 #
-#   systemctl --user enable --now dagger-reap.timer
+#   systemctl enable --now dagger-reap.timer
 
 [Unit]
 Description=dagger: expire stale leases every minute

@@ -29,7 +29,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version test test-unit test-db test-acceptance test-policy lint check-generated generate clean install-units db-up db-down db-reset db-migrate
+.PHONY: all build version test test-unit test-db test-acceptance test-policy lint check-generated generate clean package db-up db-down db-reset db-migrate
 
 all: build
 
@@ -102,23 +102,20 @@ clean:
 	rm -f $(BINARY)
 	rm -rf dist
 
-# systemd user units for the service and the lease reaper. They go under
-# the invoking user's unit directory, and are enabled by hand afterwards:
-#
-#   systemctl --user enable --now dagger.service dagger-reap.timer
-#
-# The units start the binary at $(DG), which defaults to ~/.local/bin/dg
-# spelled as systemd spells the home directory. Override it to run a binary
-# from somewhere else, such as DG=$(CURDIR)/dg for this checkout.
-UNIT_DIR ?= $(if $(XDG_CONFIG_HOME),$(XDG_CONFIG_HOME),$(HOME)/.config)/systemd/user
-DG       ?= %h/.local/bin/dg
+# The rpm, for each architecture in PACKAGE_ARCHES: a cross-compiled dg
+# and the units, fragments and scriptlets under contrib/ and packaging/,
+# assembled by nfpm from packaging/nfpm.yaml. Output lands in dist/.
+PACKAGE_ARCHES ?= amd64 arm64
 
-install-units:
-	install -d -m 0755 "$(UNIT_DIR)"
-	for unit in contrib/systemd/*; do \
-	  sed 's|%h/.local/bin/dg|$(DG)|' "$$unit" > "$(UNIT_DIR)/$$(basename "$$unit")"; \
+package: $(foreach arch,$(PACKAGE_ARCHES),dist/dg-linux-$(arch))
+	for arch in $(PACKAGE_ARCHES); do \
+	  GOARCH=$$arch VERSION=$(VERSION) nfpm package --config packaging/nfpm.yaml --packager rpm --target dist/ || exit 1; \
 	done
-	systemctl --user daemon-reload
+
+dist/dg-linux-%: FORCE
+	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/dg
+
+FORCE:
 
 # Development database. See compose.yaml and the "Developing" section of README.md.
 

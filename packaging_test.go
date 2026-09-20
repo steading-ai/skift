@@ -3,6 +3,7 @@ package dagger_test
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,6 +50,13 @@ func makeVersion(dir string) string {
 	return runIn(dir, time.Minute, "make", "version")
 }
 
+// rpmPaths lists the paths a package would install, through libarchive's
+// reading of the rpm payload.
+func rpmPaths(rpm string) []string {
+	GinkgoHelper()
+	return strings.Split(runIn(filepath.Dir(rpm), time.Minute, "bsdtar", "-tf", rpm), "\n")
+}
+
 var _ = Describe("Packaging", Label("unit", "slow"), func() {
 	BeforeEach(func() {
 		if os.Getenv(nestedRun) != "" {
@@ -87,6 +95,65 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 		It("is semver-shaped with no tag at all", func() {
 			git(dir, "tag", "-d", "v9.9.9")
 			Expect(makeVersion(dir)).To(MatchRegexp(`^0\.0\.0\+dev\.1\.g[0-9a-f]+$`))
+		})
+	})
+
+	Describe("the rpm", Ordered, func() {
+		var dir string
+
+		// One package build serves every spec below. Two cross-compiles of
+		// the binary, from the shared build cache.
+		BeforeAll(func() {
+			dir = checkout()
+			runIn(dir, 10*time.Minute, "make", "package", "VERSION=9.9.9")
+		})
+
+		installed := []string{
+			"/usr/bin/dg",
+			"/usr/lib/systemd/system/dagger.service",
+			"/usr/lib/systemd/system/dagger-reap.service",
+			"/usr/lib/systemd/system/dagger-reap.timer",
+			"/usr/lib/sysusers.d/dagger.conf",
+			"/usr/lib/tmpfiles.d/dagger.conf",
+			"/etc/dagger/env",
+		}
+
+		It("is built for both architectures with the units and fragments", func() {
+			for _, rpm := range []string{"dagger-9.9.9-1.x86_64.rpm", "dagger-9.9.9-1.aarch64.rpm"} {
+				Expect(rpmPaths(filepath.Join(dir, "dist", rpm))).To(ContainElements(installed), rpm)
+			}
+		})
+
+		It("runs the service as the dagger system user, not a login account", func() {
+			unit, err := os.ReadFile(filepath.Join(dir, "contrib/systemd/dagger.service"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(unit)).To(MatchRegexp(`(?m)^User=dagger$`))
+			Expect(string(unit)).To(MatchRegexp(`(?m)^WantedBy=multi-user\.target$`))
+			Expect(string(unit)).NotTo(ContainSubstring("tailnet"), "the packaged unit carries no tailnet options")
+
+			sysusers, err := os.ReadFile(filepath.Join(dir, "packaging/sysusers.d/dagger.conf"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(sysusers)).To(MatchRegexp(`(?m)^u dagger - `))
+		})
+
+		It("declares the socket directory in the dagger group, setgid, mode 2750", func() {
+			tmpfiles, err := os.ReadFile(filepath.Join(dir, "packaging/tmpfiles.d/dagger.conf"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(tmpfiles)).To(MatchRegexp(`(?m)^d /run/dagger 2750 dagger dagger -$`))
+		})
+
+		It("does not start the service from a scriptlet on first install", func() {
+			for _, script := range []string{"preinstall.sh", "postinstall.sh"} {
+				body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts", script))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(body)).NotTo(MatchRegexp(`systemctl\b.*\b(start|restart|enable|--now)\b`), script)
+			}
+		})
+
+		It("stops and disables the units when the package is removed", func() {
+			body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts/preremove.sh"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(body)).To(ContainSubstring("disable --now dagger.service dagger-reap.timer"))
 		})
 	})
 })

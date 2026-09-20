@@ -1,0 +1,50 @@
+# The rpm. `make package` builds dg for each architecture and runs nfpm
+# once per GOARCH with VERSION set; see the Makefile for both values.
+#
+# The package installs and does not start: the units are enabled by hand
+# once /etc/dagger/env names a database.
+name: dagger
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+section: default
+priority: optional
+maintainer: Ivy Evans <ivy@ivyevans.net>
+description: |
+  Agent-first project management on a DAG.
+  dg is one binary with three faces: the dagger service, an MCP server, and
+  the CLI that talks to either.
+vendor: Ivy Evans
+homepage: https://github.com/ivy/dagger
+depends:
+  - systemd
+contents:
+  - src: dist/dg-linux-${GOARCH}
+    dst: /usr/bin/dg
+    expand: true
+    file_info:
+      mode: 0755
+  - src: contrib/systemd/dagger.service
+    dst: /usr/lib/systemd/system/dagger.service
+  - src: contrib/systemd/dagger-reap.service
+    dst: /usr/lib/systemd/system/dagger-reap.service
+  - src: contrib/systemd/dagger-reap.timer
+    dst: /usr/lib/systemd/system/dagger-reap.timer
+  - src: packaging/sysusers.d/dagger.conf
+    dst: /usr/lib/sysusers.d/dagger.conf
+  - src: packaging/tmpfiles.d/dagger.conf
+    dst: /usr/lib/tmpfiles.d/dagger.conf
+  # The environment template, kept across upgrades once edited. Group
+  # readable only: the database URL carries a password.
+  - src: packaging/env
+    dst: /etc/dagger/env
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: dagger
+scripts:
+  preinstall: packaging/scripts/preinstall.sh
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh
