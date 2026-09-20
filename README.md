@@ -33,6 +33,48 @@ the person waiting for it. The way to help is a node of your own that the gate
 depends on — do the research there, complete it, and the person arrives at the
 gate with your recommendation already in its inputs.
 
+## Deploying
+
+A deployment is the `dg` binary, a PostgreSQL database it may create tables
+in, and the systemd units that run it. The binary carries its schema and
+can seed its own first caller, so a fresh install needs no checkout, no
+migration tool, and no SQL client. Install, migrate, bootstrap, start:
+
+```sh
+sudo dnf install dagger
+DATABASE_URL=postgres://dagger:...@db.example/dagger dg migrate
+DATABASE_URL=postgres://dagger:...@db.example/dagger dg admin bootstrap "$(id -u)" homestead
+sudo systemctl enable --now dagger.service dagger-reap.timer
+```
+
+- **The package** installs `dg`, the system units, and the `dagger` user
+  and group the service runs as, and starts nothing: the service needs a
+  database, which is not the package's to create. See "Install it from the
+  rpm" below for building it.
+- **`dg migrate`** applies every migration the binary carries that the
+  database has not seen, and prints the versions it applied. A database
+  already at the current schema applies nothing, so it is safe on every
+  deploy. `dg serve` does the same at start, so this step is for running
+  the migrations ahead of the service; pass `--no-migrate` to the service
+  to make it refuse a database that is behind instead.
+- **`dg admin bootstrap <uid> <organization>`** creates the organization
+  and, in it, a `user` principal that a caller on the unix socket with that
+  uid resolves to. It prints both. It is idempotent: an organization
+  already carrying the name and a principal already holding the uid are
+  adopted, so provisioning can run it every time without knowing whether
+  it has run before. The uid is the one `dg` will run as; `$(id -u)` is
+  the invoking user's. Every caller that will reach the socket needs a
+  principal; run it once per uid.
+- **`dagger.service`** reads `DATABASE_URL` from `/etc/dagger/env`, one
+  `KEY=value` per line, so put the same URL there; the package ships the
+  template. It is `Type=notify` and becomes active only once the socket is
+  bound, the database has answered, and the schema is current.
+  `dagger-reap.timer` runs `dg reap` every minute.
+
+`dg ready` then answers as the bootstrapped user, with an empty ready set
+once a project exists to ask about. The caller reaches the socket through
+the `dagger` group; see the rpm section for how the socket admits it.
+
 ## Developing
 
 Dagger stores everything in PostgreSQL, and the behaviour worth testing (row
