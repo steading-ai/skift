@@ -106,10 +106,14 @@ clean:
 # and the units, fragments and scriptlets under contrib/ and packaging/,
 # assembled by nfpm from packaging/nfpm.yaml. Output lands in dist/.
 PACKAGE_ARCHES ?= amd64 arm64
+# Where the finished rpms go. stead passes its channel directory; staging
+# stays under dist/ regardless.
+DESTDIR ?= dist
 
 package: $(foreach arch,$(PACKAGE_ARCHES),dist/dg-linux-$(arch))
+	mkdir -p $(DESTDIR)
 	for arch in $(PACKAGE_ARCHES); do \
-	  GOARCH=$$arch VERSION=$(VERSION) nfpm package --config packaging/nfpm.yaml --packager rpm --target dist/ || exit 1; \
+	  GOARCH=$$arch VERSION=$(VERSION) nfpm package --config packaging/nfpm.yaml --packager rpm --target $(DESTDIR)/ || exit 1; \
 	done
 
 dist/dg-linux-%: FORCE
