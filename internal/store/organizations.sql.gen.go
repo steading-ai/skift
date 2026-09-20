@@ -42,6 +42,22 @@ func (q *Queries) GetOrganization(ctx context.Context, id string) (Organization,
 	return i, err
 }
 
+const getOrganizationByName = `-- name: GetOrganizationByName :one
+SELECT id, name, created_at FROM organizations
+WHERE name = $1
+ORDER BY id
+LIMIT 1
+`
+
+// The organization bootstrap adopts before creating one. Names are not
+// unique, so the oldest wins; bootstrap serializes itself to keep it so.
+func (q *Queries) GetOrganizationByName(ctx context.Context, name string) (Organization, error) {
+	row := q.db.QueryRow(ctx, getOrganizationByName, name)
+	var i Organization
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
+}
+
 const listOrganizations = `-- name: ListOrganizations :many
 SELECT id, name, created_at FROM organizations
 ORDER BY id

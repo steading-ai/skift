@@ -15,3 +15,11 @@ WHERE id = $1;
 -- name: ListOrganizations :many
 SELECT * FROM organizations
 ORDER BY id;
+
+-- The organization bootstrap adopts before creating one. Names are not
+-- unique, so the oldest wins; bootstrap serializes itself to keep it so.
+-- name: GetOrganizationByName :one
+SELECT * FROM organizations
+WHERE name = $1
+ORDER BY id
+LIMIT 1;

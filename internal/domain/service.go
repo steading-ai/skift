@@ -47,6 +47,29 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	return migrations.Migrate(ctx, databaseURL)
 }
 
+// MigrationReport is what one [ApplyMigrations] did.
+type MigrationReport = migrations.Report
+
+// SchemaStatus is where a database stands against the schema the binary
+// carries.
+type SchemaStatus = migrations.Status
+
+// ErrDatabaseUnreachable is what [ApplyMigrations] and [InspectSchema]
+// fail with when the database does not answer, as opposed to answering
+// and refusing.
+var ErrDatabaseUnreachable = migrations.ErrUnreachable
+
+// ApplyMigrations is [Migrate] reporting which migrations it applied.
+func ApplyMigrations(ctx context.Context, databaseURL string) (MigrationReport, error) {
+	return migrations.Apply(ctx, databaseURL)
+}
+
+// InspectSchema reads the schema version of the database without changing
+// it, for a caller that must refuse a database that is behind.
+func InspectSchema(ctx context.Context, databaseURL string) (SchemaStatus, error) {
+	return migrations.Inspect(ctx, databaseURL)
+}
+
 // Service is the domain as a handler sees it: every operation the wire
 // contract needs, over one database and one policy bundle, with no store
 // type in any signature that a caller must name. Each method runs in its
