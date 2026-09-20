@@ -15,11 +15,14 @@ import (
 	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 
 	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
+	"github.com/ivy/dagger/internal/cli"
 	"github.com/ivy/dagger/internal/server"
+	"github.com/ivy/dagger/internal/testsupport"
 )
 
 // unreachableDB is a URL nothing listens on, so the service starts and its
@@ -146,5 +149,90 @@ var _ = Describe("dg serve shutdown", Label("unit"), func() {
 			_, err = os.Lstat(socket)
 			Expect(err).To(MatchError(os.ErrNotExist), "run %d", i)
 		}
+	})
+})
+
+// health reads the health endpoint over the socket.
+func health(ctx context.Context, socket string) (server.Health, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://dagger"+server.HealthPath, nil)
+	if err != nil {
+		return server.Health{}, err
+	}
+	res, err := socketClient(socket).Do(req)
+	if err != nil {
+		return server.Health{}, err
+	}
+	defer res.Body.Close() //nolint:errcheck // response body of a finished read
+	var body server.Health
+	return body, json.NewDecoder(res.Body).Decode(&body)
+}
+
+var _ = Describe("dg serve and the schema", Label(testsupport.DBLabel), func() {
+	var (
+		binary string
+		socket string
+	)
+
+	BeforeEach(func() {
+		var err error
+		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
+		Expect(err).NotTo(HaveOccurred())
+		socket = filepath.Join(GinkgoT().TempDir(), "dg.sock")
+	})
+
+	serve := func(url string, flags ...string) *gexec.Session {
+		GinkgoHelper()
+		args := append([]string{"serve", "--socket", socket, "--database-url", url, "--shutdown-timeout", "10s"}, flags...)
+		session, err := gexec.Start(exec.Command(binary, args...), GinkgoWriter, GinkgoWriter)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			session.Kill().Wait(5 * time.Second)
+		})
+		return session
+	}
+
+	It("migrates an empty database at start and serves", func(ctx SpecContext) {
+		url := pg.EmptyDatabase(ctx)
+
+		By("when dg serve starts against an empty database")
+		session := serve(url)
+
+		By("then it reports itself ready with the schema current")
+		Eventually(session.Err, 30*time.Second).Should(gbytes.Say("database reachable; ready"))
+		Expect(string(session.Err.Contents())).To(ContainSubstring("migration applied"))
+		Expect(schemaVersion(ctx, url)).NotTo(BeZero())
+
+		By("and it serves: the health endpoint answers ok over the socket")
+		h, err := health(ctx, socket)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(h.Status).To(Equal("ok"))
+
+		By("and it exits zero on SIGTERM")
+		session.Signal(syscall.SIGTERM)
+		Eventually(session, 15*time.Second).Should(gexec.Exit(0))
+	})
+
+	It("with --no-migrate refuses an empty database rather than serving over it", func(ctx SpecContext) {
+		url := pg.EmptyDatabase(ctx)
+
+		By("when dg serve --no-migrate starts against an empty database")
+		session := serve(url, "--no-migrate")
+
+		By("then it exits non-zero naming dg migrate, applies nothing, and leaves no socket")
+		Eventually(session, 30*time.Second).Should(gexec.Exit(cli.ExitFailure))
+		Expect(string(session.Err.Contents())).To(ContainSubstring("run dg migrate"))
+		Expect(schemaVersion(ctx, url)).To(BeZero())
+		_, err := os.Lstat(socket)
+		Expect(err).To(MatchError(os.ErrNotExist))
+	})
+
+	It("with --no-migrate serves a database that is already current", func(ctx SpecContext) {
+		url := pg.Database(ctx).Config().ConnString()
+		session := serve(url, "--no-migrate")
+		Eventually(session.Err, 30*time.Second).Should(gbytes.Say("database reachable; ready"))
+		Expect(string(session.Err.Contents())).NotTo(ContainSubstring("migration applied"))
+		h, err := health(ctx, socket)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(h.Status).To(Equal("ok"))
 	})
 })

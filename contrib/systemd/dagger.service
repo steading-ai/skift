@@ -13,8 +13,9 @@
 # KEY=value per line; the package ships a template there.
 #
 # Readiness is sd_notify: the unit is active only once the service has
-# bound its socket and the database has answered, so anything ordered
-# After= it can rely on both.
+# bound its socket, the database has answered, and the schema is current
+# (the service migrates at start), so anything ordered After= it can rely
+# on all three.
 
 [Unit]
 Description=dagger: agent-first project management on a DAG

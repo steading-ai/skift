@@ -50,6 +50,7 @@ type serveOptions struct {
 	socketMode      string
 	socketGroup     string
 	databaseURL     string
+	noMigrate       bool
 	shutdownTimeout time.Duration
 	logLevel        string
 	tailnet         transport.TailnetConfig
@@ -64,6 +65,12 @@ func newServeCommand() *cobra.Command {
 listening on a unix socket and, when --tailnet-hostname is given, as a node
 on a tailnet as well. Both serve the same handlers; a caller over the socket
 is identified by its unix user, over the tailnet by its tailscale node.
+
+The service brings the database to the current schema once it answers,
+and reports itself ready only then, so a deployment needs no migration
+step of its own. With --no-migrate it applies nothing and instead refuses
+to serve a database that is behind the schema the binary carries; run
+"dg migrate" first.
 
 Logs go to stderr as structured records. Under systemd they carry journal
 priorities, and under a Type=notify unit the service reports itself ready
@@ -80,6 +87,7 @@ process exits.`,
 	f.StringVar(&opts.socketMode, "socket-mode", fmt.Sprintf("%04o", server.DefaultSocketMode), "octal permissions of the socket")
 	f.StringVar(&opts.socketGroup, "socket-group", "", "group that owns the socket, by name or id (default: the process's group)")
 	f.StringVar(&opts.databaseURL, "database-url", os.Getenv(databaseURLEnv), "PostgreSQL connection URL (default: $"+databaseURLEnv+")")
+	f.BoolVar(&opts.noMigrate, "no-migrate", false, "apply no migrations at start, and refuse a database that is behind the schema")
 	f.DurationVar(&opts.shutdownTimeout, "shutdown-timeout", server.DefaultShutdownTimeout, "how long to wait for in-flight requests on shutdown")
 	f.StringVar(&opts.logLevel, "log-level", "info", "minimum log level: debug, info, warn, error")
 	f.StringVar(&opts.tailnet.Hostname, "tailnet-hostname", "", "also serve on the tailnet as a node with this name")
@@ -178,8 +186,6 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	if err := srv.Listen(); err != nil {
 		return fmt.Errorf("dg serve: %w", err)
 	}
-	go announceReady(ctx, pool, log)
-
 	// The shutdown notice is on the shutdown path itself, not in a
 	// goroutine racing the return: the signal cancels serveCtx only once
 	// the line is logged and systemd has been told, and Serve drains only
@@ -189,15 +195,68 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	serveCtx, drain := context.WithCancel(context.WithoutCancel(ctx))
 	defer drain()
 	go func() {
-		<-ctx.Done()
-		log.Info("shutdown signal received")
-		notify(log, sdnotify.Stopping)
-		drain()
+		select {
+		case <-ctx.Done():
+			log.Info("shutdown signal received")
+			notify(log, sdnotify.Stopping)
+			drain()
+		case <-serveCtx.Done():
+			// A refusal below drained the service; there was no signal
+			// to announce.
+		}
 	}()
+
+	// The schema is prepared once the database answers, on the same
+	// path that reports readiness. A database that refuses, by being
+	// behind under --no-migrate or by failing a migration, is fatal:
+	// the service drains and exits rather than serving over it.
+	fatal := make(chan error, 1)
+	go func() {
+		if err := announceReady(ctx, pool, schemaPreparer(opts), log); err != nil {
+			fatal <- err
+			drain()
+		}
+	}()
+
 	if err := srv.Serve(serveCtx); err != nil {
 		return fmt.Errorf("dg serve: %w", err)
 	}
-	return nil
+	select {
+	case err := <-fatal:
+		return fmt.Errorf("dg serve: %w", err)
+	default:
+		return nil
+	}
+}
+
+// schemaPreparer is what announceReady does to the schema once the
+// database answers: apply the pending migrations, or under --no-migrate
+// only check that there are none.
+func schemaPreparer(opts serveOptions) func(ctx context.Context, log *slog.Logger) error {
+	if opts.noMigrate {
+		return func(ctx context.Context, log *slog.Logger) error {
+			status, err := domain.InspectSchema(ctx, opts.databaseURL)
+			if err != nil {
+				return err
+			}
+			if status.Pending() {
+				return fmt.Errorf("schema is at version %d but this build expects %d; run dg migrate, or start without --no-migrate", status.Current, status.Latest)
+			}
+			log.Info("schema current", "schema_version", status.Current)
+			return nil
+		}
+	}
+	return func(ctx context.Context, log *slog.Logger) error {
+		report, err := domain.ApplyMigrations(ctx, opts.databaseURL)
+		if err != nil {
+			return err
+		}
+		for _, v := range report.Applied {
+			log.Info("migration applied", "version", v)
+		}
+		log.Info("schema current", "applied", len(report.Applied), "schema_version", report.Version)
+		return nil
+	}
 }
 
 // readyProbe bounds one database ping while waiting to report readiness,
@@ -207,25 +266,37 @@ const (
 	readyRetry = time.Second
 )
 
-// announceReady reports the service ready to systemd once the database
-// answers, and not before: the socket is already bound, but a service
-// that cannot reach its database cannot take work, and a unit ordered
-// after this one should not start until it can. It keeps probing until
-// the database answers or the service is shutting down.
-func announceReady(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) {
+// announceReady prepares the schema and reports the service ready to
+// systemd once the database answers, and not before: the socket is
+// already bound, but a service that cannot reach its database cannot take
+// work, and a unit ordered after this one should not start until it can.
+// It keeps probing until the database answers or the service is shutting
+// down. The database answering and then refusing is returned as the error
+// it refused with; that is the service's to act on, not to retry.
+func announceReady(ctx context.Context, pool *pgxpool.Pool, prepare func(context.Context, *slog.Logger) error, log *slog.Logger) error {
 	for {
 		probeCtx, cancel := context.WithTimeout(ctx, readyProbe)
 		err := pool.Ping(probeCtx)
 		cancel()
 		if err == nil {
-			log.Info("database reachable; ready")
-			notify(log, sdnotify.Ready, sdnotify.Status("serving"))
-			return
+			err = prepare(ctx, log)
+			if err == nil {
+				log.Info("database reachable; ready")
+				notify(log, sdnotify.Ready, sdnotify.Status("serving"))
+				return nil
+			}
+			if !errors.Is(err, domain.ErrDatabaseUnreachable) {
+				log.Error("database refused; not serving", "err", err)
+				return err
+			}
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 		log.Warn("database not reachable; not ready yet", "err", err)
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-time.After(readyRetry):
 		}
 	}
