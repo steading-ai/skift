@@ -22,6 +22,11 @@ type app struct {
 	// the config file and environment.
 	flags  client.Config
 	output string
+	// projects are the --project values given on the command line, zero or
+	// more, each a project filter by slug, org/slug, or id. The config file
+	// and $DG_PROJECT still name a single default project, laid under
+	// these, and empty means every project the caller may read.
+	projects []string
 
 	cfg    *client.Config
 	client *client.Client
@@ -70,27 +75,53 @@ func (a *app) project() (string, error) {
 	return project, nil
 }
 
-// currentProject is the configured project, or empty when none is set,
-// for the command whose scope is the organization when no project is
-// named rather than an error.
-func (a *app) currentProject() (string, error) {
+// currentProjects is every project a command's filter should scope to:
+// --project given once or more, else the config file's or $DG_PROJECT's
+// single project as the sole default, else empty, meaning every project
+// the caller may read.
+func (a *app) currentProjects() ([]string, error) {
+	if len(a.projects) > 0 {
+		return a.projects, nil
+	}
 	cfg, err := a.config()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Project == "" {
+		return nil, nil
+	}
+	return []string{cfg.Project}, nil
+}
+
+// currentProject is [app.currentProjects] narrowed to at most one, for a
+// command that names a single project's address rather than a filter.
+// Empty means none is set, for the command whose scope is the
+// organization when no project is named rather than an error.
+func (a *app) currentProject() (string, error) {
+	projects, err := a.currentProjects()
 	if err != nil {
 		return "", err
 	}
-	return cfg.Project, nil
+	switch len(projects) {
+	case 0:
+		return "", nil
+	case 1:
+		return projects[0], nil
+	default:
+		return "", usage("only one --project is allowed here; got %d", len(projects))
+	}
 }
 
 // projectFor is the project a request about refs resolves in: the current
 // project when one is set, else the project the references themselves
 // carry, which every qualified reference does.
 func (a *app) projectFor(refs ...client.NodeRef) (string, error) {
-	cfg, err := a.config()
+	project, err := a.currentProject()
 	if err != nil {
 		return "", err
 	}
-	if cfg.Project != "" {
-		return cfg.Project, nil
+	if project != "" {
+		return project, nil
 	}
 	for _, r := range refs {
 		if p := r.ProjectRef(); p != "" {

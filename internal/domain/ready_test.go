@@ -543,8 +543,8 @@ var _ = Describe("Readiness", Label(testsupport.DBLabel), func() {
 		})
 
 		It("by kind", func(ctx SpecContext) {
-			Expect(numbers(g.ready(ctx, domain.ReadyQuery{Kind: "bug"}))).To(Equal([]int64{1}))
-			Expect(g.ready(ctx, domain.ReadyQuery{Kind: "chore"})).To(BeEmpty())
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{Kinds: []string{"bug"}}))).To(Equal([]int64{1}))
+			Expect(g.ready(ctx, domain.ReadyQuery{Kinds: []string{"chore"}})).To(BeEmpty())
 		})
 
 		It("by every label given", func(ctx SpecContext) {
@@ -565,8 +565,8 @@ var _ = Describe("Readiness", Label(testsupport.DBLabel), func() {
 		})
 
 		It("combine", func(ctx SpecContext) {
-			Expect(numbers(g.ready(ctx, domain.ReadyQuery{Kind: "task", Labels: []string{"backend"}, MinPriority: "p2"}))).To(Equal([]int64{2}))
-			Expect(g.ready(ctx, domain.ReadyQuery{Kind: "task", Labels: []string{"urgent"}})).To(BeEmpty())
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{Kinds: []string{"task"}, Labels: []string{"backend"}, MinPriority: "p2"}))).To(Equal([]int64{2}))
+			Expect(g.ready(ctx, domain.ReadyQuery{Kinds: []string{"task"}, Labels: []string{"urgent"}})).To(BeEmpty())
 		})
 	})
 

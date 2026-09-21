@@ -326,16 +326,17 @@ func (s *stub) ListNodes(_ context.Context, req *connect.Request[daggerv1.ListNo
 
 // matches reports whether a node passes every filter the request sets.
 func matches(n *daggerv1.Node, req *daggerv1.ListNodesRequest) bool {
-	if st := req.GetStatus(); st != daggerv1.Status_STATUS_UNSPECIFIED && n.GetStatus() != st {
+	f := req.GetFilter()
+	if st := f.GetStatus(); st != daggerv1.Status_STATUS_UNSPECIFIED && n.GetStatus() != st {
 		return false
 	}
-	if k := req.GetKind(); k != "" && n.GetKind() != k {
+	if kinds := f.GetKinds(); len(kinds) > 0 && !slices.Contains(kinds, n.GetKind()) {
 		return false
 	}
-	if ak := req.GetAssigneeKind(); ak != daggerv1.AssigneeKind_ASSIGNEE_KIND_UNSPECIFIED && n.GetAssigneeKind() != ak {
+	if ak := f.GetAssigneeKind(); ak != daggerv1.AssigneeKind_ASSIGNEE_KIND_UNSPECIFIED && n.GetAssigneeKind() != ak {
 		return false
 	}
-	for _, want := range req.GetLabels() {
+	for _, want := range f.GetLabels() {
 		if !slices.Contains(n.GetLabels(), want) {
 			return false
 		}
@@ -499,9 +500,6 @@ func (s *stub) Ready(_ context.Context, req *connect.Request[daggerv1.ReadyReque
 	s.record(req.Msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if req.Msg.GetProject() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrProjectRequired)
-	}
 	return connect.NewResponse(&daggerv1.ReadyResponse{Nodes: s.ready()}), nil
 }
 

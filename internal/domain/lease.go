@@ -103,14 +103,20 @@ var (
 type ClaimRequest struct {
 	// RequestID is the client-supplied idempotency key.
 	RequestID string `json:"request_id"`
-	// Project is the project to claim from: a slug, `org/slug`, or an id.
-	Project string `json:"project"`
-	// Kind, AssigneeKind, Labels, and MinPriority filter the ready set as
-	// [ReadyQuery] does.
-	Kind         string   `json:"kind,omitempty"`
+	// Projects restricts the claim to these projects: each a slug,
+	// `org/slug`, or an id. Empty means every project of the organization,
+	// and the claim rotates among whichever of them have ready work, one
+	// project's turn per successful claim. See the Priority section of
+	// docs/domain-model.md.
+	Projects []string `json:"projects,omitempty"`
+	// Kinds, AssigneeKind, Labels, AnyLabels, MinPriority, and Parent
+	// filter the ready set as [ReadyQuery] does.
+	Kinds        []string `json:"kinds,omitempty"`
 	AssigneeKind string   `json:"assignee_kind,omitempty"`
 	Labels       []string `json:"labels,omitempty"`
+	AnyLabels    []string `json:"any_labels,omitempty"`
 	MinPriority  string   `json:"min_priority,omitempty"`
+	Parent       string   `json:"parent,omitempty"`
 	// TTL is the requested lease TTL. Zero takes [DefaultLeaseTTL]; more
 	// than [MaxLeaseTTL] is clamped to it.
 	TTL time.Duration `json:"ttl,omitempty"`
@@ -234,18 +240,47 @@ var errClaimLost = errors.New("claim lost")
 // claimOnce is one attempt at the claim inside tx.
 func claimOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, req ClaimRequest, hash string) (*Claimed, error) {
 	claimed, replayed, err := withRequest(ctx, tx, orgID, req.RequestID, hash, func(ctx context.Context) (*Claimed, error) {
-		project, err := resolveProject(ctx, tx, orgID, req.Project)
+		scope, err := resolveScope(ctx, tx, orgID, req.Projects)
 		if err != nil {
 			return nil, err
 		}
-		if project.ArchivedAt != nil {
-			return nil, fmt.Errorf("project %s: %w", project.Slug, ErrProjectArchived)
-		}
 		q := ReadyQuery{
-			Projects: []string{project.ID}, Kind: req.Kind, AssigneeKind: req.AssigneeKind,
-			Labels: req.Labels, MinPriority: req.MinPriority, Limit: 1,
+			Projects: scope, Kinds: req.Kinds, AssigneeKind: req.AssigneeKind,
+			Labels: req.Labels, AnyLabels: req.AnyLabels, MinPriority: req.MinPriority,
+			Parent: req.Parent, Limit: 1,
 		}
-		node, err := lockNextReady(ctx, tx, orgID, q)
+		parentID, err := resolveParent(ctx, tx, orgID, q)
+		if err != nil {
+			return nil, err
+		}
+		eligible, err := eligibleProjects(ctx, tx, orgID, q, parentID)
+		if err != nil {
+			return nil, err
+		}
+		if len(eligible) == 0 {
+			return nil, errNothingReady
+		}
+		cursorHash, err := filterHash(q, parentID)
+		if err != nil {
+			return nil, err
+		}
+		cursor, err := tx.GetClaimCursor(ctx, store.GetClaimCursorParams{OrgID: orgID, PrincipalID: actor.PrincipalID, FilterHash: cursorHash})
+		var last *string
+		if err == nil {
+			last = &cursor.ProjectID
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("read claim cursor: %w", err)
+		}
+		chosen := nextProject(last, eligible)
+		if _, err := tx.UpsertClaimCursor(ctx, store.UpsertClaimCursorParams{
+			OrgID: orgID, PrincipalID: actor.PrincipalID, FilterHash: cursorHash, ProjectID: chosen,
+		}); err != nil {
+			return nil, fmt.Errorf("advance claim cursor: %w", err)
+		}
+
+		single := q
+		single.Projects = []string{chosen}
+		node, err := lockNextReady(ctx, tx, orgID, single, parentID)
 		if err != nil {
 			return nil, err
 		}
@@ -289,8 +324,8 @@ func claimOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID strin
 // lockNextReady selects the first node of the ordered ready set and locks
 // its row, skipping rows other claimants hold. errNothingReady when the set
 // is empty.
-func lockNextReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) (store.Node, error) {
-	sql, args, err := q.sql(orgID, true)
+func lockNextReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) (store.Node, error) {
+	sql, args, err := q.sql(orgID, true, parentID)
 	if err != nil {
 		return store.Node{}, err
 	}

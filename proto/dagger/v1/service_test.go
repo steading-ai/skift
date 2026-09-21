@@ -24,7 +24,7 @@ var referenceFields = map[string][]string{
 	"AddCommentOp":     {"node"},
 	"GetNodeRequest":   {"node"},
 	"ExplainRequest":   {"node"},
-	"ListNodesRequest": {"parent"},
+	"NodeFilter":       {"parent"},
 }
 
 // readOnly are the methods that write nothing and so need no idempotency
@@ -173,11 +173,12 @@ var _ = Describe("service.proto", func() {
 	})
 
 	It("filters ClaimNext by project, kind, assignee kind, labels, minimum priority, and wait", func() {
-		expectField(c, "ClaimNextRequest", "project", "string", false)
-		expectField(c, "ClaimNextRequest", "kind", "string", false)
-		expectField(c, "ClaimNextRequest", "assignee_kind", "AssigneeKind", false)
-		expectField(c, "ClaimNextRequest", "labels", "string", true)
-		expectField(c, "ClaimNextRequest", "min_priority", "Priority", false)
+		expectField(c, "ClaimNextRequest", "filter", "NodeFilter", false)
+		expectField(c, "NodeFilter", "projects", "string", true)
+		expectField(c, "NodeFilter", "kinds", "string", true)
+		expectField(c, "NodeFilter", "assignee_kind", "AssigneeKind", false)
+		expectField(c, "NodeFilter", "labels", "string", true)
+		expectField(c, "NodeFilter", "min_priority", "Priority", false)
 		expectField(c, "ClaimNextRequest", "wait", "google.protobuf.Duration", false)
 	})
 

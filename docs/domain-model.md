@@ -38,7 +38,7 @@ Consumers may use any other value. Dagger validates nothing and behaves identica
 
 `p0` through `p4`, defaulting to `p2`. The scale is chosen because models are steeped in it and will use it without instruction, not because dagger derives anything from it.
 
-Priority is comparable only within a project. A `p0` in a two-day spike and a `p2` in the platform project say nothing about each other, and with projects this cheap and numerous a global priority sort would be actively misleading. Ordering across projects is the orchestrator's business, because combining two project-scoped scales needs a rule dagger has no basis to choose. Which projects matter this week is a different question: that is intent, it is recorded here as a [hold](#hold), and every client sees the same answer.
+Priority is comparable only within a project. A `p0` in a two-day spike and a `p2` in the platform project say nothing about each other, and with projects this cheap and numerous a global priority sort would be actively misleading. Combining two project-scoped scales into one ranking needs a rule dagger has no basis to choose, so dagger doesn't try: a caller reading or claiming across projects gets a round-robin turn across every project with ready work instead, priority-then-age within each project's turn. Which projects matter this week is a different question: that is intent, it is recorded here as a [hold](#hold), and every client sees the same answer.
 
 Dagger uses it as the first sort key in `Ready` within a project and derives nothing else from it. Expect inflation, and note that the counter-pressure is not a rule in the store: a consumer that stops trusting the field can sort however it likes.
 
@@ -129,11 +129,11 @@ A node is ready when all of the following hold:
 - no live lease on it
 - no open children
 - no hold on it, on any ancestor, or on its project
-- the caller's filters match (project, kind, assignee kind, labels, minimum priority)
+- the caller's filters match (projects, kind, assignee kind, labels, minimum priority)
 
 The children rule is what makes an epic behave without anyone declaring one. A node that groups work is not itself work, and without this rule it sits in the ready set waiting for an agent to claim it and discover there is nothing to do. Since an epic is derived from having children rather than declared as a kind, the readiness rule has to be derived the same way. It is one more anti-join on `parent_id`.
 
-`Ready` orders by priority then age within a single project, and an ordered query must name one. Priority is project-scoped, so a cross-project ordering would be arithmetic on incomparable scales. Selecting across projects is the orchestrator's, which may query several and choose. Cost and estimate rollups attach on request. `ClaimNext` performs `Ready` and `Claim` in one round trip using row locking with skip-locked semantics.
+`Ready` orders by priority then age within a project. Priority is project-scoped, so a cross-project ordering would be arithmetic on incomparable scales; instead, a filter naming several projects (or none, meaning every project the caller can read) gets a round-robin turn across the projects with ready work, one node per project per pass, rotating per principal and per filter so repeated calls advance rather than repeat. Cost and estimate rollups attach on request. `ClaimNext` performs `Ready` and `Claim` in one round trip using row locking with skip-locked semantics.
 
 ### Why not ready
 

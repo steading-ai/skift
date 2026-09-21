@@ -155,7 +155,7 @@ func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Dur
 	f.as(f.agent)
 	defer f.as(f.user)
 	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
-		RequestId: newID(), Project: project, Ttl: ttl, Harness: "spec", AgentRef: "spec",
+		RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{project}}, Ttl: ttl, Harness: "spec", AgentRef: "spec",
 	}))
 	Expect(err).NotTo(HaveOccurred())
 	return res.Msg
@@ -167,7 +167,7 @@ func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Dur
 func (f *fixture) claimAsUser(ctx context.Context, project string) *daggerv1.ClaimNextResponse {
 	GinkgoHelper()
 	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
-		RequestId: newID(), Project: project, Harness: "spec", AgentRef: "spec",
+		RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{project}}, Harness: "spec", AgentRef: "spec",
 	}))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(res.Msg.GetNode()).NotTo(BeNil())

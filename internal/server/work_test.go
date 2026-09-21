@@ -36,7 +36,7 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 				f.mustApply(ctx, ops...)
 
 				By("when ready is called with no view")
-				res, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Project: "platform"}))
+				res, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}}))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(res.Msg.GetNodes()).To(HaveLen(22))
 
@@ -59,7 +59,7 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 				Expect(len(wire)).To(BeNumerically("<", 22*2000), "the bodies were not sent: %d bytes", len(wire))
 
 				By("and the full view carries the body on request")
-				full, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Project: "platform", View: daggerv1.View_VIEW_FULL, PageSize: 1}))
+				full, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}, View: daggerv1.View_VIEW_FULL, PageSize: 1}))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(full.Msg.GetNodes()[0].GetBody()).To(HaveLen(2000))
 			})
@@ -74,7 +74,10 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			)
 			ready := func(req *daggerv1.ReadyRequest) *daggerv1.ReadyResponse {
 				GinkgoHelper()
-				req.Project = "platform"
+				if req.Filter == nil {
+					req.Filter = &daggerv1.NodeFilter{}
+				}
+				req.Filter.Projects = []string{"platform"}
 				res, err := f.work().Ready(ctx, connect.NewRequest(req))
 				Expect(err).NotTo(HaveOccurred())
 				return res.Msg
@@ -85,10 +88,10 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			for _, n := range all.GetNodes() {
 				Expect(n.GetReady()).To(BeTrue())
 			}
-			Expect(numbers(ready(&daggerv1.ReadyRequest{MinPriority: daggerv1.Priority_PRIORITY_P2}).GetNodes())).To(Equal([]int64{2, 4}))
-			Expect(numbers(ready(&daggerv1.ReadyRequest{Labels: []string{"infra"}}).GetNodes())).To(Equal([]int64{2}))
-			Expect(numbers(ready(&daggerv1.ReadyRequest{AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_USER}).GetNodes())).To(Equal([]int64{4}))
-			Expect(numbers(ready(&daggerv1.ReadyRequest{AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_AGENT}).GetNodes())).To(Equal([]int64{2, 1}))
+			Expect(numbers(ready(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{MinPriority: daggerv1.Priority_PRIORITY_P2}}).GetNodes())).To(Equal([]int64{2, 4}))
+			Expect(numbers(ready(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{Labels: []string{"infra"}}}).GetNodes())).To(Equal([]int64{2}))
+			Expect(numbers(ready(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_USER}}).GetNodes())).To(Equal([]int64{4}))
+			Expect(numbers(ready(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_AGENT}}).GetNodes())).To(Equal([]int64{2, 1}))
 
 			page := ready(&daggerv1.ReadyRequest{PageSize: 2})
 			Expect(numbers(page.GetNodes())).To(Equal([]int64{2, 4}))
@@ -97,8 +100,9 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			Expect(numbers(last.GetNodes())).To(Equal([]int64{1}))
 			Expect(last.GetNextPageToken()).To(BeEmpty())
 
-			_, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{}))
-			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a project is required")
+			res, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{}))
+			Expect(err).NotTo(HaveOccurred(), "an empty filter means every project the caller may read, not an error")
+			Expect(numbers(res.Msg.GetNodes())).To(Equal([]int64{2, 4, 1}), "platform is the caller's only project")
 		})
 	})
 
@@ -142,7 +146,7 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			f.as(f.agent)
 			started := time.Now()
 			res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
-				RequestId: newID(), Project: "platform", Wait: durationpb.New(150 * time.Millisecond), Harness: "spec", AgentRef: "spec",
+				RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(150 * time.Millisecond), Harness: "spec", AgentRef: "spec",
 			}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Msg.GetNode()).To(BeNil())
@@ -160,7 +164,7 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			go func() {
 				defer GinkgoRecover()
 				res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
-					RequestId: newID(), Project: "platform", Wait: durationpb.New(time.Minute), Harness: "spec", AgentRef: "spec",
+					RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(time.Minute), Harness: "spec", AgentRef: "spec",
 				}))
 				if err != nil {
 					done <- outcome{err: err}
@@ -179,9 +183,9 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 
 		It("reports a missing project as not found and a negative wait as invalid", func(ctx SpecContext) {
 			f.as(f.agent)
-			_, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{RequestId: newID(), Project: "nowhere", Harness: "spec", AgentRef: "spec"}))
+			_, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{"nowhere"}}, Harness: "spec", AgentRef: "spec"}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
-			_, err = f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{RequestId: newID(), Project: "platform", Wait: durationpb.New(-time.Second)}))
+			_, err = f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(-time.Second)}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 		})
 	})
@@ -223,7 +227,7 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(released.Msg.GetLease().GetReleaseReason()).To(Equal(daggerv1.ReleaseReason_RELEASE_REASON_GATE))
 
-			ready, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Project: "platform"}))
+			ready, err := f.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(numbers(ready.Msg.GetNodes())).To(Equal([]int64{1}))
 

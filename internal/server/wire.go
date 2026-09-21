@@ -83,6 +83,16 @@ var dropReasons = enum[daggerv1.DropReason]{
 	daggerv1.DropReason_DROP_REASON_OTHER:              domain.DropOther,
 }
 
+// rejectStatusHeld refuses filter.status and filter.held on a claim or a
+// ready read: neither notion makes sense mid-claim, and status and held
+// are ListNodes-only fields of [daggerv1.NodeFilter].
+func rejectStatusHeld(f *daggerv1.NodeFilter) error {
+	if f.GetStatus() != daggerv1.Status_STATUS_UNSPECIFIED || f.GetHeld() {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("status and held apply to list only, not a claim or a ready read"))
+	}
+	return nil
+}
+
 // enum is a two-way table between a wire enum and its stored string.
 type enum[E ~int32] map[E]string
 

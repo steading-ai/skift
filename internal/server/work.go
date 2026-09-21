@@ -28,8 +28,12 @@ func NewWorkService(svc *domain.Service) *WorkService {
 
 // Ready implements daggerv1connect.WorkServiceHandler.
 func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.ReadyRequest]) (*connect.Response[daggerv1.ReadyResponse], error) {
-	orgID, _, err := caller(ctx)
+	orgID, actor, err := caller(ctx)
 	if err != nil {
+		return nil, err
+	}
+	f := req.Msg.GetFilter()
+	if err := rejectStatusHeld(f); err != nil {
 		return nil, err
 	}
 	offset, err := decodePageToken(req.Msg.GetPageToken())
@@ -37,11 +41,13 @@ func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.R
 		return nil, err
 	}
 	size := pageSize(req.Msg.GetPageSize())
-	nodes, held, err := w.svc.Ready(ctx, orgID, req.Msg.GetProject(), domain.ReadyQuery{
-		Kind:         req.Msg.GetKind(),
-		AssigneeKind: assigneeKinds.str(req.Msg.GetAssigneeKind()),
-		Labels:       req.Msg.GetLabels(),
-		MinPriority:  priorities.str(req.Msg.GetMinPriority()),
+	nodes, held, err := w.svc.Ready(ctx, orgID, actor, f.GetProjects(), domain.ReadyQuery{
+		Kinds:        f.GetKinds(),
+		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
+		Labels:       f.GetLabels(),
+		AnyLabels:    f.GetAnyLabels(),
+		MinPriority:  priorities.str(f.GetMinPriority()),
+		Parent:       f.GetParent(),
 		Limit:        size,
 		Offset:       offset,
 	})
@@ -63,6 +69,10 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[dagger
 	if err != nil {
 		return nil, err
 	}
+	f := req.Msg.GetFilter()
+	if err := rejectStatusHeld(f); err != nil {
+		return nil, err
+	}
 	wait, err := fromDuration(req.Msg.GetWait())
 	if err != nil {
 		return nil, err
@@ -73,11 +83,13 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[dagger
 	}
 	out, err := w.svc.ClaimNext(ctx, orgID, actor, domain.ClaimRequest{
 		RequestID:    req.Msg.GetRequestId(),
-		Project:      req.Msg.GetProject(),
-		Kind:         req.Msg.GetKind(),
-		AssigneeKind: assigneeKinds.str(req.Msg.GetAssigneeKind()),
-		Labels:       req.Msg.GetLabels(),
-		MinPriority:  priorities.str(req.Msg.GetMinPriority()),
+		Projects:     f.GetProjects(),
+		Kinds:        f.GetKinds(),
+		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
+		Labels:       f.GetLabels(),
+		AnyLabels:    f.GetAnyLabels(),
+		MinPriority:  priorities.str(f.GetMinPriority()),
+		Parent:       f.GetParent(),
 		TTL:          ttl,
 		Wait:         wait,
 		Harness:      req.Msg.GetHarness(),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,20 +37,31 @@ const (
 // matches every ready node in the organization.
 type ReadyQuery struct {
 	// Projects restricts the set to these project ids. Empty means every
-	// project. An ordered query names exactly one.
+	// project of the organization. An ordered query ([Ready]) names
+	// exactly one; [ReadySet] and the round-robin selection functions take
+	// any number, including zero.
 	Projects []string
-	// Kind restricts the set to one node kind. Empty means every kind.
-	Kind string
+	// Kinds restricts the set to nodes of any of these kinds (OR). Empty
+	// means every kind.
+	Kinds []string
 	// AssigneeKind restricts the set to nodes completable by that kind of
 	// principal: [AssigneeUser] selects gates; [AssigneeAgent] selects
 	// agent-assigned nodes and nodes with no assignee kind, which are
 	// agent-eligible. Empty means any.
 	AssigneeKind string
-	// Labels restricts the set to nodes carrying every one of them.
+	// Labels restricts the set to nodes carrying every one of them (AND).
 	Labels []string
+	// AnyLabels restricts the set to nodes carrying at least one of them
+	// (OR). Empty means labels do not narrow this way.
+	AnyLabels []string
 	// MinPriority restricts the set to nodes at this priority or more
 	// urgent, `p0` through `p4`. Empty means any.
 	MinPriority string
+	// Parent restricts the set to the children of one node, as a node
+	// reference. Empty means every node. A bare `#7` resolves within the
+	// query's single project when it names exactly one, and otherwise
+	// must qualify its own.
+	Parent string
 	// Limit caps the number of rows returned, at most [Limits.PageSize].
 	// Zero takes that ceiling.
 	Limit int
@@ -164,7 +176,11 @@ func Ready(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) ([]stor
 	if q.Offset < 0 {
 		return nil, errors.New("offset is negative")
 	}
-	return queryReady(ctx, tx, orgID, q, true)
+	parentID, err := resolveParent(ctx, tx, orgID, q)
+	if err != nil {
+		return nil, err
+	}
+	return queryReady(ctx, tx, orgID, q, true, parentID)
 }
 
 // ReadySet returns the ready nodes matching q across any number of
@@ -172,11 +188,15 @@ func Ready(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) ([]stor
 // set rather than a queue: reporting, and the from-scratch recomputation a
 // property test compares against.
 func ReadySet(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) ([]store.Node, error) {
-	return queryReady(ctx, tx, orgID, q, false)
+	parentID, err := resolveParent(ctx, tx, orgID, q)
+	if err != nil {
+		return nil, err
+	}
+	return queryReady(ctx, tx, orgID, q, false, parentID)
 }
 
-func queryReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, ordered bool) ([]store.Node, error) {
-	sql, args, err := q.sql(orgID, ordered)
+func queryReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, ordered bool, parentID string) ([]store.Node, error) {
+	sql, args, err := q.sql(orgID, ordered, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,15 +211,38 @@ func queryReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, or
 	return nodes, nil
 }
 
-// sql renders the ready query. $1 is always the organization, so a filter
-// can narrow the set and never widen it. Ordered output is by priority
-// then age; unordered output is by id, only so that it is deterministic.
-//
-// The rendered statement selects `n.*` from `nodes n`, so a caller that
-// needs to lock what it reads may append `FOR UPDATE OF n SKIP LOCKED`.
-func (q ReadyQuery) sql(orgID string, ordered bool) (string, []any, error) {
+// resolveParent resolves q.Parent to a node id, or returns "" when it is
+// empty. A bare `#7` resolves within q's project when it names exactly
+// one; otherwise the reference must qualify its own project, the same
+// rule [resolveProject] applies everywhere else a project is optional.
+func resolveParent(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) (string, error) {
+	if q.Parent == "" {
+		return "", nil
+	}
+	var project *store.Project
+	if len(q.Projects) == 1 {
+		p, err := tx.GetProject(ctx, store.GetProjectParams{OrgID: orgID, ID: q.Projects[0]})
+		if err != nil {
+			return "", fmt.Errorf("read project %s: %w", q.Projects[0], err)
+		}
+		project = &p
+	}
+	resolved, err := NewResolver(tx, orgID, project).Resolve(ctx, q.Parent)
+	if err != nil {
+		return "", err
+	}
+	return resolved.ID, nil
+}
+
+// filterClauses renders q's filters other than Projects, which the two
+// callers apply differently: [ReadyQuery.sql] as a fixed restriction, and
+// [eligibleProjects] as a candidate scope to narrow to a project rather
+// than an already-chosen one. $1 is always the organization. parentID is
+// q.Parent already resolved to an id, since resolution needs a
+// transaction and this method does not take one.
+func (q ReadyQuery) filterClauses(orgID, parentID string) (string, []any, error) {
 	var b strings.Builder
-	b.WriteString("SELECT n.* FROM nodes n WHERE " + readyWhere)
+	b.WriteString(readyWhere)
 	args := []any{orgID}
 	// where appends a clause whose single %d is the position of value.
 	where := func(clause string, value any) {
@@ -208,11 +251,8 @@ func (q ReadyQuery) sql(orgID string, ordered bool) (string, []any, error) {
 		fmt.Fprintf(&b, clause, len(args))
 	}
 
-	if len(q.Projects) > 0 {
-		where("n.project_id = ANY($%d::text[])", q.Projects)
-	}
-	if q.Kind != "" {
-		where("n.kind = $%d", q.Kind)
+	if len(q.Kinds) > 0 {
+		where("n.kind = ANY($%d::text[])", q.Kinds)
 	}
 	switch q.AssigneeKind {
 	case "":
@@ -226,12 +266,38 @@ func (q ReadyQuery) sql(orgID string, ordered bool) (string, []any, error) {
 	if len(q.Labels) > 0 {
 		where("n.labels @> $%d::text[]", q.Labels)
 	}
+	if len(q.AnyLabels) > 0 {
+		where("n.labels && $%d::text[]", q.AnyLabels)
+	}
 	if q.MinPriority != "" {
 		if !validPriority(q.MinPriority) {
 			return "", nil, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
 		}
 		// Priorities are 'p0'..'p4', so text order is urgency order.
 		where("n.priority <= $%d", q.MinPriority)
+	}
+	if parentID != "" {
+		where("n.parent_id = $%d", parentID)
+	}
+	return b.String(), args, nil
+}
+
+// sql renders the ready query. $1 is always the organization, so a filter
+// can narrow the set and never widen it. Ordered output is by priority
+// then age; unordered output is by id, only so that it is deterministic.
+//
+// The rendered statement selects `n.*` from `nodes n`, so a caller that
+// needs to lock what it reads may append `FOR UPDATE OF n SKIP LOCKED`.
+func (q ReadyQuery) sql(orgID string, ordered bool, parentID string) (string, []any, error) {
+	where, args, err := q.filterClauses(orgID, parentID)
+	if err != nil {
+		return "", nil, err
+	}
+	var b strings.Builder
+	b.WriteString("SELECT n.* FROM nodes n WHERE " + where)
+	if len(q.Projects) > 0 {
+		args = append(args, q.Projects)
+		fmt.Fprintf(&b, " AND n.project_id = ANY($%d::text[])", len(args))
 	}
 
 	if ordered {
@@ -250,6 +316,91 @@ func (q ReadyQuery) sql(orgID string, ordered bool) (string, []any, error) {
 		fmt.Fprintf(&b, " OFFSET $%d", len(args))
 	}
 	return b.String(), args, nil
+}
+
+// eligibleProjects returns, in no particular order, the ids of the
+// projects among q.Projects (every project of the organization when
+// empty) that hold at least one node matching q's other filters and
+// ready. It is the unlocked project-selection step [claimOnce] and
+// [Service.Ready] use before running the existing single-project ordered
+// query against the project or projects the rotation picks; it never
+// itself locks a row, so it never conflicts with `FOR UPDATE`.
+func eligibleProjects(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) ([]string, error) {
+	where, args, err := q.filterClauses(orgID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	sql := "SELECT DISTINCT n.project_id FROM nodes n WHERE " + where
+	if len(q.Projects) > 0 {
+		args = append(args, q.Projects)
+		sql += fmt.Sprintf(" AND n.project_id = ANY($%d::text[])", len(args))
+	}
+	rows, err := tx.Tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("eligible projects: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("eligible projects: %w", err)
+	}
+	return ids, nil
+}
+
+// nextProject picks which of eligible to draw from next, given the
+// project chosen last, so a rotation cursor need only remember one value.
+// last nil, empty, or no longer eligible starts the cycle from the
+// beginning. eligible must not be empty.
+func nextProject(last *string, eligible []string) string {
+	return rotationOrder(last, eligible)[0]
+}
+
+// rotationOrder is every project of eligible, visited once, in turn order
+// starting from whichever [nextProject](last, eligible) would pick —
+// the same project a claim would draw from next. eligible is sorted
+// ascending by id first: project ids are ULIDs, so this is also creation
+// order, and it needs no extra lookup since every candidate row already
+// carries it. It lets a caller that wants more than one turn's worth read
+// every eligible project's share in a single pass before any of them
+// repeats. eligible must not be empty.
+func rotationOrder(last *string, eligible []string) []string {
+	sorted := append([]string(nil), eligible...)
+	sort.Strings(sorted)
+	i := 0
+	if last != nil {
+		for j, id := range sorted {
+			if id == *last {
+				i = (j + 1) % len(sorted)
+				break
+			}
+		}
+	}
+	order := make([]string, 0, len(sorted))
+	order = append(order, sorted[i:]...)
+	order = append(order, sorted[:i]...)
+	return order
+}
+
+// resolveScope resolves refs, the projects a request named explicitly, to
+// their ids, refusing an archived one by name exactly as [resolveProject]
+// does for a single project: naming a project explicitly still means
+// naming it, even among several. Empty refs resolves to nil, meaning
+// every project of the organization.
+func resolveScope(ctx context.Context, tx store.Tx, orgID string, refs []string) ([]string, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		p, err := resolveProject(ctx, tx, orgID, ref)
+		if err != nil {
+			return nil, err
+		}
+		if p.ArchivedAt != nil {
+			return nil, fmt.Errorf("project %s: %w", p.Slug, ErrProjectArchived)
+		}
+		ids = append(ids, p.ID)
+	}
+	return ids, nil
 }
 
 func validPriority(p string) bool {

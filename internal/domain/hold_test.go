@@ -296,7 +296,7 @@ var _ = Describe("Focus", Label(testsupport.DBLabel), func() {
 		By("when an agent claims from the project")
 		agent := g.agent(ctx)
 		claimed, err := domain.Claim(ctx, s, pol, g.org, agent, domain.ClaimRequest{
-			RequestID: "claim-1", Project: "platform", Harness: "spec", AgentRef: "spec",
+			RequestID: "claim-1", Projects: []string{"platform"}, Harness: "spec", AgentRef: "spec",
 		})
 
 		By("then there is nothing to claim: a hold is not a claimable state")

@@ -385,8 +385,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res := m.call("node_list", map[string]any{"status": "done"})
 
 			By("then the request carries that status and the project")
-			Expect(last[*daggerv1.ListNodesRequest](s).GetStatus()).To(Equal(daggerv1.Status_STATUS_DONE))
-			Expect(last[*daggerv1.ListNodesRequest](s).GetProject()).To(Equal("platform"))
+			Expect(last[*daggerv1.ListNodesRequest](s).GetFilter().GetStatus()).To(Equal(daggerv1.Status_STATUS_DONE))
+			Expect(last[*daggerv1.ListNodesRequest](s).GetFilter().GetProjects()).To(Equal([]string{"platform"}))
 
 			By("and only the done node comes back")
 			Expect(references(res)).To(ConsistOf("platform#2"))
@@ -402,7 +402,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res := m.call("node_list", map[string]any{"labels": []string{"backend"}})
 
 			By("then the request carries the label")
-			Expect(last[*daggerv1.ListNodesRequest](s).GetLabels()).To(Equal([]string{"backend"}))
+			Expect(last[*daggerv1.ListNodesRequest](s).GetFilter().GetLabels()).To(Equal([]string{"backend"}))
 
 			By("and only the labelled node comes back")
 			Expect(references(res)).To(ConsistOf("platform#3"))
@@ -451,7 +451,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(props).To(HaveKey("assignee_kind"))
 			Expect(props).To(HaveKey("labels"))
 			Expect(props).To(HaveKey("parent"))
-			Expect(props).To(HaveKey("project"))
+			Expect(props).To(HaveKey("projects"))
 			Expect(props["view"].(map[string]any)["enum"]).To(ConsistOf("refs", "summary", "full"))
 
 			By("and the description says what it does not do")

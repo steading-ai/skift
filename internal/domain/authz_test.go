@@ -241,7 +241,7 @@ var _ = Describe("Authorization", Label(testsupport.DBLabel), func() {
 
 			By("and it may not claim any gate, nor complete one it did not file")
 			_, err := g.claim(ctx, agentA, domain.ClaimRequest{
-				RequestID: "claim-gate", Project: "platform", AssigneeKind: domain.AssigneeUser, Harness: "spec", AgentRef: "spec",
+				RequestID: "claim-gate", Projects: []string{"platform"}, AssigneeKind: domain.AssigneeUser, Harness: "spec", AgentRef: "spec",
 			})
 			Expect(err).To(MatchError(policy.ErrDenied))
 			Expect(err).To(MatchError(ContainSubstring("an agent may not claim gate " + id)))
@@ -272,7 +272,7 @@ var _ = Describe("Authorization", Label(testsupport.DBLabel), func() {
 			By("when the agent completes the recommendation")
 			worker := g.agent(ctx)
 			held := g.mustClaim(ctx, worker, domain.ClaimRequest{
-				RequestID: "claim-9", Project: "platform", AssigneeKind: domain.AssigneeAgent,
+				RequestID: "claim-9", Projects: []string{"platform"}, AssigneeKind: domain.AssigneeAgent,
 				MinPriority: "p0", Harness: "spec", AgentRef: "spec",
 			})
 			Expect(held.Node.Number).To(Equal(int64(9)))

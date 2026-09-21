@@ -621,7 +621,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 			By("nothing returns while nothing is ready")
 			Consistently(done, 200*time.Millisecond).ShouldNot(Receive())
-			Expect(last[*daggerv1.ClaimNextRequest](s).GetLabels()).To(Equal([]string{"infra"}))
+			Expect(last[*daggerv1.ClaimNextRequest](s).GetFilter().GetLabels()).To(Equal([]string{"infra"}))
 
 			By("work appears")
 			s.mu.Lock()
@@ -658,8 +658,8 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			r := run(nil, "-p", "platform", "ready", "--min-priority", "p1", "--kind", "bug")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			sent := last[*daggerv1.ReadyRequest](s)
-			Expect(sent.GetMinPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
-			Expect(sent.GetKind()).To(Equal("bug"))
+			Expect(sent.GetFilter().GetMinPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+			Expect(sent.GetFilter().GetKinds()).To(Equal([]string{"bug"}))
 			Expect(s.nodes[0].GetClaimed()).To(BeFalse())
 			Expect(count[*daggerv1.ClaimNextRequest](s)).To(Equal(0))
 		})
@@ -957,14 +957,14 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := cli.Run([]string{"--config", path, "ready"}, strings.NewReader(""), stdout, stderr)
 			Expect(code).To(Equal(0), stderr.String())
-			Expect(last[*daggerv1.ReadyRequest](s).GetProject()).To(Equal("from-file"))
+			Expect(last[*daggerv1.ReadyRequest](s).GetFilter().GetProjects()).To(Equal([]string{"from-file"}))
 
 			GinkgoT().Setenv(client.EnvSocket, socket)
 			GinkgoT().Setenv(client.EnvProject, "from-env")
 			stdout.Reset()
 			code = cli.Run([]string{"ready"}, strings.NewReader(""), stdout, stderr)
 			Expect(code).To(Equal(0), stderr.String())
-			Expect(last[*daggerv1.ReadyRequest](s).GetProject()).To(Equal("from-env"))
+			Expect(last[*daggerv1.ReadyRequest](s).GetFilter().GetProjects()).To(Equal([]string{"from-env"}))
 		})
 	})
 })

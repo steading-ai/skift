@@ -198,30 +198,55 @@ func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q Searc
 	return hits, err
 }
 
-// Ready returns one page of the ready set of the project ref names, most
-// urgent and then oldest first. q.Projects is replaced by the resolved
-// project. See [Ready].
-func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery) ([]NodeState, int, error) {
-	if project == "" {
-		return nil, 0, ErrProjectRequired
-	}
+// Ready returns one page of the ready set matching q, interleaved one
+// node per eligible project per pass, in round-robin turn order starting
+// from whichever project among projects is actor's next turn in the
+// rotation — the same one [ClaimNext] would draw from first. Within each
+// project's own turns, nodes come most urgent and then oldest first.
+// projects empty means every project of the organization. Reading never
+// advances the rotation; only a successful claim does. See [Ready] and
+// the Priority section of docs/domain-model.md.
+func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects []string, q ReadyQuery) ([]NodeState, int, error) {
 	var out []NodeState
 	var held int
 	err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-		p, err := resolveProject(ctx, tx, orgID, project)
+		scope, err := resolveScope(ctx, tx, orgID, projects)
 		if err != nil {
 			return err
 		}
-		q.Projects = []string{p.ID}
-		nodes, err := Ready(ctx, tx, orgID, q)
+		q.Projects = scope
+		parentID, err := resolveParent(ctx, tx, orgID, q)
 		if err != nil {
 			return err
+		}
+		eligible, err := eligibleProjects(ctx, tx, orgID, q, parentID)
+		if err != nil {
+			return err
+		}
+		var nodes []store.Node
+		if len(eligible) > 0 {
+			hash, err := filterHash(q, parentID)
+			if err != nil {
+				return err
+			}
+			cursor, err := tx.GetClaimCursor(ctx, store.GetClaimCursorParams{OrgID: orgID, PrincipalID: actor.PrincipalID, FilterHash: hash})
+			var last *string
+			switch {
+			case err == nil:
+				last = &cursor.ProjectID
+			case errors.Is(err, pgx.ErrNoRows):
+			default:
+				return fmt.Errorf("read claim cursor: %w", err)
+			}
+			if nodes, err = readyAcross(ctx, tx, orgID, q, rotationOrder(last, eligible)); err != nil {
+				return err
+			}
 		}
 		// An empty first page owes its caller the difference between
 		// finished and parked, and nothing else has to pay for the
 		// count.
 		if len(nodes) == 0 && q.Offset == 0 {
-			if held, err = HeldCount(ctx, tx, orgID, p.ID); err != nil {
+			if held, err = heldAcross(ctx, tx, orgID, scope); err != nil {
 				return err
 			}
 		}
@@ -229,6 +254,111 @@ func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery
 		return err
 	})
 	return out, held, err
+}
+
+// readyAcross returns q's page, interleaved one node per project per pass
+// across order — the eligible projects, starting from whichever the
+// rotation would draw from first. Each project's own contribution keeps
+// [Ready]'s priority-then-age order; priority is not comparable across
+// projects, so a pass takes one node from each rather than merging on
+// priority. See the Priority section of docs/domain-model.md.
+func readyAcross(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, order []string) ([]store.Node, error) {
+	limits := ActiveLimits()
+	limit, err := boundPageSize(q.Limit, limits)
+	if err != nil {
+		return nil, err
+	}
+	// need is how many rows, from the start of the merged sequence, cover
+	// this page; it is capped at the page ceiling so a deep offset cannot
+	// ask a single project for more rows than a page is ever allowed to
+	// hold.
+	need := q.Offset + limit
+	if need > limits.PageSize {
+		need = limits.PageSize
+	}
+
+	perProject := make([][]store.Node, len(order))
+	for i, id := range order {
+		single := q
+		single.Projects = []string{id}
+		single.Limit = need
+		single.Offset = 0
+		nodes, err := Ready(ctx, tx, orgID, single)
+		if err != nil {
+			return nil, err
+		}
+		perProject[i] = nodes
+	}
+
+	var merged []store.Node
+	for pass := 0; len(merged) < need; pass++ {
+		added := false
+		for _, nodes := range perProject {
+			if pass >= len(nodes) {
+				continue
+			}
+			merged = append(merged, nodes[pass])
+			added = true
+			if len(merged) >= need {
+				break
+			}
+		}
+		if !added {
+			break
+		}
+	}
+
+	if q.Offset >= len(merged) {
+		return nil, nil
+	}
+	merged = merged[q.Offset:]
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged, nil
+}
+
+// heldAcross sums [HeldCount] over every project in scope, or every
+// project of the organization when scope is empty.
+func heldAcross(ctx context.Context, tx store.Tx, orgID string, scope []string) (int, error) {
+	projects := scope
+	if len(projects) == 0 {
+		all, err := allProjectIDs(ctx, tx, orgID)
+		if err != nil {
+			return 0, err
+		}
+		projects = all
+	}
+	total := 0
+	for _, id := range projects {
+		n, err := HeldCount(ctx, tx, orgID, id)
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+// allProjectIDs pages through every unarchived project of the
+// organization, for a caller that needs the full set rather than one
+// page.
+func allProjectIDs(ctx context.Context, tx store.Tx, orgID string) ([]string, error) {
+	var ids []string
+	var offset int32
+	for {
+		page, err := tx.ListProjects(ctx, store.ListProjectsParams{OrgID: orgID, PageSize: MaxPageSize, PageOffset: offset})
+		if err != nil {
+			return nil, fmt.Errorf("list projects: %w", err)
+		}
+		for _, p := range page {
+			ids = append(ids, p.ID)
+		}
+		if len(page) < MaxPageSize {
+			return ids, nil
+		}
+		offset += int32(len(page))
+	}
 }
 
 // recorder is the event writer for one transaction, carrying the actor,

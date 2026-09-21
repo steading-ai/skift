@@ -19,7 +19,7 @@ import (
 // claimReq is a claim of the spec's project with the given request id and
 // TTL, from a harness the specs do not care about.
 func claimReq(requestID string, ttl time.Duration) domain.ClaimRequest {
-	return domain.ClaimRequest{RequestID: requestID, Project: "platform", TTL: ttl, Harness: "spec", AgentRef: "spec"}
+	return domain.ClaimRequest{RequestID: requestID, Projects: []string{"platform"}, TTL: ttl, Harness: "spec", AgentRef: "spec"}
 }
 
 // claim runs one Claim and records the node it returns under its
@@ -374,7 +374,7 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 
 			By("a claim for tasks only skips the p0 spike")
 			req := claimReq("tasks", 0)
-			req.Kind = "task"
+			req.Kinds = []string{"task"}
 			Expect(g.mustClaim(ctx, actor, req).Node.Number).To(Equal(int64(2)))
 
 			By("a node whose row another transaction holds is skipped, not waited for")

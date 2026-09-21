@@ -518,4 +518,49 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect(all.GetHits()).To(HaveLen(3), "and the archived one only on request")
 		})
 	})
+
+	Describe("Scenario: Claiming with no project turns across every project", func() {
+		It("Claiming with no project turns across every project", func(ctx SpecContext) {
+			d := deploy(ctx)
+
+			By("given one ready node in each of two projects")
+			alpha := d.laptop.createProject("Alpha")
+			beta := d.laptop.createProject("Beta")
+			d.laptop.patch(request(alpha.GetSlug(), createOp("a", "Alpha's work")))
+			d.laptop.patch(request(beta.GetSlug(), createOp("b", "Beta's work")))
+
+			By("when no project is named, ready lists both projects' ready nodes, in turn order")
+			ready := &daggerv1.ReadyResponse{}
+			d.host.call(ready, "ready")
+			Expect(ready.GetNodes()).To(HaveLen(2))
+			first := ready.GetNodes()[0].GetProjectId()
+			second := ready.GetNodes()[1].GetProjectId()
+			Expect([]string{first, second}).To(ConsistOf(alpha.GetId(), beta.GetId()))
+
+			By("and claiming takes the first turn's project's node")
+			claimed := &daggerv1.ClaimNextResponse{}
+			d.host.call(claimed, "claim", "--harness", "acceptance")
+			Expect(claimed.GetNode().GetProjectId()).To(Equal(first))
+
+			By("then only the other project still has anything ready")
+			ready = &daggerv1.ReadyResponse{}
+			d.host.call(ready, "ready")
+			Expect(ready.GetNodes()).To(HaveLen(1))
+			Expect(ready.GetNodes()[0].GetProjectId()).To(Equal(second))
+
+			claimed = &daggerv1.ClaimNextResponse{}
+			d.host.call(claimed, "claim", "--harness", "acceptance")
+			Expect(claimed.GetNode().GetProjectId()).To(Equal(second))
+
+			By("and naming one project claims only from it")
+			d.laptop.patch(request(alpha.GetSlug(), createOp("a2", "More of alpha's work")))
+			fromBeta := &daggerv1.ClaimNextResponse{}
+			d.host.call(fromBeta, "claim", "--project", beta.GetSlug(), "--harness", "acceptance")
+			Expect(fromBeta.GetNode()).To(BeNil(), "beta has nothing ready")
+
+			fromAlpha := &daggerv1.ClaimNextResponse{}
+			d.host.call(fromAlpha, "claim", "--project", alpha.GetSlug(), "--harness", "acceptance")
+			Expect(fromAlpha.GetNode().GetProjectId()).To(Equal(alpha.GetId()))
+		})
+	})
 })

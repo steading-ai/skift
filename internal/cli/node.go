@@ -95,10 +95,13 @@ func (a *app) nodeList() *cobra.Command {
 	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List the nodes of the current project, filtered",
-		Args:  cobra.NoArgs,
+		Short: "List nodes, filtered",
+		Long: `List nodes matching the filters, by project then number. Scoped to the
+current project when one is set, and to every project the caller may read
+otherwise.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			project, err := a.project()
+			projects, err := a.currentProjects()
 			if err != nil {
 				return err
 			}
@@ -118,10 +121,15 @@ func (a *app) nodeList() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			filter := &daggerv1.NodeFilter{
+				Projects: projects, Status: st, AssigneeKind: kind, Labels: f.labels, Parent: parent, Held: held,
+			}
+			if f.kind != "" {
+				filter.Kinds = []string{f.kind}
+			}
 			return send(a, cmd, func() (*daggerv1.ListNodesResponse, error) {
 				res, err := c.Graph.ListNodes(cmd.Context(), connect.NewRequest(&daggerv1.ListNodesRequest{
-					Project: project, Status: st, Kind: f.kind, AssigneeKind: kind, Labels: f.labels, Parent: parent, Held: held,
-					PageSize: page.size, PageToken: page.token, View: v,
+					Filter: filter, PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
 			})
@@ -144,14 +152,14 @@ func (a *app) nodeArg(arg string) (project, ref string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	cfg, err := a.config()
+	current, err := a.currentProject()
 	if err != nil {
 		return "", "", err
 	}
-	if parsed.ProjectRef() == "" && cfg.Project == "" {
+	if parsed.ProjectRef() == "" && current == "" {
 		return "", "", usage("a bare #number reference needs a project; pass --project, set $%s, or qualify the reference as slug#number", client.EnvProject)
 	}
-	return cfg.Project, parsed.String(), nil
+	return current, parsed.String(), nil
 }
 
 // nodeFilters are the filters shared by list, ready, and claim.
