@@ -240,7 +240,7 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.project(ctx, "Platform")
 			f.mustApply(ctx, createOpWith(&daggerv1.CreateNodeOp{Alias: "a", Title: "Choose me", Kind: "bug", Body: "the body", Priority: daggerv1.Priority_PRIORITY_P1, Labels: []string{"infra"}}))
 
-			list, err := f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Project: "platform"}))
+			list, err := f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}}))
 			Expect(err).NotTo(HaveOccurred())
 			n := list.Msg.GetNodes()[0]
 			Expect(n.GetTitle()).To(Equal("Choose me"))
@@ -462,17 +462,20 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.mustApply(ctx, completeOp("#3", "done"))
 			list := func(req *daggerv1.ListNodesRequest) *daggerv1.ListNodesResponse {
 				GinkgoHelper()
-				req.Project = "platform"
+				if req.Filter == nil {
+					req.Filter = &daggerv1.NodeFilter{}
+				}
+				req.Filter.Projects = []string{"platform"}
 				res, err := f.graph().ListNodes(ctx, connect.NewRequest(req))
 				Expect(err).NotTo(HaveOccurred())
 				return res.Msg
 			}
 
 			Expect(numbers(list(&daggerv1.ListNodesRequest{}).GetNodes())).To(Equal([]int64{1, 2, 3}))
-			Expect(numbers(list(&daggerv1.ListNodesRequest{Status: daggerv1.Status_STATUS_DONE}).GetNodes())).To(Equal([]int64{3}))
-			Expect(numbers(list(&daggerv1.ListNodesRequest{Kind: "bug"}).GetNodes())).To(Equal([]int64{1}))
-			Expect(numbers(list(&daggerv1.ListNodesRequest{Labels: []string{"infra"}}).GetNodes())).To(Equal([]int64{1, 3}))
-			Expect(numbers(list(&daggerv1.ListNodesRequest{Parent: "#1"}).GetNodes())).To(Equal([]int64{2}))
+			Expect(numbers(list(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Status: daggerv1.Status_STATUS_DONE}}).GetNodes())).To(Equal([]int64{3}))
+			Expect(numbers(list(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Kinds: []string{"bug"}}}).GetNodes())).To(Equal([]int64{1}))
+			Expect(numbers(list(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Labels: []string{"infra"}}}).GetNodes())).To(Equal([]int64{1, 3}))
+			Expect(numbers(list(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Parent: "#1"}}).GetNodes())).To(Equal([]int64{2}))
 
 			page := list(&daggerv1.ListNodesRequest{PageSize: 2})
 			Expect(numbers(page.GetNodes())).To(Equal([]int64{1, 2}))
@@ -481,9 +484,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(numbers(last.GetNodes())).To(Equal([]int64{3}))
 			Expect(last.GetNextPageToken()).To(BeEmpty())
 
-			_, err := f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Project: "platform", PageToken: "garbage"}))
+			_, err := f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}, PageToken: "garbage"}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
-			_, err = f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Project: "platform", PageSize: 5000}))
+			_, err = f.graph().ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{Filter: &daggerv1.NodeFilter{Projects: []string{"platform"}}, PageSize: 5000}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeResourceExhausted))
 		})
 	})

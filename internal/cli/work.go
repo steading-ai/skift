@@ -109,7 +109,7 @@ To take work, use "dg claim", which returns a node under a lease, and
 			return cobra.NoArgs(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			project, err := a.project()
+			projects, err := a.currentProjects()
 			if err != nil {
 				return err
 			}
@@ -129,10 +129,13 @@ To take work, use "dg claim", which returns a node under a lease, and
 			if err != nil {
 				return err
 			}
+			filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: f.labels, MinPriority: prio}
+			if f.kind != "" {
+				filter.Kinds = []string{f.kind}
+			}
 			return send(a, cmd, func() (*daggerv1.ReadyResponse, error) {
 				res, err := c.Work.Ready(cmd.Context(), connect.NewRequest(&daggerv1.ReadyRequest{
-					Project: project, Kind: f.kind, AssigneeKind: kind, Labels: f.labels, MinPriority: prio,
-					PageSize: page.size, PageToken: page.token, View: v,
+					Filter: filter, PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
 			})
@@ -173,7 +176,7 @@ matches; with --wait it blocks until something does.`,
 // wait never elapses. Each round trip is bounded so the server's own wait
 // ceiling never cuts a long wait short.
 func (a *app) claim(cmd *cobra.Command, f *claimFlags, wait time.Duration) error {
-	project, err := a.project()
+	projects, err := a.currentProjects()
 	if err != nil {
 		return err
 	}
@@ -189,9 +192,12 @@ func (a *app) claim(cmd *cobra.Command, f *claimFlags, wait time.Duration) error
 	if err != nil {
 		return err
 	}
+	filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: f.labels, MinPriority: prio}
+	if f.kind != "" {
+		filter.Kinds = []string{f.kind}
+	}
 	req := &daggerv1.ClaimNextRequest{
-		RequestId: orMint(f.requestID), Project: project,
-		Kind: f.kind, AssigneeKind: kind, Labels: f.labels, MinPriority: prio,
+		RequestId: orMint(f.requestID), Filter: filter,
 		Harness: f.harness, AgentRef: f.agentRef, SessionRef: f.sessionRef,
 	}
 	if f.ttl > 0 {

@@ -377,10 +377,10 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 			protocol = v
 		}
 	}
-	cfg, _ := s.app.config()
-	project := cfg.Project
+	projects, _ := s.app.currentProjects()
+	project := strings.Join(projects, ", ")
 	if project == "" {
-		project = "(none: call project_list for the slugs you may read, then qualify references as slug#7 or pass project)"
+		project = "(none: call project_list for the slugs you may read, then qualify references as slug#7 or pass projects)"
 	}
 	return mcpInitializeResult{
 		ProtocolVersion: protocol,

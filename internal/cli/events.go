@@ -25,7 +25,7 @@ cursor back with --cursor to continue where a previous stream stopped.
 Delivery is at least once: consumers deduplicate by event id.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := a.config()
+			project, err := a.currentProject()
 			if err != nil {
 				return err
 			}
@@ -44,7 +44,7 @@ Delivery is at least once: consumers deduplicate by event id.`,
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 			stream, err := c.Events.WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{
-				Cursor: cursor, Project: cfg.Project, Ops: ops,
+				Cursor: cursor, Project: project, Ops: ops,
 			}))
 			if err != nil {
 				return err

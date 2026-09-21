@@ -118,7 +118,7 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 			defer GinkgoRecover()
 			res, err := r.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
 				RequestId: "wait-1",
-				Project:   "skeleton",
+				Filter:    &daggerv1.NodeFilter{Projects: []string{"skeleton"}},
 				Wait:      durationpb.New(time.Minute),
 			}))
 			results <- result{res, err}
@@ -152,7 +152,7 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 				defer GinkgoRecover()
 				_, err := r.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
 					RequestId: "wait-" + strconv.Itoa(i),
-					Project:   "skeleton",
+					Filter:    &daggerv1.NodeFilter{Projects: []string{"skeleton"}},
 					Wait:      durationpb.New(time.Minute),
 				}))
 				errs <- err

@@ -226,21 +226,30 @@ func readNode(ctx context.Context, tx store.Tx, orgID, nodeID string) (*NodeView
 	return v, nil
 }
 
-// NodeListQuery is one page of a project's nodes, filtered. Project is
-// required; every other filter is optional and narrows the page.
+// NodeListQuery is one page of nodes, filtered. Every field is optional
+// and narrows the page; Projects empty means every project of the
+// organization.
 type NodeListQuery struct {
-	// Project names the project by slug, `org/slug`, or id.
-	Project string
+	// Projects keeps nodes of any of these projects, each named by slug,
+	// `org/slug`, or id. Empty means every project of the organization.
+	Projects []string
 	// Status keeps nodes in one stored status: open, done, or dropped.
 	Status string
-	// Kind keeps nodes of one kind.
-	Kind string
+	// Kinds keeps nodes of any of these kinds.
+	Kinds []string
 	// AssigneeKind keeps nodes completable by that kind of principal, as
 	// [ReadyQuery.AssigneeKind] does.
 	AssigneeKind string
 	// Labels keeps nodes carrying every one of them.
 	Labels []string
-	// Parent keeps the children of one node, as a node reference.
+	// AnyLabels keeps nodes carrying at least one of them.
+	AnyLabels []string
+	// MinPriority keeps nodes at this priority or more urgent, compared
+	// within each project as [ReadyQuery.MinPriority] does.
+	MinPriority string
+	// Parent keeps the children of one node, as a node reference. A bare
+	// `#7` resolves within Projects when it names exactly one, and
+	// otherwise must qualify its own.
 	Parent string
 	// Held keeps only the nodes a hold parks, whether the hold is on the
 	// node, on something containing it, or on its project. It is how
@@ -253,30 +262,35 @@ type NodeListQuery struct {
 	Offset int
 }
 
-// ListNodes returns one page of the project's nodes matching q, by
-// number.
+// ListNodes returns one page of the nodes matching q, ordered by project
+// then by number so a page is stable across any number of projects.
 func (g *Service) ListNodes(ctx context.Context, orgID string, q NodeListQuery) ([]NodeState, error) {
-	if q.Project == "" {
-		return nil, ErrProjectRequired
-	}
 	if q.Offset < 0 {
 		return nil, errors.New("offset is negative")
 	}
 	var out []NodeState
 	err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-		project, err := resolveProject(ctx, tx, orgID, q.Project)
+		scope, err := resolveScope(ctx, tx, orgID, q.Projects)
 		if err != nil {
 			return err
 		}
 		var parentID string
 		if q.Parent != "" {
+			var project *store.Project
+			if len(scope) == 1 {
+				p, err := tx.GetProject(ctx, store.GetProjectParams{OrgID: orgID, ID: scope[0]})
+				if err != nil {
+					return fmt.Errorf("read project %s: %w", scope[0], err)
+				}
+				project = &p
+			}
 			parent, err := NewResolver(tx, orgID, project).Resolve(ctx, q.Parent)
 			if err != nil {
 				return err
 			}
 			parentID = parent.ID
 		}
-		sql, args, err := q.sql(orgID, project.ID, parentID)
+		sql, args, err := q.sql(orgID, scope, parentID)
 		if err != nil {
 			return err
 		}
@@ -294,16 +308,19 @@ func (g *Service) ListNodes(ctx context.Context, orgID string, q NodeListQuery) 
 	return out, err
 }
 
-// sql renders the listing. $1 is always the organization and $2 the
-// project, so a filter can narrow the page and never widen it.
-func (q NodeListQuery) sql(orgID, projectID, parentID string) (string, []any, error) {
+// sql renders the listing. $1 is always the organization, so a filter can
+// narrow the page and never widen it.
+func (q NodeListQuery) sql(orgID string, projects []string, parentID string) (string, []any, error) {
 	var b strings.Builder
-	b.WriteString("SELECT n.* FROM nodes n WHERE n.org_id = $1 AND n.project_id = $2")
-	args := []any{orgID, projectID}
+	b.WriteString("SELECT n.* FROM nodes n WHERE n.org_id = $1")
+	args := []any{orgID}
 	where := func(clause string, value any) {
 		args = append(args, value)
 		b.WriteString(" AND ")
 		fmt.Fprintf(&b, clause, len(args))
+	}
+	if len(projects) > 0 {
+		where("n.project_id = ANY($%d::text[])", projects)
 	}
 	switch q.Status {
 	case "":
@@ -312,8 +329,8 @@ func (q NodeListQuery) sql(orgID, projectID, parentID string) (string, []any, er
 	default:
 		return "", nil, fmt.Errorf("status %q is not open, done, or dropped", q.Status)
 	}
-	if q.Kind != "" {
-		where("n.kind = $%d", q.Kind)
+	if len(q.Kinds) > 0 {
+		where("n.kind = ANY($%d::text[])", q.Kinds)
 	}
 	switch q.AssigneeKind {
 	case "":
@@ -327,13 +344,22 @@ func (q NodeListQuery) sql(orgID, projectID, parentID string) (string, []any, er
 	if len(q.Labels) > 0 {
 		where("n.labels @> $%d::text[]", q.Labels)
 	}
+	if len(q.AnyLabels) > 0 {
+		where("n.labels && $%d::text[]", q.AnyLabels)
+	}
+	if q.MinPriority != "" {
+		if !validPriority(q.MinPriority) {
+			return "", nil, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
+		}
+		where("n.priority <= $%d", q.MinPriority)
+	}
 	if q.Held {
 		b.WriteString(" AND " + heldWhere)
 	}
 	if parentID != "" {
 		where("n.parent_id = $%d", parentID)
 	}
-	b.WriteString(" ORDER BY n.number")
+	b.WriteString(" ORDER BY n.project_id, n.number")
 	limit, err := boundPageSize(q.Limit, ActiveLimits())
 	if err != nil {
 		return "", nil, err

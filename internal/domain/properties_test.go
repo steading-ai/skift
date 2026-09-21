@@ -208,7 +208,7 @@ func (h *history) complete() {
 func (h *history) claim() {
 	h.seq++
 	req := domain.ClaimRequest{
-		RequestID: fmt.Sprintf("req-%d", h.seq), Project: "platform", AssigneeKind: domain.AssigneeAgent,
+		RequestID: fmt.Sprintf("req-%d", h.seq), Projects: []string{"platform"}, AssigneeKind: domain.AssigneeAgent,
 		Harness: "spec", AgentRef: "spec",
 	}
 	c, err := domain.Claim(h.ctx, h.s, pol, h.org, h.agent, req)

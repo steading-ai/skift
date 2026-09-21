@@ -39,7 +39,7 @@ it. If you think work should be parked, say so in a comment.`
 // filterSchema is the filter arguments ready and claim share.
 func filterSchema() map[string]any {
 	return map[string]any{
-		"project":       stringProp("Project to look in, by slug or org/slug. Defaults to the current project."),
+		"projects":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Projects to look in, by slug or org/slug; repeatable. Defaults to the current project, or every project you may read when none is configured."},
 		"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
 		"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
 		"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
@@ -98,27 +98,27 @@ func duration(name, value string) (time.Duration, error) {
 
 // filterArgs are the filters ready and claim share.
 type filterArgs struct {
-	Project      string   `json:"project"`
+	Projects     []string `json:"projects"`
 	Kind         string   `json:"kind"`
 	AssigneeKind string   `json:"assignee_kind"`
 	Labels       []string `json:"labels"`
 	MinPriority  string   `json:"min_priority"`
 }
 
-func (f *filterArgs) resolve(a *app) (project string, kind daggerv1.AssigneeKind, prio daggerv1.Priority, err error) {
-	project = f.Project
-	if project == "" {
-		if project, err = a.project(); err != nil {
-			return "", 0, 0, err
+func (f *filterArgs) resolve(a *app) (projects []string, kind daggerv1.AssigneeKind, prio daggerv1.Priority, err error) {
+	projects = f.Projects
+	if len(projects) == 0 {
+		if projects, err = a.currentProjects(); err != nil {
+			return nil, 0, 0, err
 		}
 	}
 	if kind, err = parseEnum[daggerv1.AssigneeKind]("assignee_kind", f.AssigneeKind); err != nil {
-		return "", 0, 0, err
+		return nil, 0, 0, err
 	}
 	if prio, err = parseEnum[daggerv1.Priority]("min_priority", f.MinPriority); err != nil {
-		return "", 0, 0, err
+		return nil, 0, 0, err
 	}
-	return project, kind, prio, nil
+	return projects, kind, prio, nil
 }
 
 type pageArgs struct {
@@ -167,13 +167,12 @@ and priority is only advisory ordering, p2 the default.`,
 				if err != nil {
 					return nil, err
 				}
-				cfg, err := a.config()
-				if err != nil {
-					return nil, err
-				}
 				project := args.Project
 				if project == "" {
-					project = cfg.Project
+					var err error
+					if project, err = a.currentProject(); err != nil {
+						return nil, err
+					}
 				}
 				return unwrap(c.Graph.Search(ctx, connect.NewRequest(&daggerv1.SearchRequest{
 					Query: args.Query, Project: project, IncludeArchived: args.IncludeArchived,
@@ -242,13 +241,13 @@ transitive.`,
 		},
 		{
 			name: "node_list",
-			description: `List a project's nodes by number, filtered by status, kind, label,
+			description: `List nodes by project then number, filtered by status, kind, label,
 assignee kind and parent. It does not tell you what is ready: readiness
 is derived from blockers, leases and open children, and ready answers it.
 Every node is in scope whatever its status, so filter or this is the
 whole backlog. Summaries, no bodies.`,
 			schema: objectSchema(pageSchema(map[string]any{
-				"project":       stringProp("Project to list, by slug or org/slug. Defaults to the current project."),
+				"projects":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Projects to list, by slug or org/slug; repeatable. Defaults to the current project, or every project you may read when none is configured."},
 				"status":        enumProp("Only nodes in this status. Unset means every status, open and closed alike.", enumChoices[daggerv1.Status]()),
 				"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
 				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
@@ -259,7 +258,7 @@ whole backlog. Summaries, no bodies.`,
 			})),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
-					Project      string   `json:"project"`
+					Projects     []string `json:"projects"`
 					Status       string   `json:"status"`
 					Kind         string   `json:"kind"`
 					AssigneeKind string   `json:"assignee_kind"`
@@ -272,10 +271,10 @@ whole backlog. Summaries, no bodies.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				project := args.Project
-				if project == "" {
+				projects := args.Projects
+				if len(projects) == 0 {
 					var err error
-					if project, err = a.project(); err != nil {
+					if projects, err = a.currentProjects(); err != nil {
 						return nil, err
 					}
 				}
@@ -291,10 +290,15 @@ whole backlog. Summaries, no bodies.`,
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{
-					Project: project, Status: status, Kind: args.Kind, AssigneeKind: assigneeKind,
+				filter := &daggerv1.NodeFilter{
+					Projects: projects, Status: status, AssigneeKind: assigneeKind,
 					Labels: args.Labels, Parent: args.Parent, Held: args.Held,
-					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
+				}
+				if args.Kind != "" {
+					filter.Kinds = []string{args.Kind}
+				}
+				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{
+					Filter: filter, PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
 		},
@@ -414,7 +418,7 @@ It is the first sort key here, and the only thing dagger does with it.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				project, kind, prio, err := args.resolve(a)
+				projects, kind, prio, err := args.resolve(a)
 				if err != nil {
 					return nil, err
 				}
@@ -422,9 +426,12 @@ It is the first sort key here, and the only thing dagger does with it.`,
 				if err != nil {
 					return nil, err
 				}
+				filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio}
+				if args.Kind != "" {
+					filter.Kinds = []string{args.Kind}
+				}
 				return unwrap(c.Work.Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{
-					Project: project, Kind: args.Kind, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio,
-					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
+					Filter: filter, PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
 		},
@@ -458,7 +465,7 @@ it ends first.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				project, kind, prio, err := args.resolve(a)
+				projects, kind, prio, err := args.resolve(a)
 				if err != nil {
 					return nil, err
 				}
@@ -474,9 +481,12 @@ it ends first.`,
 				if agentRef == "" {
 					agentRef = s.agentRef
 				}
+				filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio}
+				if args.Kind != "" {
+					filter.Kinds = []string{args.Kind}
+				}
 				req := &daggerv1.ClaimNextRequest{
-					RequestId: client.NewRequestID(), Project: project,
-					Kind: args.Kind, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio,
+					RequestId: client.NewRequestID(), Filter: filter,
 					Harness: s.harness, AgentRef: agentRef, SessionRef: s.sessionRef,
 				}
 				if ttl > 0 {

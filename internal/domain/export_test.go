@@ -61,3 +61,7 @@ const (
 // Derive computes the derived flags of nodes, for specs that check the
 // flags against the ready query they must agree with.
 var Derive = derive
+
+// NextProject is the round-robin rotation step, for specs that check its
+// cursor arithmetic without a database.
+var NextProject = nextProject

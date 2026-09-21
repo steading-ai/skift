@@ -137,14 +137,17 @@ func (g *GraphService) ListNodes(ctx context.Context, req *connect.Request[dagge
 		return nil, err
 	}
 	size := pageSize(req.Msg.GetPageSize())
+	f := req.Msg.GetFilter()
 	nodes, err := g.svc.ListNodes(ctx, orgID, domain.NodeListQuery{
-		Project:      req.Msg.GetProject(),
-		Status:       statuses.str(req.Msg.GetStatus()),
-		Kind:         req.Msg.GetKind(),
-		AssigneeKind: assigneeKinds.str(req.Msg.GetAssigneeKind()),
-		Labels:       req.Msg.GetLabels(),
-		Parent:       req.Msg.GetParent(),
-		Held:         req.Msg.GetHeld(),
+		Projects:     f.GetProjects(),
+		Status:       statuses.str(f.GetStatus()),
+		Kinds:        f.GetKinds(),
+		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
+		Labels:       f.GetLabels(),
+		AnyLabels:    f.GetAnyLabels(),
+		MinPriority:  priorities.str(f.GetMinPriority()),
+		Parent:       f.GetParent(),
+		Held:         f.GetHeld(),
 		Limit:        size,
 		Offset:       offset,
 	})

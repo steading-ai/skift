@@ -198,30 +198,55 @@ func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q Searc
 	return hits, err
 }
 
-// Ready returns one page of the ready set of the project ref names, most
-// urgent and then oldest first. q.Projects is replaced by the resolved
-// project. See [Ready].
-func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery) ([]NodeState, int, error) {
-	if project == "" {
-		return nil, 0, ErrProjectRequired
-	}
+// Ready returns one page of the ready set matching q, most urgent and
+// then oldest first, drawn from whichever project among projects is
+// actor's next turn in the rotation, the same one [ClaimNext] would draw
+// from. projects empty means every project of the organization. Reading
+// never advances the rotation; only a successful claim does. See [Ready]
+// and the Priority section of docs/domain-model.md.
+func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects []string, q ReadyQuery) ([]NodeState, int, error) {
 	var out []NodeState
 	var held int
 	err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-		p, err := resolveProject(ctx, tx, orgID, project)
+		scope, err := resolveScope(ctx, tx, orgID, projects)
 		if err != nil {
 			return err
 		}
-		q.Projects = []string{p.ID}
-		nodes, err := Ready(ctx, tx, orgID, q)
+		q.Projects = scope
+		parentID, err := resolveParent(ctx, tx, orgID, q)
 		if err != nil {
 			return err
+		}
+		eligible, err := eligibleProjects(ctx, tx, orgID, q, parentID)
+		if err != nil {
+			return err
+		}
+		var nodes []store.Node
+		if len(eligible) > 0 {
+			hash, err := filterHash(q, parentID)
+			if err != nil {
+				return err
+			}
+			cursor, err := tx.GetClaimCursor(ctx, store.GetClaimCursorParams{OrgID: orgID, PrincipalID: actor.PrincipalID, FilterHash: hash})
+			var last *string
+			switch {
+			case err == nil:
+				last = &cursor.ProjectID
+			case errors.Is(err, pgx.ErrNoRows):
+			default:
+				return fmt.Errorf("read claim cursor: %w", err)
+			}
+			single := q
+			single.Projects = []string{nextProject(last, eligible)}
+			if nodes, err = Ready(ctx, tx, orgID, single); err != nil {
+				return err
+			}
 		}
 		// An empty first page owes its caller the difference between
 		// finished and parked, and nothing else has to pay for the
 		// count.
 		if len(nodes) == 0 && q.Offset == 0 {
-			if held, err = HeldCount(ctx, tx, orgID, p.ID); err != nil {
+			if held, err = heldAcross(ctx, tx, orgID, scope); err != nil {
 				return err
 			}
 		}
@@ -229,6 +254,49 @@ func (g *Service) Ready(ctx context.Context, orgID, project string, q ReadyQuery
 		return err
 	})
 	return out, held, err
+}
+
+// heldAcross sums [HeldCount] over every project in scope, or every
+// project of the organization when scope is empty.
+func heldAcross(ctx context.Context, tx store.Tx, orgID string, scope []string) (int, error) {
+	projects := scope
+	if len(projects) == 0 {
+		all, err := allProjectIDs(ctx, tx, orgID)
+		if err != nil {
+			return 0, err
+		}
+		projects = all
+	}
+	total := 0
+	for _, id := range projects {
+		n, err := HeldCount(ctx, tx, orgID, id)
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+// allProjectIDs pages through every unarchived project of the
+// organization, for a caller that needs the full set rather than one
+// page.
+func allProjectIDs(ctx context.Context, tx store.Tx, orgID string) ([]string, error) {
+	var ids []string
+	var offset int32
+	for {
+		page, err := tx.ListProjects(ctx, store.ListProjectsParams{OrgID: orgID, PageSize: MaxPageSize, PageOffset: offset})
+		if err != nil {
+			return nil, fmt.Errorf("list projects: %w", err)
+		}
+		for _, p := range page {
+			ids = append(ids, p.ID)
+		}
+		if len(page) < MaxPageSize {
+			return ids, nil
+		}
+		offset += int32(len(page))
+	}
 }
 
 // recorder is the event writer for one transaction, carrying the actor,

@@ -43,6 +43,14 @@ type Blob struct {
 	CreatedAt time.Time
 }
 
+type ClaimCursor struct {
+	OrgID       string
+	PrincipalID string
+	FilterHash  string
+	ProjectID   string
+	UpdatedAt   time.Time
+}
+
 type Comment struct {
 	ID         string
 	OrgID      string

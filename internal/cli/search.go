@@ -19,7 +19,7 @@ func (a *app) searchCommand() *cobra.Command {
 unless --project narrows it.`,
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := a.config()
+			project, err := a.currentProject()
 			if err != nil {
 				return err
 			}
@@ -33,7 +33,7 @@ unless --project narrows it.`,
 			}
 			return send(a, cmd, func() (*daggerv1.SearchResponse, error) {
 				res, err := c.Graph.Search(cmd.Context(), connect.NewRequest(&daggerv1.SearchRequest{
-					Query: args[0], Project: cfg.Project, IncludeArchived: includeArchived,
+					Query: args[0], Project: project, IncludeArchived: includeArchived,
 					PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)

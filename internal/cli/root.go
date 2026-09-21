@@ -78,7 +78,7 @@ Output is JSON whenever stdout is not a terminal, and on request with
 	pf.StringVar(&a.configPath, "config", "", "config file (default: $"+client.EnvConfig+", then "+client.DefaultConfigPath()+")")
 	pf.StringVar(&a.flags.Socket, "socket", "", "unix socket of the service (default: $"+client.EnvSocket+", then "+client.DefaultSocketPath()+")")
 	pf.StringVar(&a.flags.Address, "address", "", "URL of the service over the tailnet or HTTPS, instead of the socket (default: $"+client.EnvAddress+")")
-	pf.StringVarP(&a.flags.Project, "project", "p", "", "project a bare #7 reference resolves in (default: $"+client.EnvProject+")")
+	pf.StringArrayVarP(&a.projects, "project", "p", nil, "project a bare #7 reference resolves in, or a filter for ready, claim, and list; repeatable (default: $"+client.EnvProject+", or every project the caller may read)")
 	pf.StringVarP(&a.output, "output", "o", "", "output format: json or text (default: json unless stdout is a terminal)")
 
 	root.AddCommand(
