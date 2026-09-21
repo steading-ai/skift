@@ -198,12 +198,14 @@ func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q Searc
 	return hits, err
 }
 
-// Ready returns one page of the ready set matching q, most urgent and
-// then oldest first, drawn from whichever project among projects is
-// actor's next turn in the rotation, the same one [ClaimNext] would draw
-// from. projects empty means every project of the organization. Reading
-// never advances the rotation; only a successful claim does. See [Ready]
-// and the Priority section of docs/domain-model.md.
+// Ready returns one page of the ready set matching q, interleaved one
+// node per eligible project per pass, in round-robin turn order starting
+// from whichever project among projects is actor's next turn in the
+// rotation — the same one [ClaimNext] would draw from first. Within each
+// project's own turns, nodes come most urgent and then oldest first.
+// projects empty means every project of the organization. Reading never
+// advances the rotation; only a successful claim does. See [Ready] and
+// the Priority section of docs/domain-model.md.
 func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects []string, q ReadyQuery) ([]NodeState, int, error) {
 	var out []NodeState
 	var held int
@@ -236,9 +238,7 @@ func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects
 			default:
 				return fmt.Errorf("read claim cursor: %w", err)
 			}
-			single := q
-			single.Projects = []string{nextProject(last, eligible)}
-			if nodes, err = Ready(ctx, tx, orgID, single); err != nil {
+			if nodes, err = readyAcross(ctx, tx, orgID, q, rotationOrder(last, eligible)); err != nil {
 				return err
 			}
 		}
@@ -254,6 +254,68 @@ func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects
 		return err
 	})
 	return out, held, err
+}
+
+// readyAcross returns q's page, interleaved one node per project per pass
+// across order — the eligible projects, starting from whichever the
+// rotation would draw from first. Each project's own contribution keeps
+// [Ready]'s priority-then-age order; priority is not comparable across
+// projects, so a pass takes one node from each rather than merging on
+// priority. See the Priority section of docs/domain-model.md.
+func readyAcross(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, order []string) ([]store.Node, error) {
+	limits := ActiveLimits()
+	limit, err := boundPageSize(q.Limit, limits)
+	if err != nil {
+		return nil, err
+	}
+	// need is how many rows, from the start of the merged sequence, cover
+	// this page; it is capped at the page ceiling so a deep offset cannot
+	// ask a single project for more rows than a page is ever allowed to
+	// hold.
+	need := q.Offset + limit
+	if need > limits.PageSize {
+		need = limits.PageSize
+	}
+
+	perProject := make([][]store.Node, len(order))
+	for i, id := range order {
+		single := q
+		single.Projects = []string{id}
+		single.Limit = need
+		single.Offset = 0
+		nodes, err := Ready(ctx, tx, orgID, single)
+		if err != nil {
+			return nil, err
+		}
+		perProject[i] = nodes
+	}
+
+	var merged []store.Node
+	for pass := 0; len(merged) < need; pass++ {
+		added := false
+		for _, nodes := range perProject {
+			if pass >= len(nodes) {
+				continue
+			}
+			merged = append(merged, nodes[pass])
+			added = true
+			if len(merged) >= need {
+				break
+			}
+		}
+		if !added {
+			break
+		}
+	}
+
+	if q.Offset >= len(merged) {
+		return nil, nil
+	}
+	merged = merged[q.Offset:]
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged, nil
 }
 
 // heldAcross sums [HeldCount] over every project in scope, or every

@@ -529,25 +529,24 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			d.laptop.patch(request(alpha.GetSlug(), createOp("a", "Alpha's work")))
 			d.laptop.patch(request(beta.GetSlug(), createOp("b", "Beta's work")))
 
-			By("when no project is named, ready draws from just one project's turn")
+			By("when no project is named, ready lists both projects' ready nodes, in turn order")
 			ready := &daggerv1.ReadyResponse{}
 			d.host.call(ready, "ready")
-			Expect(ready.GetNodes()).To(HaveLen(1))
+			Expect(ready.GetNodes()).To(HaveLen(2))
 			first := ready.GetNodes()[0].GetProjectId()
-			Expect(first).To(BeElementOf(alpha.GetId(), beta.GetId()))
+			second := ready.GetNodes()[1].GetProjectId()
+			Expect([]string{first, second}).To(ConsistOf(alpha.GetId(), beta.GetId()))
 
-			By("and claiming takes that same project's node")
+			By("and claiming takes the first turn's project's node")
 			claimed := &daggerv1.ClaimNextResponse{}
 			d.host.call(claimed, "claim", "--harness", "acceptance")
 			Expect(claimed.GetNode().GetProjectId()).To(Equal(first))
 
-			By("then the turn moves to the other project")
+			By("then only the other project still has anything ready")
 			ready = &daggerv1.ReadyResponse{}
 			d.host.call(ready, "ready")
 			Expect(ready.GetNodes()).To(HaveLen(1))
-			second := ready.GetNodes()[0].GetProjectId()
-			Expect(second).NotTo(Equal(first))
-			Expect(second).To(BeElementOf(alpha.GetId(), beta.GetId()))
+			Expect(ready.GetNodes()[0].GetProjectId()).To(Equal(second))
 
 			claimed = &daggerv1.ClaimNextResponse{}
 			d.host.call(claimed, "claim", "--harness", "acceptance")

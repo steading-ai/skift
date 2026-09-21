@@ -323,8 +323,8 @@ func (q ReadyQuery) sql(orgID string, ordered bool, parentID string) (string, []
 // empty) that hold at least one node matching q's other filters and
 // ready. It is the unlocked project-selection step [claimOnce] and
 // [Service.Ready] use before running the existing single-project ordered
-// query on whichever project the rotation picks; it never itself locks a
-// row, so it never conflicts with `FOR UPDATE`.
+// query against the project or projects the rotation picks; it never
+// itself locks a row, so it never conflicts with `FOR UPDATE`.
 func eligibleProjects(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) ([]string, error) {
 	where, args, err := q.filterClauses(orgID, parentID)
 	if err != nil {
@@ -348,22 +348,36 @@ func eligibleProjects(ctx context.Context, tx store.Tx, orgID string, q ReadyQue
 
 // nextProject picks which of eligible to draw from next, given the
 // project chosen last, so a rotation cursor need only remember one value.
-// eligible is sorted ascending by id before choosing: project ids are
-// ULIDs, so this is also creation order, and it needs no extra lookup
-// since every candidate row already carries it. last nil, empty, or no
-// longer eligible starts the cycle from the beginning. eligible must not
-// be empty.
+// last nil, empty, or no longer eligible starts the cycle from the
+// beginning. eligible must not be empty.
 func nextProject(last *string, eligible []string) string {
+	return rotationOrder(last, eligible)[0]
+}
+
+// rotationOrder is every project of eligible, visited once, in turn order
+// starting from whichever [nextProject](last, eligible) would pick —
+// the same project a claim would draw from next. eligible is sorted
+// ascending by id first: project ids are ULIDs, so this is also creation
+// order, and it needs no extra lookup since every candidate row already
+// carries it. It lets a caller that wants more than one turn's worth read
+// every eligible project's share in a single pass before any of them
+// repeats. eligible must not be empty.
+func rotationOrder(last *string, eligible []string) []string {
 	sorted := append([]string(nil), eligible...)
 	sort.Strings(sorted)
+	i := 0
 	if last != nil {
-		for i, id := range sorted {
+		for j, id := range sorted {
 			if id == *last {
-				return sorted[(i+1)%len(sorted)]
+				i = (j + 1) % len(sorted)
+				break
 			}
 		}
 	}
-	return sorted[0]
+	order := make([]string, 0, len(sorted))
+	order = append(order, sorted[i:]...)
+	order = append(order, sorted[:i]...)
+	return order
 }
 
 // resolveScope resolves refs, the projects a request named explicitly, to
