@@ -7,6 +7,29 @@ Output is JSON whenever stdout is not a terminal, and on request with
 `--output json`. Errors are a JSON object on stderr: `{"code":…, "message":…}`,
 and the exit code is non-zero.
 
+## MCP or the CLI
+
+The MCP tools are `ready`, `search`, `show_node`, `inputs`, `node_list`,
+`explain`, `claim`, `heartbeat`, `release`, `complete`, `comment`,
+`apply_patch`, `hold`, `focus`, `project_list`, `project_show`,
+`project_create`. A lease taken through them renews in the background and is
+released if the session ends, so a claim made there needs no `heartbeat`.
+`hold` and `focus` are there for a person working through the session; an agent
+principal is refused.
+
+Responses are sized for a context window. A write returns references, status
+and readiness flags for what it touched, an alias map, and an event count —
+never the bodies you sent, never the events. `ready`, `search`, `show_node`,
+`inputs`, `node_list`, `apply_patch`, `complete` and `comment` each take
+`view: refs | summary | full` when you need more or less, so filing a large
+patch through MCP costs about the same as filing a small one. `claim` takes no
+view: it answers with the whole node either way.
+
+Enum values are short and lowercase on every surface, in JSON as in the CLI
+flags: `"priority": "p2"`, `"assignee_kind": "user"`, `"reason": "superseded"`.
+The proto spellings (`PRIORITY_P2`) are accepted too. `kind` is not an enum: it
+is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
+
 ## Finding and reading
 
 ```sh
@@ -27,9 +50,10 @@ dg project update platform --vcs-url ''   # clear the repository; unset flags le
 `ready`, `node list` and `search` return a **summary** of each node: its
 reference (`slug#7`), title, kind, priority, status, labels, and the derived
 `ready`/`blocked`/`claimed` flags. `node show` returns everything, body
-included. `--view refs|summary|full` (the `view` argument of the MCP tools)
-changes that: `--view full` on a listing carries every body, `--view refs` is
-references and flags alone.
+included, and so does `claim` for the node it takes — which is why claiming
+needs no `node show` after it. `--view refs|summary|full` (the `view` argument
+of the MCP tools) changes that: `--view full` on a listing carries every body,
+`--view refs` is references and flags alone.
 
 `search` is PostgreSQL websearch syntax: bare words, `"quoted phrases"`,
 `-excluded`, and `OR`. It covers node titles, bodies, results and comments
@@ -51,9 +75,10 @@ expiry, waiting on a user — not prose. Prefer it over inferring from `show`.
 ## Taking and finishing
 
 ```sh
-dg claim --min-priority p2 --kind task      # returns the node AND a lease id
-dg claim --wait 30m                          # block until something matches
-dg claim --wait                              # block indefinitely
+dg claim --assignee-kind agent               # the node itself, body and all, AND a lease id
+dg claim --assignee-kind agent --min-priority p2 --kind task
+dg claim --assignee-kind agent --wait 30m    # block until something matches
+dg claim --assignee-kind agent --wait        # block indefinitely
 dg heartbeat "$LEASE"                        # renew; any write by the holder also renews
 dg complete '#7' --lease "$LEASE" --result 'What was produced, and where.'
 dg complete '#7' --lease "$LEASE" --result - # result body from stdin
