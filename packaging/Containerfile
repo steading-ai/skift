@@ -1,0 +1,17 @@
+# The distribution image: scratch, the dg binary, and nothing else. A
+# distribution of files, not a service definition — no ENTRYPOINT, so
+# `podman run --rm <image> dg version` runs dg as the container's command
+# rather than as an argument appended to a baked-in one.
+#
+# The binary is cross-compiled by `make dist/dg-linux-%` before this
+# build starts (see Makefile), so VERSION/LDFLAGS is computed in exactly
+# one place. TARGETARCH is set by buildx per platform during a multi-arch
+# build; COPY never executes the binary it copies, so no emulation is
+# needed to assemble an arm64 image on an amd64 builder.
+FROM scratch
+
+ARG TARGETARCH
+COPY dist/dg-linux-${TARGETARCH} /usr/local/bin/dg
+
+ARG REVISION
+LABEL org.opencontainers.image.revision=${REVISION}
