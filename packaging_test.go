@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -155,5 +156,45 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("disable --now dagger.service dagger-reap.timer"))
 		})
+	})
+})
+
+// The GHCR image built from packaging/Containerfile, published by
+// .github/workflows/publish.yml. Needs podman to build and run, like the
+// database specs, so it carries their "db" label and stays out of
+// `make test-unit`.
+var _ = Describe("The image", Label("db", "slow"), Ordered, func() {
+	var dir, image string
+
+	BeforeAll(func() {
+		if os.Getenv(nestedRun) != "" {
+			Skip("already inside make test-unit")
+		}
+
+		dir = checkout()
+		runIn(dir, 5*time.Minute, "make", "dist/dg-linux-"+runtime.GOARCH, "VERSION=9.9.9")
+
+		// Scoped to the checkout so two parallel Ginkgo processes building
+		// this spec at once don't collide on the same image tag.
+		image = "dagger-image-test-" + filepath.Base(dir)
+		runIn(dir, 5*time.Minute, "podman", "build",
+			"--build-arg", "TARGETARCH="+runtime.GOARCH,
+			"--build-arg", "REVISION=deadbeef",
+			"-f", "packaging/Containerfile",
+			"-t", image, ".")
+		DeferCleanup(func() {
+			runIn(dir, time.Minute, "podman", "rmi", "-f", image)
+		})
+	})
+
+	It("reports the version the Makefile stamped it with", func() {
+		Expect(runIn(dir, time.Minute, "podman", "run", "--rm", image, "dg", "version")).
+			To(Equal("dg version 9.9.9"))
+	})
+
+	It("carries the revision as an OCI label", func() {
+		Expect(runIn(dir, time.Minute, "podman", "inspect", "--format",
+			`{{ index .Config.Labels "org.opencontainers.image.revision" }}`, image)).
+			To(Equal("deadbeef"))
 	})
 })

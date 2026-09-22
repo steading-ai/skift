@@ -1,0 +1,57 @@
+# Publishes the built dg as a container image on every push to main, so
+# another repository's workflow can pull it with nothing but its own
+# GITHUB_TOKEN. See docs/ci.md.
+#
+# This is a publish, not a check: it does not run on pull requests, and it
+# runs nothing else.
+name: publish
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the Makefile's VERSION falls back to counting
+          # commits and finding tags with git, both of which need it. A
+          # shallow clone would stamp a version a local build wouldn't.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-compile dg
+        run: |
+          VERSION="$(make version)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          make dist/dg-linux-amd64 dist/dg-linux-arm64 VERSION="$VERSION"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            REVISION=${{ github.sha }}
+          tags: |
+            ghcr.io/steading-ai/dagger:${{ github.sha }}
+            ghcr.io/steading-ai/dagger:main
