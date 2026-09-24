@@ -52,6 +52,9 @@ type stub struct {
 	// refsOnly makes ApplyPatch answer in the refs view, as the service
 	// does when a request asks for no more, instead of echoing the node.
 	refsOnly bool
+	// reasons, when set, is what Explain answers with instead of the one
+	// blocked reason it derives, so a spec can see every kind rendered.
+	reasons []*skiftv1.Reason
 }
 
 // stubLease is a lease the stub handed out and its state.
@@ -364,10 +367,11 @@ func (s *stub) Explain(_ context.Context, req *connect.Request[skiftv1.ExplainRe
 	if len(s.nodes) < 2 {
 		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
 	}
-	return connect.NewResponse(&skiftv1.ExplainResponse{
-		Node:    s.nodes[1],
-		Reasons: []*skiftv1.Reason{{Reason: &skiftv1.Reason_Blocked{Blocked: &skiftv1.BlockedReason{Blocker: s.nodes[0]}}}},
-	}), nil
+	reasons := s.reasons
+	if reasons == nil {
+		reasons = []*skiftv1.Reason{{Reason: &skiftv1.Reason_Blocked{Blocked: &skiftv1.BlockedReason{Blocker: s.nodes[0]}}}}
+	}
+	return connect.NewResponse(&skiftv1.ExplainResponse{Node: s.nodes[1], Reasons: reasons}), nil
 }
 
 func (s *stub) Search(_ context.Context, req *connect.Request[skiftv1.SearchRequest]) (*connect.Response[skiftv1.SearchResponse], error) {

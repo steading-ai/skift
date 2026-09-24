@@ -199,6 +199,17 @@ var _ = Describe("A decode error", Label("unit"), func() {
 			To(MatchError("ops: expected an array of objects"))
 	})
 
+	It("walks the entries of a map field to the value that is wrong", func() {
+		decodeResponse := func(raw string) error {
+			return codec.Unmarshal([]byte(raw), &skiftv1.ApplyPatchResponse{})
+		}
+		Expect(decodeResponse(`{"aliases": {"spike": "platform#1", "impl": 7}}`)).
+			To(MatchError("aliases.impl: expected a string"))
+		Expect(decodeResponse(`{"aliases": ["platform#1"]}`)).
+			To(MatchError("aliases: expected an object"))
+		Expect(decodeResponse(`{"aliases": {"spike": "platform#1"}}`)).To(Succeed())
+	})
+
 	It("leaves a document that is not JSON to the decoder", func() {
 		Expect(decode(`{"ops": [`)).To(HaveOccurred())
 		Expect(decode(`nonsense`)).To(HaveOccurred())
