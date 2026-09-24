@@ -2,6 +2,7 @@ package testsupport_test
 
 import (
 	"context"
+	"net/url"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -40,6 +41,46 @@ var _ = Describe("PostgreSQL harness", Label(testsupport.DBLabel), func() {
 			Expect(n).To(BeZero(), "the template must hold no rows and no other spec's database is visible")
 			insertProject(ctx, db)
 		})
+	})
+
+	It("Suites share one server through EnvServer, each in a template of its own that ends with it", func(ctx SpecContext) {
+		By("given the server this suite runs on, named as a shared one")
+		handoff, err := url.Parse(pg.URL())
+		Expect(err).NotTo(HaveOccurred())
+		own := handoff.Fragment
+		handoff.Fragment = ""
+		GinkgoT().Setenv(testsupport.EnvServer, handoff.String())
+
+		By("when a second suite starts, it prepares a template of its own rather than a container")
+		second, err := testsupport.Start(ctx, nil)
+		Expect(err).NotTo(HaveOccurred())
+		other, err := url.Parse(second.URL())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(other.Fragment).NotTo(BeEmpty())
+		Expect(other.Fragment).NotTo(Equal(own))
+
+		By("and its other processes attach to that template, not this suite's")
+		attached, err := testsupport.Attach(ctx, second.URL())
+		Expect(err).NotTo(HaveOccurred())
+		db := attached.Database(ctx)
+		var n int
+		Expect(db.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname = 'public'`).Scan(&n)).To(Succeed())
+		Expect(n).To(BeZero(), "cloned from the second suite's unmigrated template")
+
+		By("then stopping the second suite drops its template and nothing else")
+		Expect(second.Stop(ctx)).To(Succeed())
+		Expect(attached.Stop(ctx)).To(Succeed(), "a process that only attached has nothing to drop")
+		conn, err := pgx.Connect(ctx, handoff.String())
+		Expect(err).NotTo(HaveOccurred())
+		defer conn.Close(ctx) //nolint:errcheck // single-statement session
+		Expect(conn.QueryRow(ctx, `SELECT count(*) FROM pg_database WHERE datname = $1`, other.Fragment).Scan(&n)).To(Succeed())
+		Expect(n).To(BeZero())
+		Expect(conn.QueryRow(ctx, `SELECT count(*) FROM pg_database WHERE datname = $1`, own).Scan(&n)).To(Succeed())
+		Expect(n).To(Equal(1))
+
+		By("and a handoff that names no template is refused")
+		_, err = testsupport.Attach(ctx, handoff.String())
+		Expect(err).To(MatchError(ContainSubstring("names no template")))
 	})
 
 	It("The template is migrated once and every clone carries the schema", func(ctx SpecContext) {

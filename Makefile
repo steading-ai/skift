@@ -104,8 +104,15 @@ cover: test-policy
 # The timeout gremlins gives each mutant is a multiple of the unmutated
 # run, and go test answers a cached run in milliseconds, so the cache is
 # off: every mutant would time out against a baseline that measured nothing.
-mutate:
-	GOFLAGS=-count=1 gremlins unleash ./internal/domain
+#
+# Every worker's suite attaches to the development database rather than
+# starting a container of its own: that many testcontainers sessions at
+# once race on podman's networks, and a teardown that loses the race fails
+# the run, which gremlins would count as a kill. Each suite still works in
+# a template database of its own and drops it when it ends.
+mutate: db-up
+	set -a && . ./.env && set +a && \
+	  SKIFT_TEST_POSTGRES_URL="$$DATABASE_URL" GOFLAGS=-count=1 gremlins unleash ./internal/domain
 
 lint:
 	go vet ./...

@@ -36,12 +36,19 @@ const postgresImage = "docker.io/library/postgres:18@sha256:4ef4dbc939d61acea577
 const DBLabel = "db"
 
 const (
-	superuser    = "postgres"
-	password     = "postgres"
-	templateName = "skift_template"
+	superuser = "postgres"
+	password  = "postgres"
 	// startTimeout covers a cold image pull with margin.
 	startTimeout = 3 * time.Minute
 )
+
+// EnvServer names a running PostgreSQL to use instead of a container: the
+// superuser URL of its maintenance database. Each suite still gets a
+// template of its own and drops it when it ends, so any number of suites
+// can share the server at once. That is what `make mutate` needs: one
+// testcontainers session per worker races the others on podman's
+// networks, and a teardown that loses fails the run.
+const EnvServer = "SKIFT_TEST_POSTGRES_URL"
 
 // Migrate brings an empty database up to the current schema. It runs once,
 // against the template every spec database is cloned from, and receives a
@@ -54,18 +61,42 @@ type Migrate func(ctx context.Context, databaseURL string) error
 type Postgres struct {
 	container testcontainers.Container
 	adminURL  string
+	// template is the migrated database every spec database is cloned
+	// from, named per suite so suites sharing a server never collide.
+	template string
+	// owned reports that this process created the template, and so drops
+	// it: the one that called [Start] on a server it did not start.
+	owned bool
 }
 
-// Start pulls the image if needed, starts a server, creates the template
-// database and applies migrate to it. A nil migrate leaves the template
-// empty. Call it once per suite, from the first process of a
-// SynchronizedBeforeSuite.
+// Start creates the template database and applies migrate to it, on the
+// server [EnvServer] names or, when it names none, on a container it
+// starts. A nil migrate leaves the template empty. Call it once per suite,
+// from the first process of a SynchronizedBeforeSuite.
 func Start(ctx context.Context, migrate Migrate) (*Postgres, error) {
-	useRootlessPodmanSocket()
-	tclog.SetDefault(ginkgoLogger{})
-
 	ctx, cancel := context.WithTimeout(ctx, startTimeout)
 	defer cancel()
+
+	p := &Postgres{template: "skift_template_" + randomSuffix()}
+	if server := os.Getenv(EnvServer); server != "" {
+		p.adminURL, p.owned = server, true
+	} else if err := p.startContainer(ctx); err != nil {
+		return nil, err
+	}
+	if err := p.awaitConnections(ctx); err != nil {
+		return nil, errors.Join(err, p.Stop(ctx))
+	}
+	if err := p.createTemplate(ctx, migrate); err != nil {
+		return nil, errors.Join(err, p.Stop(ctx))
+	}
+	return p, nil
+}
+
+// startContainer pulls the image if needed and starts a server, recording
+// where it answers.
+func (p *Postgres) startContainer(ctx context.Context) error {
+	useRootlessPodmanSocket()
+	tclog.SetDefault(ginkgoLogger{})
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -92,33 +123,36 @@ func Start(ctx context.Context, migrate Migrate) (*Postgres, error) {
 		Started: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("start postgres container: %w", err)
+		return fmt.Errorf("start postgres container: %w", err)
 	}
-	p := &Postgres{container: container}
+	p.container = container
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("container host: %w", err), p.Stop(ctx))
+		return errors.Join(fmt.Errorf("container host: %w", err), p.Stop(ctx))
 	}
 	port, err := container.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("container port: %w", err), p.Stop(ctx))
+		return errors.Join(fmt.Errorf("container port: %w", err), p.Stop(ctx))
 	}
 	p.adminURL = adminURL(host, port.Port(), superuser)
-
-	if err := p.awaitConnections(ctx); err != nil {
-		return nil, errors.Join(err, p.Stop(ctx))
-	}
-	if err := p.createTemplate(ctx, migrate); err != nil {
-		return nil, errors.Join(err, p.Stop(ctx))
-	}
-	return p, nil
+	return nil
 }
 
-// Attach connects to a server another process started. The URL is the one
-// [Postgres.URL] returned there.
-func Attach(ctx context.Context, adminURL string) (*Postgres, error) {
-	conn, err := pgx.Connect(ctx, adminURL)
+// Attach connects to the server and template another process prepared.
+// The handoff is what [Postgres.URL] returned there.
+func Attach(ctx context.Context, handoff string) (*Postgres, error) {
+	u, err := url.Parse(handoff)
+	if err != nil {
+		return nil, fmt.Errorf("attach to postgres: %w", err)
+	}
+	p := &Postgres{template: u.Fragment}
+	u.Fragment = ""
+	p.adminURL = u.String()
+	if p.template == "" {
+		return nil, errors.New("attach to postgres: the handoff names no template database")
+	}
+	conn, err := pgx.Connect(ctx, p.adminURL)
 	if err != nil {
 		return nil, fmt.Errorf("attach to postgres: %w", err)
 	}
@@ -126,22 +160,31 @@ func Attach(ctx context.Context, adminURL string) (*Postgres, error) {
 	if err := conn.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("attach to postgres: %w", err)
 	}
-	return &Postgres{adminURL: adminURL}, nil
+	return p, nil
 }
 
-// URL is the superuser connection URL of the maintenance database. It is
-// what a SynchronizedBeforeSuite passes from the process that called [Start]
-// to the ones that call [Attach].
-func (p *Postgres) URL() string { return p.adminURL }
+// URL is the handoff a SynchronizedBeforeSuite passes from the process
+// that called [Start] to the ones that call [Attach]: the superuser URL of
+// the maintenance database, carrying the template's name as its fragment,
+// which no client sends to the server.
+func (p *Postgres) URL() string { return p.adminURL + "#" + p.template }
 
-// Stop removes the container. Only the process that started it has one to
-// remove; elsewhere Stop is a no-op.
+// Stop removes what this process created: the container, or on a shared
+// server the template database. Elsewhere Stop is a no-op.
 func (p *Postgres) Stop(ctx context.Context) error {
-	if p == nil || p.container == nil {
+	switch {
+	case p == nil:
 		return nil
-	}
-	if err := p.container.Terminate(ctx); err != nil {
-		return fmt.Errorf("stop postgres container: %w", err)
+	case p.container != nil:
+		if err := p.container.Terminate(ctx); err != nil {
+			return fmt.Errorf("stop postgres container: %w", err)
+		}
+	case p.owned:
+		// A template refuses DROP until it is an ordinary database again.
+		if err := p.admin(ctx, `UPDATE pg_database SET datistemplate = false WHERE datname = '`+p.template+`'`); err != nil {
+			return fmt.Errorf("unseal template database: %w", err)
+		}
+		return p.drop(ctx, p.template)
 	}
 	return nil
 }
@@ -193,7 +236,7 @@ func (p *Postgres) requireDBSpec() {
 }
 
 func (p *Postgres) clone(ctx context.Context, name string) (*pgxpool.Pool, error) {
-	if err := p.admin(ctx, `CREATE DATABASE `+pgx.Identifier{name}.Sanitize()+` TEMPLATE `+templateName); err != nil {
+	if err := p.admin(ctx, `CREATE DATABASE `+pgx.Identifier{name}.Sanitize()+` TEMPLATE `+p.template); err != nil {
 		return nil, fmt.Errorf("create database %s: %w", name, err)
 	}
 	pool, err := pgxpool.New(ctx, p.databaseURL(name))
@@ -233,17 +276,17 @@ func (p *Postgres) awaitConnections(ctx context.Context) error {
 // createTemplate builds the database every spec clones. Cloning is a file
 // copy, far cheaper than re-running migrations per spec.
 func (p *Postgres) createTemplate(ctx context.Context, migrate Migrate) error {
-	if err := p.admin(ctx, `CREATE DATABASE `+templateName); err != nil {
+	if err := p.admin(ctx, `CREATE DATABASE `+p.template); err != nil {
 		return fmt.Errorf("create template database: %w", err)
 	}
 	if migrate != nil {
-		if err := migrate(ctx, p.databaseURL(templateName)); err != nil {
+		if err := migrate(ctx, p.databaseURL(p.template)); err != nil {
 			return fmt.Errorf("migrate template database: %w", err)
 		}
 	}
 	// Refuse ordinary connections so nothing can dirty the template, and
 	// mark it so CREATE DATABASE accepts it from any role.
-	if err := p.admin(ctx, `UPDATE pg_database SET datistemplate = true, datallowconn = false WHERE datname = '`+templateName+`'`); err != nil {
+	if err := p.admin(ctx, `UPDATE pg_database SET datistemplate = true, datallowconn = false WHERE datname = '`+p.template+`'`); err != nil {
 		return fmt.Errorf("seal template database: %w", err)
 	}
 	return nil
