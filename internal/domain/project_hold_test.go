@@ -157,6 +157,30 @@ var _ = Describe("Project holds", Label(testsupport.DBLabel), func() {
 		Expect(g.eventsFor(ctx, "hold-agent")).To(BeEmpty())
 	})
 
+	It("A sweep holds a parked epic once, and containment carries it to the children", func(ctx SpecContext) {
+		By("given an epic with a child, and an unrelated root")
+		user := g.principal(ctx)
+		g.given(ctx, func(ctx context.Context, tx store.Tx) {
+			one := g.node(ctx, tx, 1, nil)
+			g.node(ctx, tx, 2, &one)
+			g.node(ctx, tx, 3, nil)
+		})
+
+		By("when the sweep keeps only the root")
+		result, err := svc.Focus(ctx, g.org, user, "focus-1", "platform", []string{"#3"}, "this week")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("then the epic is held and its child is parked through it, with no hold of its own")
+		Expect(result.Held).To(Equal(1))
+		Expect(g.getNode(ctx, "#1").HeldAt).NotTo(BeNil())
+		Expect(g.getNode(ctx, "#2").HeldAt).To(BeNil())
+		e := g.explain(ctx, "#2")
+		Expect(e.Reasons).To(HaveExactElements(HaveField("Kind", domain.ReasonHeld)))
+		Expect(e.Reasons[0].Hold.Number).To(BeEquivalentTo(1))
+		Expect(e.Reasons[0].Hold.Self).To(BeFalse())
+		Expect(numbers(g.ready(ctx, domain.ReadyQuery{}))).To(ConsistOf(int64(3)))
+	})
+
 	It("A sweep keeps only nodes of its own project, is bounded, and clears by the group it named", func(ctx SpecContext) {
 		user := g.principal(ctx)
 		other := g.newProject(ctx, "other")

@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 	"github.com/steading-ai/skift/internal/domain"
@@ -941,6 +942,38 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			By("an operation with nothing set is refused")
 			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
+		})
+
+		It("carries an artifact's text and reference parts and its metadata both ways", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			f.mustApply(ctx, createOp("a", "Work"))
+			metadata, err := structpb.NewStruct(map[string]any{"source": "spec", "lines": 12})
+			Expect(err).NotTo(HaveOccurred())
+			digest := "sha256:" + strings.Repeat("ab", 32)
+			_, err = f.apply(ctx, "platform", attachOp("#1", &skiftv1.Artifact{
+				Name: "notes", Description: "what was found", Metadata: metadata,
+				Parts: []*skiftv1.Part{
+					{Content: &skiftv1.Part_Text{Text: &skiftv1.TextPart{Text: "# Notes", MediaType: "text/markdown"}}},
+					{Content: &skiftv1.Part_Reference{Reference: &skiftv1.ReferencePart{Uri: "s3://bucket/notes.tar", Digest: digest, Size: 4096, MediaType: "application/x-tar"}}},
+				},
+			}))
+			Expect(err).NotTo(HaveOccurred())
+
+			artifacts := f.getNode(ctx, "platform", "#1").GetArtifacts()
+			Expect(artifacts).To(HaveLen(1))
+			Expect(artifacts[0].GetName()).To(Equal("notes"))
+			Expect(artifacts[0].GetDescription()).To(Equal("what was found"))
+			Expect(artifacts[0].GetMetadata().AsMap()).To(HaveKeyWithValue("source", "spec"))
+			Expect(artifacts[0].GetMetadata().AsMap()).To(HaveKeyWithValue("lines", BeNumerically("==", 12)))
+			Expect(artifacts[0].GetParts()).To(HaveLen(2))
+			Expect(artifacts[0].GetParts()[0].GetText().GetText()).To(Equal("# Notes"))
+			Expect(artifacts[0].GetParts()[0].GetText().GetMediaType()).To(Equal("text/markdown"))
+			Expect(artifacts[0].GetParts()[1].GetReference().GetUri()).To(Equal("s3://bucket/notes.tar"))
+			Expect(artifacts[0].GetParts()[1].GetReference().GetDigest()).To(Equal(digest))
+			Expect(artifacts[0].GetParts()[1].GetReference().GetSize()).To(BeEquivalentTo(4096))
+
+			_, err = f.apply(ctx, "platform", attachOp("#1", &skiftv1.Artifact{Name: "bad", Parts: []*skiftv1.Part{{}}}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a part with no content")
 		})
 
 		It("refuses status and held on a ready read or a claim, and a hold change without what it owes", func(ctx SpecContext) {

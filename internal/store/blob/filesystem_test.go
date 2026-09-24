@@ -130,6 +130,32 @@ var _ = Describe("Filesystem backend", Label("unit"), func() {
 		Expect(err).To(MatchError(blob.ErrNotFound))
 	})
 
+	It("leaves what is not an upload alone, and reports what stops a reclaim", func(ctx SpecContext) {
+		stale, err := fs.Begin(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = stale.Abort() })
+		Expect(os.Mkdir(filepath.Join(root, "uploads", "not-an-upload"), 0o755)).To(Succeed())
+
+		By("a directory under uploads is not reclaimed")
+		n, err := fs.Reclaim(ctx, time.Now().Add(time.Second))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(n).To(Equal(1))
+		Expect(filepath.Join(root, "uploads", "not-an-upload")).To(BeADirectory())
+
+		By("a cancelled context stops the walk")
+		_, err = fs.Begin(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		_, err = fs.Reclaim(cancelled, time.Now().Add(time.Second))
+		Expect(err).To(MatchError(context.Canceled))
+
+		By("and a missing uploads directory is an error, not nothing to do")
+		Expect(os.RemoveAll(filepath.Join(root, "uploads"))).To(Succeed())
+		_, err = fs.Reclaim(ctx, time.Now())
+		Expect(err).To(MatchError(ContainSubstring("list uploads")))
+	})
+
 	It("reclaims uploads abandoned before the cutoff and leaves fresh ones", func(ctx SpecContext) {
 		stale, err := fs.Begin(ctx)
 		Expect(err).NotTo(HaveOccurred())

@@ -199,6 +199,24 @@ var _ = Describe("A decode error", Label("unit"), func() {
 			To(MatchError("ops: expected an array of objects"))
 	})
 
+	It("says what a bool, a number, an enum, a message, and an element take", func() {
+		decodeList := func(raw string) error {
+			return codec.Unmarshal([]byte(raw), &skiftv1.ListProjectsRequest{})
+		}
+		Expect(decodeList(`{"include_archived": "yes"}`)).To(MatchError("include_archived: expected true or false"))
+		Expect(decodeList(`{"page_size": true}`)).To(MatchError("page_size: expected a number"))
+		Expect(decodeList(`{"page_size": "10"}`)).To(Succeed(), "protojson takes a quoted number")
+
+		legal := strings.Join(codec.EnumNames(skiftv1.Priority(0).Descriptor()), ", ")
+		Expect(decode(`{"ops": [{"create_node": {"title": "A", "priority": true}}]}`)).
+			To(MatchError("ops[0].create_node.priority: expected one of " + legal))
+		Expect(decode(`{"ops": [{"create_node": {"title": "A", "priority": 2}}]}`)).To(Succeed(), "protojson takes an enum by number")
+		Expect(decode(`{"ops": [{"create_node": 7}]}`)).To(MatchError("ops[0].create_node: expected an object"))
+		Expect(decode(`{"ops": [{"update_node": {"node": "#1", "labels": 7}}]}`)).To(MatchError("ops[0].update_node.labels: expected an object"))
+		Expect(decode(`{"ops": [{"create_node": {"title": "A", "labels": [7]}}]}`)).To(MatchError("ops[0].create_node.labels[0]: expected a string"))
+		Expect(decode(`{"ops": [{"create_node": {"title": "A", "labels": null, "body": null}}]}`)).To(Succeed(), "null is what every field accepts")
+	})
+
 	It("walks the entries of a map field to the value that is wrong", func() {
 		decodeResponse := func(raw string) error {
 			return codec.Unmarshal([]byte(raw), &skiftv1.ApplyPatchResponse{})

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,20 @@ type stub struct {
 	// reasons, when set, is what Explain answers with instead of the one
 	// blocked reason it derives, so a spec can see every kind rendered.
 	reasons []*skiftv1.Reason
+	// edges are every edge a patch added, which GetNode reports for the
+	// nodes at either end.
+	edges []*skiftv1.Edge
+}
+
+// byRef finds a node by its reference, bare or qualified. Callers hold
+// s.mu.
+func (s *stub) byRef(ref string) *skiftv1.Node {
+	for _, n := range s.nodes {
+		if n.GetReference() == ref || strings.HasSuffix(n.GetReference(), ref) {
+			return n
+		}
+	}
+	return nil
 }
 
 // stubLease is a lease the stub handed out and its state.
@@ -253,8 +268,20 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[skiftv1.ApplyP
 				res.Dropped = append(res.Dropped, n.GetReference())
 				res.Nodes = append(res.Nodes, &skiftv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus()})
 			}
-		case *skiftv1.PatchOp_AddEdge, *skiftv1.PatchOp_AddComment, *skiftv1.PatchOp_EstimateNode,
-			*skiftv1.PatchOp_HoldNode, *skiftv1.PatchOp_UnholdNode:
+		case *skiftv1.PatchOp_AddEdge:
+			s.edges = append(s.edges, &skiftv1.Edge{From: o.AddEdge.GetFrom(), To: o.AddEdge.GetTo(), Kind: skiftv1.EdgeKind_EDGE_KIND_BLOCKS})
+			res.EventCount++
+		case *skiftv1.PatchOp_HoldNode:
+			if n := s.byRef(o.HoldNode.GetNode()); n != nil {
+				n.Held, n.Ready = true, false
+				res.EventCount++
+			}
+		case *skiftv1.PatchOp_UnholdNode:
+			if n := s.byRef(o.UnholdNode.GetNode()); n != nil {
+				n.Held, n.Ready = false, true
+				res.EventCount++
+			}
+		case *skiftv1.PatchOp_AddComment, *skiftv1.PatchOp_EstimateNode:
 			// Recorded; nothing to return.
 		default:
 			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("stub: %T", o))
@@ -274,6 +301,17 @@ func (s *stub) GetNode(_ context.Context, req *connect.Request[skiftv1.GetNodeRe
 		Node:         s.nodes[0],
 		Inputs:       &skiftv1.InputsHint{Count: int32(len(s.nodes) - 1), Bytes: 42}, //nolint:gosec // a spec's node count
 		CommentsHint: stubCommentsHint(),
+	}
+	ref := s.nodes[0].GetReference()
+	for _, e := range s.edges {
+		if strings.HasSuffix(ref, e.GetFrom()) || strings.HasSuffix(ref, e.GetTo()) {
+			res.Edges = append(res.Edges, e)
+		}
+	}
+	for id, held := range s.leases {
+		if held.node == s.nodes[0] && held.reason == skiftv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
+			res.Lease = s.lease(id)
+		}
 	}
 	// The full view is the one that carries content, and cost is content:
 	// the node's current estimate and the rollup over its subtree.
@@ -515,7 +553,15 @@ func (s *stub) Ready(_ context.Context, req *connect.Request[skiftv1.ReadyReques
 	s.record(req.Msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return connect.NewResponse(&skiftv1.ReadyResponse{Nodes: s.ready()}), nil
+	res := &skiftv1.ReadyResponse{Nodes: s.ready()}
+	if len(res.Nodes) == 0 {
+		for _, n := range s.nodes {
+			if n.GetHeld() {
+				res.HeldCount++
+			}
+		}
+	}
+	return connect.NewResponse(res), nil
 }
 
 // stubCommentsHint is the comments hint every node the stub hands out

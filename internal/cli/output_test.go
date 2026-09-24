@@ -119,6 +119,32 @@ var _ = Describe("skift text output", Label("unit"), func() {
 		Expect(out).To(MatchRegexp(`1 events, request \S+\n`))
 	})
 
+	It("says when nothing is ready because work is parked, and marks held nodes in a list", func() {
+		s.newNode("Work")
+		Expect(run(nil, "-p", "platform", "hold", "#1", "--reason", "parked").code).To(Equal(0))
+		Expect(run(nil, "-p", "platform", "ready").stdout.String()).To(Equal("nothing ready; 1 open nodes are held\n"))
+		out := run(nil, "-p", "platform", "node", "list").stdout.String()
+		Expect(out).To(MatchRegexp(`^#1\s+p2\s+held\s+task\s+Work\n$`))
+		Expect(run(nil, "-p", "platform", "unhold", "#1", "--reason", "back").code).To(Equal(0))
+		Expect(run(nil, "-p", "platform", "ready").stdout.String()).To(MatchRegexp(`^#1\s+p2\s+ready`))
+	})
+
+	It("shows a node's edges and its live lease, and a patch in the refs view as numbers and references", func() {
+		s.newNode("Work")
+		s.newNode("Downstream")
+		Expect(run(nil, "-p", "platform", "link", "#1", "#2").code).To(Equal(0))
+		Expect(run(nil, "-p", "platform", "claim", "--harness", "spec").code).To(Equal(0))
+		out := run(nil, "-p", "platform", "node", "show", "#1").stdout.String()
+		Expect(out).To(ContainSubstring("edge #1 -blocks-> #2\n"))
+		Expect(out).To(MatchRegexp(`lease \S+ expires in `))
+
+		s.refsOnly = true
+		patch := strings.NewReader(`{"ops": [{"create_node": {"alias": "spike", "title": "Spike"}}]}`)
+		out = run(patch, "-p", "platform", "patch", "apply", "-").stdout.String()
+		Expect(out).To(MatchRegexp(`^#3\s+ready\s+platform#3\n`))
+		Expect(out).To(ContainSubstring("alias spike = platform#3\n"))
+	})
+
 	It("renders a lease as live or released, and search hits with their snippet", func() {
 		s.newNode("Work")
 		out := run(nil, "-p", "platform", "heartbeat", "01JX").stdout.String()
