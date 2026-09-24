@@ -92,7 +92,10 @@ var _ = Describe("Development database", Label("db", "compose"), Ordered, func()
 			"PODMAN_COMPOSE_WARNING_LOGS=false",
 		)
 
-		By("given no running containers")
+		By("given the development settings compose.yaml requires")
+		Expect(run(env, "make", ".env")).To(gexec.Exit(0))
+
+		By("and no running containers")
 		Expect(run(env, "podman", "compose", "down", "-v")).To(gexec.Exit(0))
 		Expect(acceptsConnection(port)).To(HaveOccurred())
 	})
