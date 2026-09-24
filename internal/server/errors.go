@@ -102,6 +102,7 @@ func codeOf(err error) connect.Code {
 		errors.Is(err, domain.ErrCursorInvalid),
 		errors.Is(err, domain.ErrNoRequestID),
 		errors.Is(err, domain.ErrNoOperations),
+		errors.Is(err, domain.ErrEmptyOperation),
 		errors.Is(err, domain.ErrReasonRequired),
 		errors.Is(err, domain.ErrCascadeBoundRequired),
 		errors.Is(err, domain.ErrResultRequired),

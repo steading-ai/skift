@@ -24,6 +24,10 @@ var (
 	ErrNoRequestID = errors.New("a patch needs a request id")
 	// ErrNoOperations: a patch is a mutation, so an empty one is a mistake.
 	ErrNoOperations = errors.New("a patch needs at least one operation")
+	// ErrEmptyOperation: an operation with none of its fields set names
+	// nothing to do, which is the request's mistake rather than the
+	// service's.
+	ErrEmptyOperation = errors.New("an operation sets nothing")
 	// ErrProjectArchived: an archived project is read-only.
 	ErrProjectArchived = errors.New("project is archived")
 	// ErrCascadeBoundRequired: a cascading drop states how many nodes it
@@ -126,7 +130,7 @@ func (o Op) Name() string {
 func (o Op) validate(l Limits) error {
 	switch {
 	case o.Name() == "":
-		return errors.New("no operation set")
+		return ErrEmptyOperation
 	case o.CreateNode != nil:
 		return exceeded(LimitBodyBytes, int64(len(o.CreateNode.Body)), int64(l.BodyBytes))
 	case o.UpdateNode != nil && o.UpdateNode.Body != nil:
@@ -854,7 +858,7 @@ func (a *applier) apply(ctx context.Context, op Op) error {
 	case op.UnholdNode != nil:
 		return a.unholdNode(ctx, op.UnholdNode)
 	}
-	return errors.New("no operation set")
+	return ErrEmptyOperation
 }
 
 func (a *applier) createNode(ctx context.Context, op *CreateNode) error {
