@@ -56,6 +56,20 @@ test-unit: test-policy
 test-policy:
 	opa test policy
 
+# Every spec under the race detector. Claims, leases, the event listener
+# and the watch loop all run goroutines against one database; the
+# detector is what notices a data race the specs happen not to trip.
+test-race: test-policy
+	$(GINKGO) -race ./...
+
+# The fuzz targets, each for FUZZ_TIME. go test drives these directly and
+# one at a time, so they live in *_fuzz_test.go beside the specs; the
+# corpus of anything that ever failed is committed under testdata/fuzz.
+FUZZ_TIME ?= 20s
+fuzz:
+	go test ./internal/codec -run '^$$' -fuzz '^FuzzUnmarshal$$' -fuzztime $(FUZZ_TIME)
+	go test ./internal/domain -run '^$$' -fuzz '^FuzzDecodeCursor$$' -fuzztime $(FUZZ_TIME)
+
 # Specs that need a real PostgreSQL, labelled "db".
 test-db:
 	$(GINKGO) --label-filter='db' ./...

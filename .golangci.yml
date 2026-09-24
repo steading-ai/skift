@@ -40,12 +40,13 @@ linters:
             - pkg: github.com/steading-ai/skift/internal/policy
               desc: interceptors authenticate and check methods; resource authorization is the domain's, inside the transaction
     # Specs are Ginkgo. The testing package appears only in the suite
-    # bootstrap file that hands control to Ginkgo.
+    # bootstrap file that hands control to Ginkgo, and in fuzz targets,
+    # which go test drives directly and Ginkgo cannot host.
     forbidigo:
       analyze-types: true
       forbid:
         - pattern: ^testing\.
-          msg: use Ginkgo and Gomega; testing belongs only in *_suite_test.go
+          msg: use Ginkgo and Gomega; testing belongs only in *_suite_test.go and *_fuzz_test.go
     # Ginkgo and Gomega are written with dot imports by design.
     revive:
       rules:
@@ -56,7 +57,7 @@ linters:
                 - github.com/onsi/gomega
   exclusions:
     rules:
-      - path: _suite_test\.go$
+      - path: (_suite|_fuzz)_test\.go$
         linters:
           - forbidigo
 

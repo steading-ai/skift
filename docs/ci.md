@@ -8,8 +8,11 @@ including the ones that need PostgreSQL (through testcontainers on the
 runner's Docker) and the acceptance scenarios against the built binary,
 with the floor in `coverage.baseline` enforced. It is the gate the
 pre-commit hook applies locally, plus what the hook leaves out for speed.
-Tools come from `mise.toml` through `jdx/mise-action`, so the versions are
-the ones a developer runs.
+A second job in the same workflow runs `make test-race`, every spec under
+the race detector, and `make fuzz`, each fuzz target for a short while;
+it runs beside the first rather than after it. Tools come from
+`mise.toml` through `jdx/mise-action`, so the versions are the ones a
+developer runs.
 
 [publish.yml](../.github/workflows/publish.yml) runs on every push to
 `main`: it cross-compiles `skift` for linux/amd64 and linux/arm64 (the same

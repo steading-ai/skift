@@ -54,6 +54,8 @@ make test-unit          # specs needing no database
 make test-db            # specs needing PostgreSQL, via testcontainers
 make test-acceptance    # the end-to-end scenarios
 make cover              # statement coverage of hand-written code, gated by coverage.baseline
+make test-race          # all specs under the race detector
+make fuzz               # the fuzz targets in *_fuzz_test.go, FUZZ_TIME each
 make mutate             # mutation testing over internal/domain; slow, read the survivors. DIFF=main for changed lines only
 make lint               # go vet, golangci-lint, buf, opa, and a generated-code check
 make generate           # buf and sqlc codegen; commit the output
