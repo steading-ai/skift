@@ -69,7 +69,8 @@ var _ = Describe("skift as a client", Label("unit"), func() {
 		cmd := exec.Command(binary, "--socket", socket, "--project", "platform", "ready")
 		cmd.Stdout = file
 		cmd.Stderr = GinkgoWriter
-		cmd.Env = append(os.Environ(), "SKIFT_CONFIG=", "SKIFT_ADDRESS=", "SKIFT_SOCKET=")
+		cmd.Env = append(os.Environ(), "SKIFT_CONFIG=", "SKIFT_ADDRESS=", "SKIFT_SOCKET=", "SKIFT_PROJECT=",
+			"XDG_CONFIG_HOME="+GinkgoT().TempDir())
 		Expect(cmd.Run()).To(Succeed(), "skift ready exited non-zero")
 		Expect(file.Close()).To(Succeed())
 

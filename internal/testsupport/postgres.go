@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -300,22 +301,26 @@ func randomSuffix() string {
 // useRootlessPodmanSocket points testcontainers at the rootless podman
 // socket when nothing else is configured. testcontainers looks for Docker
 // sockets only, and podman is the runtime this project assumes. Ryuk, the
-// sidecar that removes leftovers after a crashed run, can only reach that
-// socket from a privileged container, so it defaults to one too.
+// sidecar that removes leftovers after a crashed run, can only reach a
+// podman socket from a privileged container, so it defaults to one whenever
+// the socket is podman's, whether discovered here or set by hand.
 func useRootlessPodmanSocket() {
-	if os.Getenv("DOCKER_HOST") != "" {
-		return
+	host := os.Getenv("DOCKER_HOST")
+	if host == "" {
+		runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+		if runtimeDir == "" {
+			runtimeDir = fmt.Sprintf("/run/user/%d", os.Getuid())
+		}
+		sock := filepath.Join(runtimeDir, "podman", "podman.sock")
+		if _, err := os.Stat(sock); err != nil {
+			return
+		}
+		host = "unix://" + sock
+		setDefaultEnv("DOCKER_HOST", host)
 	}
-	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
-	if runtimeDir == "" {
-		runtimeDir = fmt.Sprintf("/run/user/%d", os.Getuid())
+	if strings.Contains(host, "podman") {
+		setDefaultEnv("TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED", "true")
 	}
-	sock := filepath.Join(runtimeDir, "podman", "podman.sock")
-	if _, err := os.Stat(sock); err != nil {
-		return
-	}
-	setDefaultEnv("DOCKER_HOST", "unix://"+sock)
-	setDefaultEnv("TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED", "true")
 }
 
 func setDefaultEnv(key, value string) {
