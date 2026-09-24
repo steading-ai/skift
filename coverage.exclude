@@ -1,0 +1,14 @@
+# Files `make cover` leaves out of the hand-written coverage figure. One
+# extended regular expression per line, matched against the import path of
+# each file in the profile; a comment above each says why.
+
+# Generated from proto/ by buf. Its specs are the contract suite, which checks
+# the wire, not every accessor.
+^github\.com/steading-ai/skift/gen/
+
+# Generated from internal/store/queries/ by sqlc. The domain specs exercise the
+# queries the domain calls; the rest are unused output.
+\.gen\.go:
+
+# Helpers for specs, not shipped code.
+^github\.com/steading-ai/skift/internal/testsupport/

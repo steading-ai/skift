@@ -29,7 +29,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version test test-unit test-db test-acceptance test-policy lint check-generated generate clean package db-up db-down db-reset db-migrate
+.PHONY: all build version cover test test-unit test-db test-acceptance test-policy lint check-generated generate clean package db-up db-down db-reset db-migrate
 
 all: build
 
@@ -64,6 +64,35 @@ test-db:
 # driven through the CLI and the MCP server. Needs podman, like test-db.
 test-acceptance:
 	$(GINKGO) ./tests/acceptance
+
+# Statement coverage of hand-written code, counting every spec and the
+# acceptance scenarios. The scenarios run the built binary in its own
+# process, so it is built with -cover and writes its counters to GOCOVERDIR,
+# which the specs pass through. The two profiles merge block by block; files
+# matching coverage.exclude are left out; and the result must not fall below
+# coverage.baseline. Raise the baseline when coverage rises.
+COVER_DIR := .cover
+COVER_PKG := $(MODULE)/...
+
+cover: test-policy
+	rm -rf $(COVER_DIR) && mkdir -p $(COVER_DIR)/bin
+	$(GINKGO) --skip-package=acceptance --cover --coverpkg=$(COVER_PKG) \
+	  --coverprofile=specs.out --output-dir=$(COVER_DIR) ./...
+	GOFLAGS='-cover -coverpkg=$(COVER_PKG)' GOCOVERDIR=$(abspath $(COVER_DIR)/bin) \
+	  $(GINKGO) ./tests/acceptance
+	go tool covdata textfmt -i=$(COVER_DIR)/bin -o=$(COVER_DIR)/acceptance.out
+	@awk 'FNR == 1 { next } { k = $$1 " " $$2; c = ($$3 > 0); if (!(k in m) || c > m[k]) m[k] = c } \
+	  END { print "mode: set"; for (k in m) print k, m[k] }' \
+	  $(COVER_DIR)/specs.out $(COVER_DIR)/acceptance.out > $(COVER_DIR)/merged.out
+	@grep -v -E '^(#|$$)' coverage.exclude > $(COVER_DIR)/exclude
+	@{ head -1 $(COVER_DIR)/merged.out; tail -n +2 $(COVER_DIR)/merged.out | \
+	  grep -v -E -f $(COVER_DIR)/exclude; } > $(COVER_DIR)/cover.out
+	@awk -v base="$$(cat coverage.baseline)" 'FNR == 1 { next } \
+	  { t += $$2; if ($$3 > 0) c += $$2 } \
+	  END { p = int(1000 * c / t) / 10; \
+	    printf "cover: %.1f%% of %d hand-written statements (baseline %.1f%%)\n", p, t, base; \
+	    if (p < base) { print "cover: below coverage.baseline"; exit 1 } }' $(COVER_DIR)/cover.out
+	@echo "cover: go tool cover -html=$(COVER_DIR)/cover.out for the detail"
 
 lint:
 	go vet ./...
