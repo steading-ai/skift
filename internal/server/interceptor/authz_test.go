@@ -9,10 +9,12 @@ import (
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/ivy/dagger/internal/testsupport"
 )
 
 var _ = Describe("Authorization at the interceptor", Label("unit"), func() {
 	It("The interceptor no longer attempts resource-level authorization", func(ctx SpecContext) {
+		testsupport.RequirePeerCredentials()
 		By("given an interceptor built from an identity lookup alone, with no policy and no store")
 		lookup := interceptor.StaticLookup{myIdentity: alice}
 		graph := newRecordingGraph()

@@ -21,23 +21,11 @@ func run(binary string, args ...string) *gexec.Session {
 }
 
 var _ = Describe("dg", Label("unit"), func() {
-	var binary string
-
-	BeforeEach(func() {
-		// The same link step the Makefile performs, with a known version.
-		var err error
-		binary, err = gexec.Build(
-			"github.com/ivy/dagger/cmd/dg",
-			"-ldflags", "-X github.com/ivy/dagger/internal/version.version=1.2.3-spec+abc123",
-		)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("The binary reports its version", func() {
 		session := run(binary, "--version")
 		Expect(session).To(gexec.Exit(0))
 		Expect(string(session.Out.Contents())).To(MatchRegexp(semver))
-		Expect(string(session.Out.Contents())).To(ContainSubstring("1.2.3-spec+abc123"))
+		Expect(string(session.Out.Contents())).To(ContainSubstring(specVersion))
 	})
 
 	It("The binary is a single entry point", func() {

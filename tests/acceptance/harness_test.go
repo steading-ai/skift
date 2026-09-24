@@ -32,6 +32,7 @@ import (
 	"github.com/ivy/dagger/internal/domain"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/ivy/dagger/internal/testsupport"
 )
 
 // The deployment a scenario runs against mirrors docs/architecture.md:
@@ -186,7 +187,7 @@ func deploy(ctx context.Context) *deployment {
 	})
 
 	env := cleanEnv(dir)
-	d.host = face{name: "host", flags: []string{"--socket", d.socket}, env: env}
+	d.host = face{name: "host", flags: []string{"--socket", d.socket}, env: env, unix: true}
 	d.laptop = face{name: "laptop", flags: []string{"--address", tn.address()}, env: env}
 	return d
 }
@@ -211,10 +212,17 @@ type face struct {
 	name  string
 	flags []string
 	env   []string
+	// unix is set on a face that reaches dg serve over its unix socket,
+	// where the caller is whoever SO_PEERCRED says it is.
+	unix bool
 }
 
-// command builds one invocation of the binary.
+// command builds one invocation of the binary. A unix face skips the
+// scenario where the platform cannot attribute a socket caller.
 func (f face) command(args ...string) *exec.Cmd {
+	if f.unix {
+		testsupport.RequirePeerCredentials()
+	}
 	cmd := exec.Command(binary, append(append([]string{}, f.flags...), args...)...)
 	cmd.Env = f.env
 	return cmd

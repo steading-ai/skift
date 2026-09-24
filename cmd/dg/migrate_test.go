@@ -42,14 +42,6 @@ func schemaVersion(ctx context.Context, url string) int64 {
 }
 
 var _ = Describe("dg migrate", func() {
-	var binary string
-
-	BeforeEach(func() {
-		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("brings an empty database to the current schema, and a second run applies nothing", Label(testsupport.DBLabel), func(ctx SpecContext) {
 		url := pg.EmptyDatabase(ctx)
 

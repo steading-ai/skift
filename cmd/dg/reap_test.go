@@ -111,14 +111,6 @@ func summaryOf(session *gexec.Session) reapSummary {
 }
 
 var _ = Describe("dg reap", Label(testsupport.DBLabel), func() {
-	var binary string
-
-	BeforeEach(func() {
-		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("expires a stale lease once, however many times it runs", func(ctx SpecContext) {
 		By("given a lease whose expiry passed 10 minutes ago")
 		s := newSeed(ctx, 10*time.Minute)
@@ -212,14 +204,6 @@ func startServe(binary, databaseURL string) (*gexec.Session, <-chan string) {
 }
 
 var _ = Describe("dg serve readiness", func() {
-	var binary string
-
-	BeforeEach(func() {
-		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("does not report ready while the database is unreachable", Label("unit"), func() {
 		session, got := startServe(binary, unreachableDB)
 		Eventually(session.Err).Should(gbytes.Say("listening"))

@@ -128,6 +128,7 @@ var _ = Describe("Connect server over the tailnet", func() {
 
 	Describe("over the real domain", Label(testsupport.DBLabel), func() {
 		It("The same person from two machines is one principal", func(ctx SpecContext) {
+			testsupport.RequirePeerCredentials()
 			By("given a principal with a unix identity and a tailscale identity")
 			pool := pg.Database(ctx)
 			org := newID()
