@@ -160,6 +160,25 @@ var _ = Describe("Limits", func() {
 			Expect(limitErr.Value).To(Equal(int64(limits.EdgesPerPatch + 1)))
 			Expect(g.countNodes(ctx)).To(Equal(1))
 			Expect(g.countEvents(ctx, "edges")).To(BeZero())
+
+			By("and counting add_edge with it, under a ceiling lowered beneath the operation ceiling")
+			lowered := limits
+			lowered.EdgesPerPatch = 2
+			Expect(domain.SetLimits(lowered)).To(Succeed())
+			DeferCleanup(func() { Expect(domain.SetLimits(limits)).To(Succeed()) })
+			g.mustApply(ctx, actor, "more", create("b", "B"), create("c", "C"))
+			_, err = g.apply(ctx, actor, "mixed",
+				addEdge("#1", "#2"), addEdge("#2", "#3"),
+				domain.Op{CreateNode: &domain.CreateNode{Title: "D", BlockedBy: []string{"#3"}}})
+			limitErr = asLimitError(err, domain.LimitEdgesPerPatch)
+			Expect(limitErr.Max).To(Equal(int64(2)))
+			Expect(limitErr.Value).To(Equal(int64(3)), "two add_edge operations and one blocker")
+			Expect(g.countEdges(ctx)).To(BeZero())
+			Expect(g.countEvents(ctx, "mixed")).To(BeZero())
+
+			By("and two is still fine")
+			g.mustApply(ctx, actor, "two", addEdge("#1", "#2"), addEdge("#2", "#3"))
+			Expect(g.countEdges(ctx)).To(Equal(2))
 		})
 
 		It("bounds a node body on create and update", func(ctx SpecContext) {

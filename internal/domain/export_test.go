@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/steading-ai/skift/internal/store"
+)
 
 // WaitReachSQL is the recursive walk CheckAcyclic runs, for specs that
 // measure how far it reaches.
@@ -34,6 +38,32 @@ func AgeCursor(cursor string, at time.Time) string {
 	}
 	p.At = at
 	return encodeCursor(p)
+}
+
+// SeenAtHorizon re-issues cursor with one delivered event recorded at
+// exactly its transaction boundary, the lowest a seen event may sit.
+func SeenAtHorizon(cursor string) string {
+	p, err := decodeCursor(cursor)
+	if err != nil {
+		panic(err)
+	}
+	p.Seen = append(p.Seen, seenEvent{TxID: p.XMin, ID: newULID()})
+	return encodeCursor(p)
+}
+
+// Position and SeenEvent are the decoded cursor, for specs that check
+// its arithmetic without a database.
+type (
+	Position  = position
+	SeenEvent = seenEvent
+)
+
+// CursorAfter is the position a watcher holds once it has consumed the
+// first n of a batch of events read at boundary xmin and time at, given
+// the position it read from and its page size.
+func CursorAfter(from Position, pageSize int, xmin int64, at time.Time, events []store.Event, n int) Position {
+	w := &watcher{pageSize: pageSize, pos: from}
+	return w.after(batch{xmin: xmin, at: at, events: events}, n)
 }
 
 // ReplayWindowStart is the earliest moment a cursor may point at.

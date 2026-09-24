@@ -253,6 +253,13 @@ var _ = Describe("Change stream", Label(testsupport.DBLabel), func() {
 			err := svc.WatchEvents(ctx, g.org, actor, domain.WatchRequest{Cursor: bad}, discard)
 			Expect(err).To(MatchError(domain.ErrCursorInvalid), bad)
 		}
+
+		By("while a seen event at exactly the cursor's transaction boundary is within it")
+		resumed := g.watch(ctx, svc, actor, domain.WatchRequest{Cursor: domain.SeenAtHorizon(cursor)})
+		Consistently(resumed.done, 300*time.Millisecond).ShouldNot(Receive())
+		g.mustApply(ctx, actor, "two", create("b", "B"))
+		ev, _ = resumed.nextEvent()
+		Expect(ev.Op).To(Equal(domain.OpCreateNode))
 	})
 
 	It("rejects a cursor older than the replay window, and accepts one inside it", func(ctx SpecContext) {

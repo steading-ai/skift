@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -68,6 +69,16 @@ var _ = Describe("Project service", Label(testsupport.DBLabel), func() {
 		again, err := svc.CreateProject(ctx, g.org, user, domain.NewProject{RequestID: "p-3", Title: "Billing Service"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(again.Slug).To(MatchRegexp(`^billing-service-\d+$`))
+
+		By("and a suffix on a slug at the schema's full length makes room for itself")
+		long := strings.Repeat("x", 120)
+		first, err := svc.CreateProject(ctx, g.org, user, domain.NewProject{RequestID: "p-long-1", Title: long})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.Slug).To(HaveLen(100))
+		next, err := svc.CreateProject(ctx, g.org, user, domain.NewProject{RequestID: "p-long-2", Title: long})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(next.Slug).To(HaveLen(100))
+		Expect(next.Slug).To(HaveSuffix("-2"))
 
 		By("and repeating a request replays it rather than creating twice")
 		replayed, err := svc.CreateProject(ctx, g.org, user, domain.NewProject{RequestID: "p-1", Title: "Billing Service", VCSURL: "https://example.com/billing.git"})
@@ -223,6 +234,11 @@ var _ = Describe("Project service", Label(testsupport.DBLabel), func() {
 			Expect(err).To(MatchError(domain.ErrNoDefaultProject))
 			_, err = g.readySet(ctx, domain.ReadyQuery{Projects: []string{g.project}, Parent: "#9"})
 			Expect(err).To(MatchError(domain.ErrNodeNotFound))
+
+			By("and pages the ready set by limit and offset")
+			page, err := g.readySet(ctx, domain.ReadyQuery{Projects: []string{g.project}, Limit: 2, Offset: 1})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(numbers(page)).To(ConsistOf(int64(3), int64(4)), "the ready set is 2, 3, 4; the page skips one")
 
 			Expect(g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 				_, err := domain.Ready(ctx, tx, g.org, domain.ReadyQuery{})

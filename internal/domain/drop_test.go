@@ -89,6 +89,24 @@ var _ = Describe("Dropping nodes", Label(testsupport.DBLabel), func() {
 			Expect(r.Dropped).To(ConsistOf("platform#1", "platform#2", "platform#3", "platform#4"))
 		})
 
+		It("A cascade that leaves the project names the other project's node by its own slug", func(ctx SpecContext) {
+			By("given #1 blocking a node of another project")
+			spike := g.newProject(ctx, "spike")
+			g.given(ctx, func(ctx context.Context, tx store.Tx) {
+				g.node(ctx, tx, 1, nil)
+				g.nodeIn(ctx, tx, spike, "spike", 1, nil)
+				g.edge(ctx, tx, "platform#1", "spike#1")
+			})
+
+			By("when #1 is dropped with cascade")
+			r, err := g.apply(ctx, actor, "axe", cascadingDrop(domain.DropSuperseded, 4))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then the undo list names each node under its own project")
+			Expect(r.Dropped).To(ConsistOf("platform#1", "spike#1"))
+			Expect(g.getNode(ctx, "spike#1").Status).To(Equal("dropped"))
+		})
+
 		It("A cascade cannot clear a gate", func(ctx SpecContext) {
 			By("given #1 blocks gate #2 which blocks #3")
 			// The gate is filed by someone else: the policy stops the

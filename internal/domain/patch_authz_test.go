@@ -193,6 +193,7 @@ var _ = Describe("Authorization of the resolved patch", Label(testsupport.DBLabe
 			By("when the agent is refused an operation")
 			_, err := g.applyWithLease(ctx, agent, "sibling", lease.ID, update("#3", "Edited by the agent"))
 			Expect(err).To(BeDeniedAt(0))
+			Expect(err.Error()).NotTo(ContainSubstring("audit"), "the audit succeeded, so the error is the denial alone")
 
 			By("then the refusal is on record, outside the transaction it rolled back")
 			denials := g.denials(ctx)

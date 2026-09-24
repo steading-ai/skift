@@ -50,6 +50,13 @@ var _ = Describe("Artifact validation", Label(testsupport.DBLabel), func() {
 			domain.Part{Reference: &domain.ReferencePart{URI: "git+https://github.com/acme/x.git?rev=" + commit, Digest: digest, Size: 12}},
 			domain.Part{Reference: &domain.ReferencePart{URI: "s3://bucket/key", Digest: digest, MediaType: "text/plain"}},
 		)).To(Succeed())
-		Expect(g.artifactsOf(ctx, "#1")).To(HaveLen(1))
+		attached := g.artifactsOf(ctx, "#1")
+		Expect(attached).To(HaveLen(1))
+		Expect(attached[0].Parts).To(HaveLen(2))
+
+		By("storing a size only when the reference gave one, since zero would claim the target is empty")
+		Expect(attached[0].Parts[0].Size).To(HaveValue(Equal(int64(12))))
+		Expect(attached[0].Parts[1].Size).To(BeNil())
+		Expect(attached[0].Parts[1].MediaType).To(HaveValue(Equal("text/plain")))
 	})
 })
