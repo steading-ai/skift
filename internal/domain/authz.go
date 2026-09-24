@@ -41,8 +41,13 @@ func (d *Denial) Unwrap() error { return d.Err }
 // reasons is what the audit records as why: the policy's reasons, or the
 // evaluation failure that stood in for a decision.
 func (d *Denial) reasons() []string {
-	if d.Err.Err != nil {
+	switch {
+	case d.Err.Err != nil:
 		return []string{d.Err.Err.Error()}
+	case d.Err.Reasons == nil:
+		// A policy may refuse without saying why. The audit still
+		// records the refusal, with no reasons rather than no row.
+		return []string{}
 	}
 	return d.Err.Reasons
 }
