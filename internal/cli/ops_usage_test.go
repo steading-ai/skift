@@ -72,6 +72,16 @@ var _ = Describe("skift graph command usage", Label("unit"), func() {
 		Expect(count[*skiftv1.ApplyPatchRequest](s)).To(BeZero(), "a refused command built a patch")
 	})
 
+	It("renders a refusal from the service with its code and every detail it carried", func() {
+		r := run(nil, "project", "create", "Forbidden")
+		Expect(r.code).To(Equal(cli.ExitFailure))
+		e := r.stderrError()
+		Expect(e.Code).To(Equal("permission_denied"))
+		Expect(e.Message).To(ContainSubstring("no rule permits"))
+		Expect(e.Details).To(HaveLen(1))
+		Expect(string(e.Details[0])).To(ContainSubstring(`"policy"`))
+	})
+
 	It("builds the patch each command stands for", func() {
 		r := run(nil, "create", "Spike the parser", "--kind", "spike", "--priority", "p1", "--parent", "#1", "--blocked-by", "#2", "--assignee-kind", "agent", "--body", "Find out.")
 		Expect(r.code).To(Equal(0), r.stderr.String())

@@ -157,6 +157,47 @@ var _ = Describe("Project holds", Label(testsupport.DBLabel), func() {
 		Expect(g.eventsFor(ctx, "hold-agent")).To(BeEmpty())
 	})
 
+	It("A sweep keeps only nodes of its own project, is bounded, and clears by the group it named", func(ctx SpecContext) {
+		user := g.principal(ctx)
+		other := g.newProject(ctx, "other")
+		g.given(ctx, func(ctx context.Context, tx store.Tx) {
+			g.node(ctx, tx, 1, nil)
+			g.node(ctx, tx, 2, nil)
+			g.nodeIn(ctx, tx, other, "other", 1, nil)
+		})
+
+		By("when the keep-set names a node of another project")
+		_, err := svc.Focus(ctx, g.org, user, "focus-1", "platform", []string{"other#1"}, "this week")
+		Expect(err).To(MatchError(ContainSubstring("other#1 is not in project platform")))
+		Expect(g.eventsFor(ctx, "focus-1")).To(BeEmpty())
+
+		By("and when it names more than the ceiling allows")
+		keep := make([]string, domain.MaxKeepSet+1)
+		for i := range keep {
+			keep[i] = "#1"
+		}
+		_, err = svc.Focus(ctx, g.org, user, "focus-2", "platform", keep, "this week")
+		Expect(err).To(HaveOccurred())
+		Expect(g.eventsFor(ctx, "focus-2")).To(BeEmpty())
+
+		By("and when it keeps everything, nothing is parked and nothing recorded")
+		result, err := svc.Focus(ctx, g.org, user, "focus-3", "platform", []string{"#1", "#2"}, "all of it")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Held).To(BeZero())
+		Expect(g.eventsFor(ctx, "focus-3")).To(BeEmpty())
+
+		By("and a sweep is cleared by the group it reported")
+		result, err = svc.Focus(ctx, g.org, user, "focus-4", "platform", []string{"#1"}, "one thing")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Held).To(Equal(1))
+		released, err := svc.ClearFocus(ctx, g.org, user, "clear-4", "platform", result.Group, "done")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(released).To(Equal(1))
+		released, err = svc.ClearFocus(ctx, g.org, user, "clear-5", "platform", result.Group, "again")
+		Expect(err).NotTo(HaveOccurred(), "clearing a sweep already cleared is a retry, not a mistake")
+		Expect(released).To(BeZero())
+	})
+
 	It("An organization-wide focus parks every project outside the keep-set and leaves hand-placed holds alone", func(ctx SpecContext) {
 		By("given three projects with open work, one of them parked by hand")
 		user := g.principal(ctx)

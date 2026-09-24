@@ -389,6 +389,15 @@ func (s *stub) CreateProject(_ context.Context, req *connect.Request[skiftv1.Cre
 	s.record(req.Msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A title of Forbidden is refused the way policy refuses, with a
+	// detail attached, so a spec can see how a denial is rendered.
+	if req.Msg.GetTitle() == "Forbidden" {
+		denied := connect.NewError(connect.CodePermissionDenied, fmt.Errorf("no rule permits agent create_project"))
+		if detail, err := connect.NewErrorDetail(&skiftv1.Project{Slug: "policy", Title: "default bundle"}); err == nil {
+			denied.AddDetail(detail)
+		}
+		return nil, denied
+	}
 	slug := req.Msg.GetSlug()
 	if slug == "" {
 		slug = "derived"

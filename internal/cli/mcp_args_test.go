@@ -79,6 +79,9 @@ var _ = Describe("skift mcp argument diagnostics", Label("unit"), func() {
 			{"release", map[string]any{"reason": "gate", "lease_id": 7}, "lease_id: expected a string"},
 			{"project_list", map[string]any{"include_archived": "yes"}, "include_archived: expected true or false"},
 			{"project_create", map[string]any{"title": "New", "priority": "high"}, `priority: "high" is not one of`},
+			{"project_list", map[string]any{"page_size": "ten"}, "page_size: expected a number"},
+			{"heartbeat", map[string]any{"ttl": 5}, "ttl: expected a string"},
+			{"focus", map[string]any{"keep": []any{1}, "reason": "r"}, "keep: expected a string"},
 		} {
 			res := m.call(c.tool, c.args)
 			Expect(res.isError).To(BeTrue(), "%s %v answered without error: %s", c.tool, c.args, res.text)
@@ -105,6 +108,60 @@ var _ = Describe("skift mcp argument diagnostics", Label("unit"), func() {
 			Expect(res.text).To(ContainSubstring("project"), "%s %v", c.tool, c.args)
 		}
 		Expect(s.requests).To(BeEmpty())
+		Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
+	})
+
+	It("passes a kind filter through to ready, claim, and node_list", func() {
+		m := startMCP("--socket", socket, "--project", "platform")
+		m.initialize()
+		Expect(m.call("ready", map[string]any{"kind": "spike"}).isError).To(BeFalse())
+		Expect(last[*skiftv1.ReadyRequest](s).GetFilter().GetKinds()).To(Equal([]string{"spike"}))
+		Expect(m.call("node_list", map[string]any{"kind": "spike"}).isError).To(BeFalse())
+		Expect(last[*skiftv1.ListNodesRequest](s).GetFilter().GetKinds()).To(Equal([]string{"spike"}))
+		Expect(m.call("claim", map[string]any{"kind": "spike", "wait": "0s"}).isError).To(BeFalse())
+		Expect(last[*skiftv1.ClaimNextRequest](s).GetFilter().GetKinds()).To(Equal([]string{"spike"}))
+		Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
+	})
+
+	It("answers the protocol's own mistakes with JSON-RPC errors, and renders a denial with its details", func() {
+		m := startMCP("--socket", socket, "--project", "platform")
+		m.initialize()
+
+		Expect(m.send("ping", nil)).NotTo(HaveKey("error"))
+
+		rpcError := func(res map[string]any) (float64, string) {
+			GinkgoHelper()
+			Expect(res).To(HaveKey("error"), "%v", res)
+			e := res["error"].(map[string]any)
+			return e["code"].(float64), e["message"].(string)
+		}
+		code, msg := rpcError(m.send("nope/method", nil))
+		Expect(code).To(BeEquivalentTo(-32601))
+		Expect(msg).To(ContainSubstring(`"nope/method" is not supported`))
+
+		code, msg = rpcError(m.send("tools/call", "not an object"))
+		Expect(code).To(BeEquivalentTo(-32602))
+		Expect(msg).To(HavePrefix("tools/call:"))
+
+		code, msg = rpcError(m.send("tools/call", map[string]any{"name": "nope"}))
+		Expect(code).To(BeEquivalentTo(-32602))
+		Expect(msg).To(ContainSubstring(`unknown tool "nope"`))
+		Expect(msg).To(ContainSubstring("tools/list"))
+
+		code, msg = rpcError(m.send("initialize", 7))
+		Expect(code).To(BeEquivalentTo(-32602))
+		Expect(msg).To(HavePrefix("initialize:"))
+
+		By("a notification gets no reply and does not stall the session")
+		m.notify("notifications/initialized")
+		Expect(m.send("ping", nil)).NotTo(HaveKey("error"))
+
+		By("a denial says what the caller can do, and carries every detail the service attached")
+		res := m.call("project_create", map[string]any{"title": "Forbidden"})
+		Expect(res.isError).To(BeTrue())
+		Expect(res.text).To(HavePrefix("project_create failed (permission_denied): no rule permits"))
+		Expect(res.text).To(ContainSubstring("a person must grant access"))
+		Expect(res.text).To(ContainSubstring(`detail: {"slug":"policy"`))
 		Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
 	})
 
