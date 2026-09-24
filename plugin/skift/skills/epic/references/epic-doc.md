@@ -11,7 +11,7 @@ Its frontmatter is the notes system's, not skift's:
 date: 2026-09-12
 type: epic
 status: draft          # draft · filed · done
-project: "[[skift]]"  # the note for the project, not the skift slug
+project: "[[skift]]"   # the note for the project, not the skift slug
 tags: [skift, patch, files]
 ---
 ```

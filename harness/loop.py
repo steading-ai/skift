@@ -163,7 +163,7 @@ def say(s):
         f.write(s + "\n")
 
 
-# --- skift ------------------------------------------------------------------
+# --- skift -------------------------------------------------------------------
 
 
 class Skift:
@@ -754,8 +754,8 @@ def report(state, titles):
 
 async def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--project", default=os.environ.get("SKIFT_PROJECT", "skift"),
-                   help="project slug (default: $SKIFT_PROJECT, then skift)")
+    p.add_argument("--project", default=os.environ.get("SKIFT_PROJECT", "dagger"),
+                   help="project slug (default: $SKIFT_PROJECT, then dagger)")
     p.add_argument("--epic", default=None,
                    help="the grouping node whose open children are the scope, as #N")
     p.add_argument("--max", type=int, default=100, help="max nodes this run")

@@ -27,7 +27,7 @@ Your contract is the node's **Acceptance criteria** and **Scenarios**. Every cri
 ## Repo map
 
 ```
-cmd/skift/          binary entrypoint; one binary, three faces (CLI, MCP server, service)
+cmd/skift/       binary entrypoint; one binary, three faces (CLI, MCP server, service)
 internal/        application code; only internal/domain may import internal/store
 proto/, gen/     the wire contract and its generated Go. The proto is the domain model
 policy/          the default authorization bundle, in Rego, with its own spec suite

@@ -1,7 +1,7 @@
 # `skift:skift` — Driving the Work Graph
 
 Teaches an agent to take, do and finish work in a skift graph, through the
-skift MCP tools or the `skift` CLI. Model-invoked whenever a conversation touches
+MCP tools or the `skift` CLI. Model-invoked whenever a conversation touches
 a graph, and invocable by name.
 
 ```

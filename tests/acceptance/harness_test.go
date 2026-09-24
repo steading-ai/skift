@@ -37,9 +37,9 @@ import (
 
 // The deployment a scenario runs against mirrors docs/architecture.md:
 //
-//	host                                 laptop
+//	host                                    laptop
 //	  skift serve  ◄── unix socket ── skift, skift mcp   (agent: this uid)
-//	            ◄── tailnet ────── skift, skift mcp   (user: a tailscale node)
+//	               ◄── tailnet ────── skift, skift mcp   (user: a tailscale node)
 //
 // skift serve is the built binary on a unix socket, where SO_PEERCRED makes
 // this process's uid the agent. A person needs a second identity, and the

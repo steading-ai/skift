@@ -69,4 +69,4 @@ A user principal records a revocable, expiring grant to an agent principal; poli
 
 ## More Information
 
-Decided on gate `skift#13`, whose comment records the decision as taken. Related: [ADR-006](006-provenance-not-authority.md) for the trust zone as the delegation mechanism, [ADR-004](004-embedded-opa-authorization.md) for where the policy lives and how an organization overrides it, [ADR-002](002-connect-rpc-is-the-only-door.md) for transport-resolved identity. Revisit when a deployment has agents that are neither a user's own processes nor their own trust zone — an ephemeral sandbox uid is the first such case.
+Decided on gate `dagger#13`, whose comment records the decision as taken. Related: [ADR-006](006-provenance-not-authority.md) for the trust zone as the delegation mechanism, [ADR-004](004-embedded-opa-authorization.md) for where the policy lives and how an organization overrides it, [ADR-002](002-connect-rpc-is-the-only-door.md) for transport-resolved identity. Revisit when a deployment has agents that are neither a user's own processes nor their own trust zone — an ephemeral sandbox uid is the first such case.

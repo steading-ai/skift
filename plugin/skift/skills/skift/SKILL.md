@@ -1,6 +1,6 @@
 ---
 name: skift
-description: Use when working with a skift work graph — taking the next piece of work, claiming and completing it, finding what is ready, decomposing work into linked nodes, or writing a node body another agent will pick up cold. Covers the skift MCP tools and the skift CLI, when to prefer each, and the mistakes that silently build the wrong graph.
+description: Use when working with a skift work graph — taking the next piece of work, claiming and completing it, finding what is ready, decomposing work into linked nodes, or writing a node body another agent will pick up cold. Covers the MCP tools and the skift CLI, when to prefer each, and the mistakes that silently build the wrong graph.
 when_to_use: claim a node, work the next node, take the next piece of work, what should I work on, skift ready, skift claim, skift patch apply, apply_patch, show_node, inputs, explain, the ready set, blocked_by, grouping node, work graph, backlog node, work order.
 allowed-tools:
   - Bash(skift ready:*)

@@ -44,7 +44,7 @@ func NewRootCommand(stdout, stderr io.Writer) *cobra.Command {
 		Use:     "skift",
 		Short:   "Agent-first project management on a directed acyclic graph",
 		Version: version.String(),
-		Long: `skift is the single entry point to skift.
+		Long: `skift is one binary: the CLI, the MCP server and the service.
 
 Run without a subcommand it is the CLI, a Connect client with JSON output.
 "skift mcp" serves the same client over stdio as an MCP server.

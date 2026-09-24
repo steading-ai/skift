@@ -12,7 +12,7 @@ priority: optional
 maintainer: Ivy Evans <ivy@ivyevans.net>
 description: |
   Agent-first project management on a DAG.
-  skift is one binary with three faces: the skift service, an MCP server, and
+  skift is one binary with three faces: the service, an MCP server, and
   the CLI that talks to either.
 vendor: Ivy Evans
 homepage: https://github.com/steading-ai/skift

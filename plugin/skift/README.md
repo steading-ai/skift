@@ -60,7 +60,7 @@ Verify:
 
 ```sh
 claude plugin list                 # skift, enabled
-claude plugin details skift       # components and their token cost
+claude plugin details skift        # components and their token cost
 ```
 
 In a session, `/mcp` lists the `skift` server and its ten tools —
@@ -83,7 +83,7 @@ Validate the manifests, the skill's frontmatter, and the overall structure:
 
 ```sh
 claude plugin validate ./plugin              # the marketplace
-claude plugin validate ./plugin/skift       # the plugin
+claude plugin validate ./plugin/skift        # the plugin
 claude plugin validate ./plugin --strict     # warnings are errors; for CI
 ```
 

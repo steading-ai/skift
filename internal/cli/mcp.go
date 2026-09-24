@@ -385,7 +385,7 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 	return mcpInitializeResult{
 		ProtocolVersion: protocol,
 		ServerInfo:      mcpServerInfo{Name: "skift", Version: version.String()},
-		Instructions: fmt.Sprintf(`skift is a project management system: a graph of work whose nodes become
+		Instructions: fmt.Sprintf(`Skift is a project management system: a graph of work whose nodes become
 ready when their dependencies are done. Current project: %s. Session: %s.
 
 Typical flow: ready or search to find work, show_node and explain to read

@@ -1,4 +1,4 @@
-// Command skift is the single entry point to skift: the CLI, the stdio MCP
+// Command skift is one binary with three faces: the CLI, the stdio MCP
 // server, and the service.
 package main
 

@@ -14,8 +14,8 @@ pull requests — it publishes, it does not check anything.
   `main`, which moves to whatever the latest push produced.
 - **Contents:** `skift` at `/usr/local/bin/skift`, on a `scratch` base. Nothing
   else — no shell, no entrypoint. `podman run --rm
-  ghcr.io/steading-ai/skift:<sha> skift version` runs `skift` itself as the
-  container's command.
+  ghcr.io/steading-ai/skift:<sha> skift version` runs the binary itself as
+  the container's command.
 - **Auth to build and push:** the workflow's own `GITHUB_TOKEN`, granted
   `packages: write`. No other secret is involved.
 

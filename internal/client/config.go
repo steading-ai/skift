@@ -1,8 +1,8 @@
-// Package client is the Connect client behind skift and skift mcp: one set of
-// generated service clients over a transport chosen by configuration. Which
-// transport a call uses is a setting, never a code path, so the CLI and the
-// MCP server reach the service through identical code. See "One binary,
-// three faces" in docs/architecture.md.
+// Package client is the Connect client behind the skift CLI and skift mcp:
+// one set of generated service clients over a transport chosen by
+// configuration. Which transport a call uses is a setting, never a code
+// path, so the CLI and the MCP server reach the service through identical
+// code. See "One binary, three faces" in docs/architecture.md.
 package client
 
 import (

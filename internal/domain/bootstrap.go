@@ -28,7 +28,7 @@ const (
 // bootstrapLock is the advisory lock key two bootstraps of one database
 // serialize on, so that a race creates one organization rather than two
 // carrying the same name.
-const bootstrapLock = 0x6461676765720001 // "skift" then 1
+const bootstrapLock = 0x736b6966740001 // "skift" then 1
 
 // ErrIdentityElsewhere is returned when the identity bootstrap would bind
 // already belongs to a principal of another organization. Bootstrap does

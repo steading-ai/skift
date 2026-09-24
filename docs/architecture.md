@@ -66,9 +66,9 @@ Skift is a wellspring service in [homestead](https://github.com/ivy/homestead) t
 
 ```
 wellspring                         grove
-  skift.service   ◄── unix socket ── agents, orchestrator
+  skift.service    ◄── unix socket ── agents, orchestrator
   postgresql
-  skift-reap.timer                laptop
+  skift-reap.timer                 laptop
                    ◄── tsnet ────── skift, skift mcp
 ```
 

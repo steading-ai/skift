@@ -9,8 +9,9 @@ harness/.venv/bin/python harness/loop.py --epic '#1' --max 1     one node
 harness/.venv/bin/python harness/loop.py --report                per-node tokens and cost
 ```
 
-The project comes from `--project`, then `$SKIFT_PROJECT`, then `skift`. The
-service is reached the way `skift` reaches it: the socket, or `$SKIFT_ADDRESS`.
+The project comes from `--project`, then `$SKIFT_PROJECT`, then `dagger`,
+the slug the live service still carries. The service is reached the way the
+`skift` CLI reaches it: the socket, or `$SKIFT_ADDRESS`.
 
 ## Scope
 
