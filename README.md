@@ -82,8 +82,13 @@ Prerequisites:
 
 - [mise](https://mise.jdx.dev) — `mise install` puts every tool the Makefile
   uses on `PATH`.
-- Rootless podman with the compose provider (`podman compose version` should
-  print a version). This is the only system package the build assumes.
+- Rootless podman. This is the only system package the build assumes; the
+  compose provider `podman compose` dispatches to is the `docker-compose`
+  mise installs, so `podman compose version` prints one without further
+  setup.
+- `make build` leaves the binary at `./skift`. The harness and the plugin's
+  MCP server run `skift` by name, so link it onto `PATH`, for example
+  `ln -sf "$PWD/skift" ~/.local/bin/skift`.
 
 ### Bring the database up
 

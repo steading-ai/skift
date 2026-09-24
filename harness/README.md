@@ -9,6 +9,15 @@ harness/.venv/bin/python harness/loop.py --epic '#1' --max 1     one node
 harness/.venv/bin/python harness/loop.py --report                per-node tokens and cost
 ```
 
+Once per checkout, after `mise install` has created `harness/.venv`:
+
+```sh
+harness/.venv/bin/pip install -r harness/requirements.txt
+```
+
+The loop runs `skift` by name; see "Prerequisites" in the top-level README
+for putting the built binary on `PATH`.
+
 The project comes from `--project`, then `$SKIFT_PROJECT`, then `dagger`,
 the slug the live service still carries. The service is reached the way the
 `skift` CLI reaches it: the socket, or `$SKIFT_ADDRESS`.
