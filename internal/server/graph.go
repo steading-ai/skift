@@ -69,7 +69,7 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[daggerv
 		return nil, connectError(err)
 	}
 	view := viewOr(req.Msg.GetView(), daggerv1.View_VIEW_FULL)
-	res := &daggerv1.GetNodeResponse{Node: projectNode(toNode(node.NodeState), view), Inputs: toInputsHint(node.Inputs)}
+	res := &daggerv1.GetNodeResponse{Node: projectNode(toNode(node.NodeState), view), Inputs: toInputsHint(node.Inputs), CommentsHint: toCommentsHint(node.CommentsHint)}
 	for _, e := range node.Edges {
 		res.Edges = append(res.Edges, toEdge(e))
 	}

@@ -441,6 +441,16 @@ func toInputsHint(h domain.InputsHint) *daggerv1.InputsHint {
 	return &daggerv1.InputsHint{Count: int32(h.Count), Bytes: h.Bytes} //nolint:gosec // a node's predecessor count is bounded by the graph
 }
 
+// toCommentsHint renders what a node's unresolved comments come to so a
+// caller knows someone left a note without being handed it.
+func toCommentsHint(h domain.CommentsHint) *daggerv1.CommentsHint {
+	out := &daggerv1.CommentsHint{Unresolved: int32(h.Unresolved)} //nolint:gosec // a node's comment count is bounded by the comments table
+	if h.LatestAt != nil {
+		out.LatestAt = timestamppb.New(*h.LatestAt)
+	}
+	return out
+}
+
 // resultBytes is the size of a result body, and zero for a predecessor
 // that has none.
 func resultBytes(r *domain.StoredResult) int64 {

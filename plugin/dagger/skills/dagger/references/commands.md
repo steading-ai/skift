@@ -69,6 +69,13 @@ per-entry sizes with no bodies, for reading a large handoff one predecessor at
 a time. An open predecessor is not an input; a dropped one is listed with no
 result; inputs are not transitive.
 
+Comments come the same way. `claim` carries `comments.unresolved` and
+`comments.latest_at` — how many comments on the node are unresolved, and when
+the newest was written — and `node show` carries the same hint as
+`comments_hint` under every view, with the comments themselves under `--view
+full` alone. A reply is resolved on its own, so it counts under a resolved
+parent. An edit does not move `latest_at`.
+
 `explain` returns structured reasons — blocking nodes, a live lease and its
 expiry, waiting on a user — not prose. Prefer it over inferring from `show`.
 

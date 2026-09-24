@@ -281,6 +281,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(res.isError).To(BeFalse(), res.text)
 			claimed := res.decode()
 			Expect(claimed["node"]).To(HaveKeyWithValue("title", "Claimable work"))
+			Expect(claimed["comments"]).To(HaveKeyWithValue("unresolved", BeNumerically("==", 1)), "the comments hint passes through")
 			leaseID := claimed["lease"].(map[string]any)["id"].(string)
 			Expect(leaseID).NotTo(BeEmpty())
 			sent := last[*daggerv1.ClaimNextRequest](s)

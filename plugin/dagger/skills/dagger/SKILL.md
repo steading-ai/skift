@@ -38,8 +38,8 @@ that finds it.
 
 **`claim` names no node.** It selects the most urgent ready node matching its
 filters and returns that node under a lease: the body included, with the
-project and a hint at the size of its inputs. Choosing the work *is* claiming
-it. There is no `claim '#7'` on either surface — `dg claim` takes no argument
+project, a hint at the size of its inputs, and a hint at its unresolved
+comments. Choosing the work *is* claiming it. There is no `claim '#7'` on either surface — `dg claim` takes no argument
 at all — so a node you picked out of a listing is a node you have no way to
 ask for.
 
@@ -79,6 +79,13 @@ once, ask for `view: "summary"` and read the ones you need with `show_node`.
 A predecessor still open is not an input — it is what the node is waiting on,
 which `explain` answers. A dropped one is listed with no result. Inputs are not
 transitive: a predecessor's result is the summary of its own inputs.
+
+**Read the comments when the claim says there are some.** The body is what the
+node was filed with; comments are what people and agents said since —
+corrections, a recommendation left on a gate, a warning about a trap. `claim`
+never carries them, only `comments.unresolved` and `comments.latest_at`. When
+`unresolved` is above zero, `show_node` returns them before you start. The
+same hint rides on `show_node` as `comments_hint`, under every view.
 
 **`complete` carries the lease and a result body, and that body is the point of
 finishing.** The agents that depend on this node assemble their context from

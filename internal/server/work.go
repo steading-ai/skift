@@ -105,6 +105,7 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[dagger
 		res.Node = toNode(*out.Node)
 		res.Lease = toLease(out.Lease)
 		res.Inputs = toInputsHint(out.Inputs)
+		res.Comments = toCommentsHint(out.Comments)
 		res.Project = toProject(*out.Project)
 	}
 	return connect.NewResponse(res), nil

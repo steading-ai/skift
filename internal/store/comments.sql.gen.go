@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 const createComment = `-- name: CreateComment :one
@@ -72,6 +73,35 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (Comment
 		&i.ResolvedBy,
 		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const latestUnresolvedComment = `-- name: LatestUnresolvedComment :one
+SELECT created_at, count(*) OVER ()::int AS unresolved
+FROM comments
+WHERE org_id = $1 AND node_id = $2 AND resolved_at IS NULL
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type LatestUnresolvedCommentParams struct {
+	OrgID  string
+	NodeID string
+}
+
+type LatestUnresolvedCommentRow struct {
+	CreatedAt  time.Time
+	Unresolved int32
+}
+
+// The newest unresolved comment on a node, with how many are unresolved:
+// the window counts before LIMIT applies, and a node with none returns no
+// row. A reply is its own row and is resolved on its own, so it counts
+// even under a resolved parent.
+func (q *Queries) LatestUnresolvedComment(ctx context.Context, arg LatestUnresolvedCommentParams) (LatestUnresolvedCommentRow, error) {
+	row := q.db.QueryRow(ctx, latestUnresolvedComment, arg.OrgID, arg.NodeID)
+	var i LatestUnresolvedCommentRow
+	err := row.Scan(&i.CreatedAt, &i.Unresolved)
 	return i, err
 }
 

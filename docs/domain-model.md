@@ -382,12 +382,14 @@ Content attached to a node, and its own entity rather than a kind of event.
 | `author` | Principal |
 | `body` | Markdown, under a size cap |
 | `in_reply_to` | Optional. Threading |
-| `resolved_at`, `resolved_by` | Optional |
+| `resolved_at`, `resolved_by` | Optional. Set once; a comment without them is unresolved |
 | `revisions` | Prior bodies with author and timestamp, retained |
 
 Events are immutable by [principle 7](core-principles.md), and comments are the one thing here that people genuinely edit, thread, and resolve, so the two cannot share a table without special-casing. Three practical reasons stack on top: comments are indexed for search while events carry before-and-after blobs that should stay out of that index; event volume is far higher and wants different retention; and comments are the abuse surface [ADR-006](adrs/006-provenance-not-authority.md) names, so caps and policy on them should not become caps and policy on the audit log.
 
 A comment is content. An event is the record of a change to content, including the change that created or edited the comment. Edits keep their prior revisions, so nothing is lost.
+
+A reply is its own comment and is resolved on its own: resolving the comment it answers leaves it unresolved. A response that hands a node to whoever will work it carries a comments hint beside the inputs hint — how many of the node's comments are unresolved and when the newest of them was written — so the worker learns someone left a note without being handed every body.
 
 ## Change stream
 
