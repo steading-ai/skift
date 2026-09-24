@@ -134,7 +134,7 @@ func (g *Service) HoldProject(ctx context.Context, orgID string, actor Actor, re
 			if held, err = HeldCount(ctx, r.tx, orgID, before.ID); err != nil {
 				return nil, err
 			}
-			return &after, r.projectEvent(ctx, OpHoldProject, before, after)
+			return &after, r.projectEvent(ctx, OpHoldProject, &reason, before, after)
 		})
 	return project, held, err
 }
@@ -151,7 +151,7 @@ func (g *Service) UnholdProject(ctx context.Context, orgID string, actor Actor, 
 			if err != nil {
 				return nil, fmt.Errorf("unhold project %s: %w", before.Slug, err)
 			}
-			return &after, r.projectEvent(ctx, OpUnholdProject, before, after)
+			return &after, r.projectEvent(ctx, OpUnholdProject, &reason, before, after)
 		})
 }
 
@@ -312,7 +312,7 @@ func clearSweep(ctx context.Context, r *recorder, scope focus, group, reason str
 			return 0, fmt.Errorf("clear focus: %w", err)
 		}
 		for _, after := range rows {
-			if err := r.projectEvent(ctx, OpUnholdProject, projectUnheld(after, chosen), after); err != nil {
+			if err := r.projectEvent(ctx, OpUnholdProject, &reason, projectUnheld(after, chosen), after); err != nil {
 				return 0, err
 			}
 		}
@@ -388,7 +388,7 @@ func sweepProjects(ctx context.Context, r *recorder, keep []string, reason, grou
 		return 0, err
 	}
 	for _, after := range rows {
-		if err := r.projectEvent(ctx, OpHoldProject, projectUnheld(after, ""), after); err != nil {
+		if err := r.projectEvent(ctx, OpHoldProject, &reason, projectUnheld(after, ""), after); err != nil {
 			return 0, err
 		}
 	}

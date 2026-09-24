@@ -123,7 +123,7 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 		if err != nil {
 			return nil, fmt.Errorf("create project %q: %w", slug, err)
 		}
-		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpCreateProject, nil, p); err != nil {
+		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpCreateProject, nil, nil, p); err != nil {
 			return nil, err
 		}
 		return &p, nil
@@ -182,7 +182,7 @@ func (g *Service) UpdateProject(ctx context.Context, orgID string, actor Actor, 
 		if err != nil {
 			return nil, fmt.Errorf("update project %s: %w", before.Slug, err)
 		}
-		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpUpdateProject, before, after); err != nil {
+		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &in.RequestID, OpUpdateProject, nil, before, after); err != nil {
 			return nil, err
 		}
 		return &after, nil
@@ -260,7 +260,7 @@ func (g *Service) ArchiveProject(ctx context.Context, orgID string, actor Actor,
 		if err != nil {
 			return nil, fmt.Errorf("archive project %s: %w", before.Slug, err)
 		}
-		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &requestID, OpArchiveProject, before, after); err != nil {
+		if err := projectEvent(ctx, tx, g.pol, orgID, actor, &requestID, OpArchiveProject, nil, before, after); err != nil {
 			return nil, err
 		}
 		return &after, nil
@@ -269,7 +269,10 @@ func (g *Service) ArchiveProject(ctx context.Context, orgID string, actor Actor,
 
 // projectEvent authorizes a project operation and writes its event. A
 // project event names no node.
-func projectEvent(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, requestID *string, op string, before, after any) error {
+func projectEvent(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID string, actor Actor, requestID *string, op string, reason *string, before, after any) error {
+	if requiresReason(op) && (reason == nil || *reason == "") {
+		return fmt.Errorf("%s: %w", op, ErrReasonRequired)
+	}
 	in := policy.Input{Principal: policy.Principal{ID: actor.PrincipalID, Kind: actor.PrincipalKind}, Action: op}
 	if err := pol.Authorize(ctx, in); err != nil {
 		denial := &Denial{Op: op, PolicyVersion: pol.Version()}
@@ -296,7 +299,7 @@ func projectEvent(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID st
 	if _, err := tx.CreateEvent(ctx, store.CreateEventParams{
 		ID: newULID(), OrgID: orgID, ProjectID: &projectID,
 		PrincipalID: actor.PrincipalID, PrincipalKind: actor.PrincipalKind, IdentityScheme: actor.IdentityScheme,
-		RequestID: requestID, Op: op, Before: beforeJSON, After: afterJSON, PolicyVersion: pol.Version(),
+		RequestID: requestID, Op: op, Reason: reason, Before: beforeJSON, After: afterJSON, PolicyVersion: pol.Version(),
 	}); err != nil {
 		return fmt.Errorf("record %s event: %w", op, err)
 	}

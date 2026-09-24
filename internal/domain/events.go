@@ -107,9 +107,10 @@ func (r *recorder) event(ctx context.Context, op, nodeID, projectID string, reas
 
 // projectEvent authorizes a project operation and writes its event,
 // through the same actor, policy and request this transaction's other
-// events use.
-func (r *recorder) projectEvent(ctx context.Context, op string, before, after any) error {
-	return projectEvent(ctx, r.tx, r.policy, r.orgID, r.actor, r.request, op, before, after)
+// events use. reason is required for the operations [requiresReason]
+// names, as it is for a node's.
+func (r *recorder) projectEvent(ctx context.Context, op string, reason *string, before, after any) error {
+	return projectEvent(ctx, r.tx, r.policy, r.orgID, r.actor, r.request, op, reason, before, after)
 }
 
 func encodeChange(v any) ([]byte, error) {
