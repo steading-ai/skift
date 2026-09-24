@@ -60,8 +60,9 @@ allow if {
 		Expect(move("to-root", "")).To(Succeed())
 		Expect(g.getNode(ctx, "#3").ParentID).To(BeNil())
 
-		By("and when C moves from the root under U, the policy sees it at the root and refuses")
+		By("and when C moves from the root under U, or back under R, the policy sees it at the root and refuses")
 		Expect(move("to-u", "#2")).To(BeDeniedAt(0))
+		Expect(move("to-r", "#1")).To(BeDeniedAt(0), "where it is going does not change where it stood")
 		Expect(g.getNode(ctx, "#3").ParentID).To(BeNil())
 
 		By("and when C moves from under R to under U, the policy sees it under R and permits the move")
