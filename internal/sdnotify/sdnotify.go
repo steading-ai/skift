@@ -20,7 +20,7 @@ const Env = "NOTIFY_SOCKET"
 // States the service sends.
 const (
 	// Ready tells systemd startup has finished and the service can take
-	// work. For dagger, that is once the database has answered.
+	// work. For skift, that is once the database has answered.
 	Ready = "READY=1"
 	// Stopping tells systemd the service has begun shutting down.
 	Stopping = "STOPPING=1"

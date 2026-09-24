@@ -1,5 +1,5 @@
 // Package acceptance_test is the end-to-end suite: the product requirements
-// as scenarios, run against the built dg binary serving a real PostgreSQL,
+// as scenarios, run against the built skift binary serving a real PostgreSQL,
 // and driven only through the interfaces a user or an agent has, the CLI
 // and the MCP server. Nothing here reads or writes the database directly
 // once a scenario starts; see harness_test.go for the one bootstrap the
@@ -15,8 +15,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 func TestAcceptance(t *testing.T) {
@@ -28,12 +28,12 @@ func TestAcceptance(t *testing.T) {
 // carries the schema and the principals of one organization.
 var pg *testsupport.Postgres
 
-// binary is the dg built for this run: the service, the CLI, and the MCP
+// binary is the skift built for this run: the service, the CLI, and the MCP
 // server are all faces of it.
 var binary string
 
 // pol is the default policy bundle, loaded once per process for the
-// in-process tailnet server; dg serve loads its own.
+// in-process tailnet server; skift serve loads its own.
 var pol *policy.Bundle
 
 // suiteState is what the first process hands the others.
@@ -47,7 +47,7 @@ var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(started.Stop)
 
-	bin, err := gexec.Build("github.com/ivy/dagger/cmd/dg")
+	bin, err := gexec.Build("github.com/steading-ai/skift/cmd/skift")
 	Expect(err).NotTo(HaveOccurred())
 
 	raw, err := json.Marshal(suiteState{AdminURL: started.URL(), Binary: bin})

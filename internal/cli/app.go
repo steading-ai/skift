@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/codec"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
 // app is the state the CLI commands share: the global flags, the resolved
@@ -24,7 +24,7 @@ type app struct {
 	output string
 	// projects are the --project values given on the command line, zero or
 	// more, each a project filter by slug, org/slug, or id. The config file
-	// and $DG_PROJECT still name a single default project, laid under
+	// and $SKIFT_PROJECT still name a single default project, laid under
 	// these, and empty means every project the caller may read.
 	projects []string
 
@@ -76,7 +76,7 @@ func (a *app) project() (string, error) {
 }
 
 // currentProjects is every project a command's filter should scope to:
-// --project given once or more, else the config file's or $DG_PROJECT's
+// --project given once or more, else the config file's or $SKIFT_PROJECT's
 // single project as the sole default, else empty, meaning every project
 // the caller may read.
 func (a *app) currentProjects() ([]string, error) {

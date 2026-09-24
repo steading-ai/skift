@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compute the ready set for a flat-file backlog.
 
-A paper test of dagger's domain model, run before there is a schema. Mirrors
+A paper test of skift's domain model, run before there is a schema. Mirrors
 the rules in docs/domain-model.md: a node is ready when it is open, has no
 unfinished blocking predecessor, holds no live lease, and has no open children.
 

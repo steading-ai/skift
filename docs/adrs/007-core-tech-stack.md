@@ -7,13 +7,13 @@ date: 2026-09-05
 
 ## Context and Problem Statement
 
-Dagger is a greenfield Go service and CLI backed by PostgreSQL, serving a protobuf contract over Connect. Which libraries and tools form the foundation, and where does the standard library suffice?
+Skift is a greenfield Go service and CLI backed by PostgreSQL, serving a protobuf contract over Connect. Which libraries and tools form the foundation, and where does the standard library suffice?
 
 ## Decision Drivers
 
 - The proto contract is the domain model ([ADR-002](002-connect-rpc-is-the-only-door.md)), so code generation from proto and from SQL must both be first class
 - The interesting tests are SQL: readiness, cycle detection, and claims under concurrency
-- One binary serves three faces: `dg` the CLI, `dg mcp` the stdio MCP server, `dg serve` the service
+- One binary serves three faces: `skift` the CLI, `skift mcp` the stdio MCP server, `skift serve` the service
 - Package boundaries must be enforceable, since the store must never be reachable except through the domain layer
 - Embrace systemd: logging goes to the journal, the service and its reaper are units
 
@@ -25,7 +25,7 @@ Dagger is a greenfield Go service and CLI backed by PostgreSQL, serving a protob
 
 ## Decision Outcome
 
-Chosen option: **generated everywhere**, because both of dagger's contracts (the wire and the schema) are declarative artifacts that should produce types rather than be restated in Go by hand.
+Chosen option: **generated everywhere**, because both of skift's contracts (the wire and the schema) are declarative artifacts that should produce types rather than be restated in Go by hand.
 
 | Concern | Choice |
 |---|---|
@@ -67,7 +67,7 @@ Two lint rules carry design decisions rather than style:
 ### An ORM (GORM, Ent)
 
 - **Good**: Less boilerplate for simple CRUD.
-- **Bad**: Dagger's central queries are recursive CTEs, anti-joins, and `FOR UPDATE SKIP LOCKED`. An ORM adds a layer to fight rather than a layer to use.
+- **Bad**: Skift's central queries are recursive CTEs, anti-joins, and `FOR UPDATE SKIP LOCKED`. An ORM adds a layer to fight rather than a layer to use.
 - **Bad**: Encourages the storage model to leak outward, which is the thing [ADR-002](002-connect-rpc-is-the-only-door.md) exists to prevent.
 
 ### Hand-written SQL with `database/sql`

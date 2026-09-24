@@ -15,10 +15,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/store/blob"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/store/blob"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // gitCommit is a full SHA-1 commit hash, as a git reference records.
@@ -325,7 +325,7 @@ var _ = Describe("Artifacts", Label(testsupport.DBLabel), func() {
 			g.mustApply(ctx, actor, "attach", attach("#1", referenceArtifact("report", uri)))
 			in := g.inputs(ctx, "#2")
 
-			Expect(hits.Load()).To(BeZero(), "dagger never fetched the URI")
+			Expect(hits.Load()).To(BeZero(), "skift never fetched the URI")
 			Expect(in).To(HaveLen(1))
 			Expect(in[0].Artifacts).To(HaveLen(1))
 			part := in[0].Artifacts[0].Parts[0]

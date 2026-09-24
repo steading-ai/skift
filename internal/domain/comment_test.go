@@ -9,10 +9,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // addComment is an add_comment operation starting a thread on node.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/codec"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
 // The view an argument selects: how much of each node a response carries.
@@ -21,7 +21,7 @@ const viewHelp = `how much of each node to return: refs (reference, status, and 
 // viewFlag is a --view flag with a per-command default.
 type viewFlag struct {
 	value string
-	def   daggerv1.View
+	def   skiftv1.View
 }
 
 func (f *viewFlag) bind(cmd *cobra.Command) {
@@ -29,37 +29,37 @@ func (f *viewFlag) bind(cmd *cobra.Command) {
 }
 
 // view is the flag's value as the wire enum.
-func (f *viewFlag) view() (daggerv1.View, error) {
+func (f *viewFlag) view() (skiftv1.View, error) {
 	return parseView("--view", f.value, f.def)
 }
 
 // parseView reads a short view name such as "summary". Empty takes def.
-func parseView(name, value string, def daggerv1.View) (daggerv1.View, error) {
-	v, err := parseEnum[daggerv1.View](name, value)
+func parseView(name, value string, def skiftv1.View) (skiftv1.View, error) {
+	v, err := parseEnum[skiftv1.View](name, value)
 	if err != nil {
 		return 0, err
 	}
-	if v == daggerv1.View_VIEW_UNSPECIFIED {
+	if v == skiftv1.View_VIEW_UNSPECIFIED {
 		return def, nil
 	}
 	return v, nil
 }
 
 // viewName is the short name of a view: "summary" for VIEW_SUMMARY.
-func viewName(v daggerv1.View) string {
+func viewName(v skiftv1.View) string {
 	return codec.EnumName(v)
 }
 
 // viewProp is the MCP schema of a view argument defaulting to def.
-func viewProp(def daggerv1.View) map[string]any {
-	return enumProp(strings.ToUpper(viewHelp[:1])+viewHelp[1:]+". Defaults to "+viewName(def)+".", enumChoices[daggerv1.View]())
+func viewProp(def skiftv1.View) map[string]any {
+	return enumProp(strings.ToUpper(viewHelp[:1])+viewHelp[1:]+". Defaults to "+viewName(def)+".", enumChoices[skiftv1.View]())
 }
 
 // splitView takes the view out of raw tool arguments that are otherwise a
 // proto message in JSON, so that an absent view takes the tool's default
 // rather than the message's zero value. The rest of the arguments are
 // returned for the codec to decode.
-func splitView(raw json.RawMessage, def daggerv1.View) (daggerv1.View, json.RawMessage, error) {
+func splitView(raw json.RawMessage, def skiftv1.View) (skiftv1.View, json.RawMessage, error) {
 	var args map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return 0, nil, usage("arguments: %v", err)

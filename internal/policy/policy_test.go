@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/policy"
+	"github.com/steading-ai/skift/internal/policy"
 )
 
 // Fixtures follow the scenarios: agent A holds a lease on node 7, whose
@@ -129,7 +129,7 @@ var _ = Describe("Policy", Label("unit"), func() {
 
 		It("Policy failure is closed", func(ctx SpecContext) {
 			By("given a policy bundle that fails to compile")
-			broken, err := policy.Load(ctx, fstest.MapFS{"dagger.rego": {Data: []byte("package dagger.authz\n\nallow if {\n")}})
+			broken, err := policy.Load(ctx, fstest.MapFS{"skift.rego": {Data: []byte("package skift.authz\n\nallow if {\n")}})
 			Expect(err).To(MatchError(ContainSubstring("compile policy bundle")))
 			Expect(broken).To(BeNil())
 
@@ -298,8 +298,8 @@ var _ = Describe("Policy", Label("unit"), func() {
 		})
 
 		It("denies when evaluation errors rather than answers", func(ctx SpecContext) {
-			erroring, err := policy.Load(ctx, fstest.MapFS{"dagger.rego": {Data: []byte(
-				"package dagger.authz\n\ndecision := {\"allow\": true, \"reasons\": set()} if {\n\t1 / count(input.nothing) == 0\n}\n",
+			erroring, err := policy.Load(ctx, fstest.MapFS{"skift.rego": {Data: []byte(
+				"package skift.authz\n\ndecision := {\"allow\": true, \"reasons\": set()} if {\n\t1 / count(input.nothing) == 0\n}\n",
 			)}})
 			Expect(err).NotTo(HaveOccurred())
 			denied := erroring.Authorize(ctx, nodeOp(user, "update_node", &node7, &node7, nil))
@@ -309,11 +309,11 @@ var _ = Describe("Policy", Label("unit"), func() {
 
 		It("denies when the decision is undefined or malformed", func(ctx SpecContext) {
 			for name, src := range map[string]string{
-				"undefined":         "package dagger.authz\n\nallow := true\n",
-				"not an object":     "package dagger.authz\n\ndecision := true\n",
-				"allow not boolean": "package dagger.authz\n\ndecision := {\"allow\": \"yes\"}\n",
+				"undefined":         "package skift.authz\n\nallow := true\n",
+				"not an object":     "package skift.authz\n\ndecision := true\n",
+				"allow not boolean": "package skift.authz\n\ndecision := {\"allow\": \"yes\"}\n",
 			} {
-				b, err := policy.Load(ctx, fstest.MapFS{"dagger.rego": {Data: []byte(src)}})
+				b, err := policy.Load(ctx, fstest.MapFS{"skift.rego": {Data: []byte(src)}})
 				Expect(err).NotTo(HaveOccurred(), name)
 				Expect(b.Authorize(ctx, nodeOp(user, "update_node", &node7, &node7, nil))).To(BeDenied(), name)
 			}
@@ -336,7 +336,7 @@ var _ = Describe("Policy", Label("unit"), func() {
 			Expect(bundle.Version()).To(MatchRegexp(`^sha256:[0-9a-f]{64}$`))
 			Expect(again.Version()).To(Equal(bundle.Version()))
 
-			other, err := policy.Load(ctx, fstest.MapFS{"dagger.rego": {Data: []byte("package dagger.authz\n\ndecision := {\"allow\": false, \"reasons\": set()}\n")}})
+			other, err := policy.Load(ctx, fstest.MapFS{"skift.rego": {Data: []byte("package skift.authz\n\ndecision := {\"allow\": false, \"reasons\": set()}\n")}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(other.Version()).NotTo(Equal(bundle.Version()))
 			Expect((*policy.Bundle)(nil).Version()).To(BeEmpty())
@@ -344,8 +344,8 @@ var _ = Describe("Policy", Label("unit"), func() {
 
 		It("leaves the opa test suite out of the bundle", func(ctx SpecContext) {
 			b, err := policy.Load(ctx, fstest.MapFS{
-				"dagger.rego":      {Data: []byte("package dagger.authz\n\ndecision := {\"allow\": true, \"reasons\": set()}\n")},
-				"dagger_test.rego": {Data: []byte("this is not rego\n")},
+				"skift.rego":      {Data: []byte("package skift.authz\n\ndecision := {\"allow\": true, \"reasons\": set()}\n")},
+				"skift_test.rego": {Data: []byte("this is not rego\n")},
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(b.Authorize(ctx, policy.Input{Principal: user, Action: "anything"})).To(Succeed())

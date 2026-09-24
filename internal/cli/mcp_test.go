@@ -25,23 +25,23 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/cli"
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/codec"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/cli"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
 // toolDescriptionBudget is the ceiling on the tool descriptions taken
 // together. Every one of them is sent on tools/list and sits in the
 // context window for the whole session, so the descriptions carry intent
-// -- what a value means, what a tool does not do -- and the dagger skill
+// -- what a value means, what a tool does not do -- and the skift skill
 // carries reference material. The ceiling keeps them a briefing rather
 // than a manual: a description that needs more room is a sign the room
 // belongs in the skill.
 //
 // It is a flat total because a context window is a flat resource: what a
-// session pays for loading dagger does not get larger because dagger
+// session pays for loading skift does not get larger because skift
 // gained a tool. Moving it is a deliberate decision about that cost, not
 // a consequence of adding one. toolDescriptionCeiling keeps any single
 // description from eating the shared total; apply_patch is measured
@@ -52,7 +52,7 @@ const (
 	toolDescriptionCeiling = 900
 )
 
-// mcpSession drives one dg mcp server over its stdio: JSON-RPC requests
+// mcpSession drives one skift mcp server over its stdio: JSON-RPC requests
 // in, responses matched by id out. The server runs either in-process
 // through cli.Run, or as the built binary when a spec needs to kill it.
 type mcpSession struct {
@@ -188,7 +188,7 @@ func (m *mcpSession) closeStdin() int {
 // patchOpVariants names the operations the PatchOp oneof declares, read
 // from the descriptor so a spec never restates the contract.
 func patchOpVariants() []string {
-	fields := (&daggerv1.PatchOp{}).ProtoReflect().Descriptor().Oneofs().ByName("op").Fields()
+	fields := (&skiftv1.PatchOp{}).ProtoReflect().Descriptor().Oneofs().ByName("op").Fields()
 	names := make([]string, 0, fields.Len())
 	for i := range fields.Len() {
 		names = append(names, string(fields.Get(i).Name()))
@@ -235,7 +235,7 @@ var _ = AfterSuite(func() {
 	gexec.CleanupBuildArtifacts()
 })
 
-var _ = Describe("dg mcp", Label("unit"), func() {
+var _ = Describe("skift mcp", Label("unit"), func() {
 	var (
 		s      *stub
 		socket string
@@ -284,7 +284,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(claimed["comments"]).To(HaveKeyWithValue("unresolved", BeNumerically("==", 1)), "the comments hint passes through")
 			leaseID := claimed["lease"].(map[string]any)["id"].(string)
 			Expect(leaseID).NotTo(BeEmpty())
-			sent := last[*daggerv1.ClaimNextRequest](s)
+			sent := last[*skiftv1.ClaimNextRequest](s)
 			Expect(sent.GetHarness()).To(Equal("claude-code"), "the harness is what the client called itself")
 			Expect(sent.GetSessionRef()).NotTo(BeEmpty(), "the server mints the session reference")
 
@@ -292,9 +292,9 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
 
 			By("then the lease is released with a reason")
-			released := last[*daggerv1.ReleaseRequest](s)
+			released := last[*skiftv1.ReleaseRequest](s)
 			Expect(released.GetLeaseId()).To(Equal(leaseID))
-			Expect(released.GetReason()).To(Equal(daggerv1.ReleaseReason_RELEASE_REASON_CRASH))
+			Expect(released.GetReason()).To(Equal(skiftv1.ReleaseReason_RELEASE_REASON_CRASH))
 			Expect(released.GetDetail()).To(ContainSubstring("stdin closed"))
 			Expect(s.nodes[0].GetReady()).To(BeTrue(), "the node is back in the ready set")
 		})
@@ -341,12 +341,12 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			By("when it is called on a node")
 			res := m.call("inputs", map[string]any{"ref": "#2"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.GetInputsRequest](s).GetNode()).To(Equal("#2"))
+			Expect(last[*skiftv1.GetInputsRequest](s).GetNode()).To(Equal("#2"))
 			Expect(res.text).To(ContainSubstring("result of Alpha"))
 
 			By("and a summary view is sent as asked")
 			Expect(m.call("inputs", map[string]any{"ref": "#2", "view": "summary"}).isError).To(BeFalse())
-			Expect(last[*daggerv1.GetInputsRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.GetInputsRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})
@@ -358,7 +358,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		setup := func() {
 			s.newNode("Open work").Body = "the body of the open node"
 			done := s.newNode("Finished work")
-			done.Status, done.Ready = daggerv1.Status_STATUS_DONE, false
+			done.Status, done.Ready = skiftv1.Status_STATUS_DONE, false
 			done.Body = "the body of the done node"
 			labelled := s.newNode("Backend work")
 			labelled.Labels = []string{"backend"}
@@ -386,8 +386,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res := m.call("node_list", map[string]any{"status": "done"})
 
 			By("then the request carries that status and the project")
-			Expect(last[*daggerv1.ListNodesRequest](s).GetFilter().GetStatus()).To(Equal(daggerv1.Status_STATUS_DONE))
-			Expect(last[*daggerv1.ListNodesRequest](s).GetFilter().GetProjects()).To(Equal([]string{"platform"}))
+			Expect(last[*skiftv1.ListNodesRequest](s).GetFilter().GetStatus()).To(Equal(skiftv1.Status_STATUS_DONE))
+			Expect(last[*skiftv1.ListNodesRequest](s).GetFilter().GetProjects()).To(Equal([]string{"platform"}))
 
 			By("and only the done node comes back")
 			Expect(references(res)).To(ConsistOf("platform#2"))
@@ -403,7 +403,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res := m.call("node_list", map[string]any{"labels": []string{"backend"}})
 
 			By("then the request carries the label")
-			Expect(last[*daggerv1.ListNodesRequest](s).GetFilter().GetLabels()).To(Equal([]string{"backend"}))
+			Expect(last[*skiftv1.ListNodesRequest](s).GetFilter().GetLabels()).To(Equal([]string{"backend"}))
 
 			By("and only the labelled node comes back")
 			Expect(references(res)).To(ConsistOf("platform#3"))
@@ -419,7 +419,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			res := m.call("node_list", map[string]any{})
 
 			By("then it asked for a summary")
-			Expect(last[*daggerv1.ListNodesRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.ListNodesRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 
 			By("and every node of the project came back with no body")
 			Expect(references(res)).To(ConsistOf("platform#1", "platform#2", "platform#3"))
@@ -430,7 +430,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("and a full view returns them when it is asked for")
 			full := m.call("node_list", map[string]any{"view": "full"})
-			Expect(last[*daggerv1.ListNodesRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(last[*skiftv1.ListNodesRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 			Expect(full.text).To(ContainSubstring("the body of the open node"))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
@@ -448,7 +448,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(props["kind"].(map[string]any)).NotTo(HaveKey("enum"))
 			Expect(props["kind"].(map[string]any)["description"]).To(ContainSubstring("Free-form"))
 
-			By("and every filter dg node list takes is offered, with a view")
+			By("and every filter skift node list takes is offered, with a view")
 			Expect(props).To(HaveKey("assignee_kind"))
 			Expect(props).To(HaveKey("labels"))
 			Expect(props).To(HaveKey("parent"))
@@ -482,30 +482,30 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(m.call("search", map[string]any{"query": "viewed"}).isError).To(BeFalse())
 			Expect(m.call("show_node", map[string]any{"ref": "#1"}).isError).To(BeFalse())
 			Expect(m.call("apply_patch", map[string]any{"ops": []any{map[string]any{"create_node": map[string]any{"title": "A", "body": "long"}}}}).isError).To(BeFalse())
-			applied := last[*daggerv1.ApplyPatchRequest](s)
+			applied := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(m.call("comment", map[string]any{"ref": "#1", "body": "a note"}).isError).To(BeFalse())
-			commented := last[*daggerv1.ApplyPatchRequest](s)
+			commented := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(m.call("complete", map[string]any{"ref": "#1", "result": "done"}).isError).To(BeFalse())
-			completed := last[*daggerv1.ApplyPatchRequest](s)
+			completed := last[*skiftv1.ApplyPatchRequest](s)
 
 			By("then ready and search ask for a summary, show_node for full, and the writes for refs")
-			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
-			Expect(last[*daggerv1.SearchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
-			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
-			Expect(applied.GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(last[*skiftv1.ReadyRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.SearchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
+			Expect(applied.GetView()).To(Equal(skiftv1.View_VIEW_REFS))
 			Expect(applied.GetOps()[0].GetCreateNode().GetBody()).To(Equal("long"), "the view is taken out of the arguments, the patch is not")
-			Expect(commented.GetView()).To(Equal(daggerv1.View_VIEW_REFS))
-			Expect(completed.GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(commented.GetView()).To(Equal(skiftv1.View_VIEW_REFS))
+			Expect(completed.GetView()).To(Equal(skiftv1.View_VIEW_REFS))
 
 			By("and a view given by short name is sent, and one that is not a view is refused")
 			Expect(m.call("apply_patch", map[string]any{"view": "full", "ops": []any{map[string]any{"create_node": map[string]any{"title": "B"}}}}).isError).To(BeFalse())
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 			Expect(m.call("ready", map[string]any{"view": "refs"}).isError).To(BeFalse())
-			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(last[*skiftv1.ReadyRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_REFS))
 			Expect(m.call("show_node", map[string]any{"ref": "#1", "view": "summary"}).isError).To(BeFalse())
-			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 			Expect(m.call("apply_patch", map[string]any{"view": "VIEW_FULL", "ops": []any{map[string]any{"create_node": map[string]any{"title": "C"}}}}).isError).To(BeFalse(), "the arguments are a message in protojson, so the enum's wire spelling is accepted too")
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 			res := m.call("ready", map[string]any{"view": "huge"})
 			Expect(res.isError).To(BeTrue())
 			Expect(res.text).To(ContainSubstring(`view: "huge" is not one of full, refs, summary`))
@@ -552,7 +552,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			reason, _ := props["reason"].(map[string]any)
 			values, _ := reason["enum"].([]any)
 			Expect(values).NotTo(BeEmpty())
-			Expect(toAny(codec.EnumNames(daggerv1.ReleaseReason(0).Descriptor()))).To(ContainElements(values...))
+			Expect(toAny(codec.EnumNames(skiftv1.ReleaseReason(0).Descriptor()))).To(ContainElements(values...))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})
@@ -563,7 +563,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m.initialize()
 
 			By("given the operations the PatchOp oneof declares")
-			fields := daggerv1.File_dagger_v1_service_proto.Messages().ByName("PatchOp").Oneofs().ByName("op").Fields()
+			fields := skiftv1.File_skift_v1_service_proto.Messages().ByName("PatchOp").Oneofs().ByName("op").Fields()
 			ops := map[string]bool{}
 			for i := 0; i < fields.Len(); i++ {
 				ops[string(fields.Get(i).Name())] = true
@@ -655,8 +655,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("given the ops schema apply_patch advertises")
 			branches := patchOpsBranches(m.tools()["apply_patch"])
-			priorities := codec.EnumNames(daggerv1.Priority(0).Descriptor())
-			reasons := codec.EnumNames(daggerv1.DropReason(0).Descriptor())
+			priorities := codec.EnumNames(skiftv1.Priority(0).Descriptor())
+			reasons := codec.EnumNames(skiftv1.DropReason(0).Descriptor())
 
 			By("then priority carries the priorities, wherever a node's priority is set")
 			Expect(priorities).To(ConsistOf("p0", "p1", "p2", "p3", "p4"))
@@ -688,7 +688,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			// same reason the description budget is: it is what every
 			// session pays, and raising it is a decision about that cost.
 			Expect(len(serialised)).To(BeNumerically("<", 13*1024),
-				"the apply_patch tool definition is %d bytes; it is in every context window that loads dagger", len(serialised))
+				"the apply_patch tool definition is %d bytes; it is in every context window that loads skift", len(serialised))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})
@@ -815,7 +815,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("and they come to less than the ceiling together")
 			Expect(total).To(BeNumerically("<", toolDescriptionBudget),
-				"the tool descriptions total %d characters against a budget of %d; they are in every context window that loads dagger, so intent belongs here and reference material belongs in the dagger skill",
+				"the tool descriptions total %d characters against a budget of %d; they are in every context window that loads skift, so intent belongs here and reference material belongs in the skift skill",
 				total, toolDescriptionBudget)
 			Expect(m.closeStdin()).To(Equal(0))
 		})
@@ -850,13 +850,13 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			}
 			Expect(slugs).To(Equal([]string{"infra", "platform"}))
 
-			By("and the answer is the one dg project list gives")
+			By("and the answer is the one skift project list gives")
 			Expect(res.decode()).To(Equal(cliJSON(socket, "project", "list")))
 
 			By("and archived projects come back when they are asked for")
 			res = m.call("project_list", map[string]any{"include_archived": true})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.ListProjectsRequest](s).GetIncludeArchived()).To(BeTrue())
+			Expect(last[*skiftv1.ListProjectsRequest](s).GetIncludeArchived()).To(BeTrue())
 			Expect(res.decode()["projects"]).To(HaveLen(3))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
@@ -872,7 +872,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			By("then the project comes back")
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.GetProjectRequest](s).GetProject()).To(Equal("platform"))
+			Expect(last[*skiftv1.GetProjectRequest](s).GetProject()).To(Equal("platform"))
 			project, _ := res.decode()["project"].(map[string]any)
 			Expect(project).To(HaveKeyWithValue("slug", "platform"))
 			Expect(project).To(HaveKeyWithValue("title", "Platform"))
@@ -880,7 +880,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			By("and with no slug it shows the current project")
 			res = m.call("project_show", map[string]any{})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.GetProjectRequest](s).GetProject()).To(Equal("platform"))
+			Expect(last[*skiftv1.GetProjectRequest](s).GetProject()).To(Equal("platform"))
 
 			By("when project_show is called with an unknown slug")
 			res = m.call("project_show", map[string]any{"project": "nowhere"})
@@ -908,19 +908,19 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Expect(project).To(HaveKeyWithValue("vcs_url", "https://gitlab.example/x/y.git"))
 
 			By("and it carried a request id, as every write does")
-			sent := last[*daggerv1.CreateProjectRequest](s)
+			sent := last[*skiftv1.CreateProjectRequest](s)
 			Expect(sent.GetRequestId()).NotTo(BeEmpty())
 			Expect(sent.GetSlug()).To(Equal("platform"))
-			Expect(sent.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+			Expect(sent.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P1))
 			Expect(sent.GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
 
 			By("and a request id given by the caller is the one sent")
 			res = m.call("project_create", map[string]any{"title": "Infra", "request_id": "01JREQUEST00000000000000000"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.CreateProjectRequest](s).GetRequestId()).To(Equal("01JREQUEST00000000000000000"))
+			Expect(last[*skiftv1.CreateProjectRequest](s).GetRequestId()).To(Equal("01JREQUEST00000000000000000"))
 
 			By("and the slug is derived from the title when none is given")
-			Expect(last[*daggerv1.CreateProjectRequest](s).GetSlug()).To(BeEmpty())
+			Expect(last[*skiftv1.CreateProjectRequest](s).GetSlug()).To(BeEmpty())
 			Expect(res.decode()["project"]).To(HaveKeyWithValue("slug", "derived"))
 
 			By("and a call with no title is refused")
@@ -950,7 +950,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			m := startMCP("--socket", socket)
 			res := m.initialize()
 			Expect(res).To(HaveKeyWithValue("protocolVersion", "2025-06-18"))
-			Expect(res["serverInfo"]).To(HaveKeyWithValue("name", "dg"))
+			Expect(res["serverInfo"]).To(HaveKeyWithValue("name", "skift"))
 			Expect(res["capabilities"]).To(HaveKey("tools"))
 			Expect(res["instructions"]).To(ContainSubstring("#7"))
 			Expect(m.send("ping", nil)).To(BeEmpty())
@@ -993,16 +993,16 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 			res := m.call("show_node", map[string]any{"ref": "acme/platform#1"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.GetNodeRequest](s).GetNode()).To(Equal("acme/platform#1"))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetNode()).To(Equal("acme/platform#1"))
 
 			res = m.call("show_node", map[string]any{"ref": "#1"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.GetNodeRequest](s).GetNode()).To(Equal("#1"))
-			Expect(last[*daggerv1.GetNodeRequest](s).GetProject()).To(Equal("platform"))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetNode()).To(Equal("#1"))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetProject()).To(Equal("platform"))
 
 			res = m.call("show_node", map[string]any{"ref": "1"})
 			Expect(res.isError).To(BeFalse(), "a bare number is accepted as #number: %s", res.text)
-			Expect(last[*daggerv1.GetNodeRequest](s).GetNode()).To(Equal("#1"))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetNode()).To(Equal("#1"))
 
 			Expect(m.closeStdin()).To(Equal(0))
 		})
@@ -1027,13 +1027,13 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			s.newNode("Qualified")
 			res = m.call("complete", map[string]any{"ref": "platform#1", "result": "done"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetProject()).To(Equal("platform"))
 			Expect(sent.GetOps()[0].GetCompleteNode().GetNode()).To(Equal("platform#1"))
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 
-		It("applies a patch with aliases exactly as dg patch apply does", func() {
+		It("applies a patch with aliases exactly as skift patch apply does", func() {
 			m := startMCP("--socket", socket, "--project", "platform")
 			m.initialize()
 			res := m.call("apply_patch", map[string]any{"ops": []any{
@@ -1045,7 +1045,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			out := res.decode()
 			Expect(out["nodes"]).To(HaveLen(2))
 			Expect(out["aliases"]).To(HaveKeyWithValue("spike", "platform#1"))
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetRequestId()).NotTo(BeEmpty(), "a request id is minted")
 			Expect(sent.GetOps()[2].GetAddEdge().GetFrom()).To(Equal("spike"))
 			Expect(m.closeStdin()).To(Equal(0))
@@ -1100,7 +1100,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			}})
 			Expect(res.isError).To(BeTrue())
 			Expect(res.text).To(ContainSubstring("ops[1]"))
-			legal := strings.Join(codec.EnumNames(daggerv1.Priority(0).Descriptor()), ", ")
+			legal := strings.Join(codec.EnumNames(skiftv1.Priority(0).Descriptor()), ", ")
 			Expect(legal).NotTo(BeEmpty())
 			Expect(res.text).To(ContainSubstring(`"urgent" is not one of ` + legal))
 
@@ -1135,17 +1135,17 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			leaseID := res.decode()["lease"].(map[string]any)["id"].(string)
 
 			By("the lease outlives its TTL because the server renews it")
-			Eventually(func() *daggerv1.HeartbeatRequest {
+			Eventually(func() *skiftv1.HeartbeatRequest {
 				s.mu.Lock()
 				defer s.mu.Unlock()
 				for i := len(s.requests) - 1; i >= 0; i-- {
-					if hb, ok := s.requests[i].(*daggerv1.HeartbeatRequest); ok {
+					if hb, ok := s.requests[i].(*skiftv1.HeartbeatRequest); ok {
 						return hb
 					}
 				}
 				return nil
 			}, 5*time.Second).ShouldNot(BeNil())
-			Expect(last[*daggerv1.HeartbeatRequest](s).GetLeaseId()).To(Equal(leaseID))
+			Expect(last[*skiftv1.HeartbeatRequest](s).GetLeaseId()).To(Equal(leaseID))
 			Consistently(func() bool {
 				s.mu.Lock()
 				defer s.mu.Unlock()
@@ -1156,17 +1156,17 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			By("a comment on the node carries the held lease without being told")
 			res = m.call("comment", map[string]any{"ref": "#1", "body": "progress"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetLeaseId()).To(Equal(leaseID))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetLeaseId()).To(Equal(leaseID))
 
 			By("completing the node ends the lease, so shutdown releases nothing")
 			res = m.call("complete", map[string]any{"ref": "#1", "result": "done"})
 			Expect(res.isError).To(BeFalse(), res.text)
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetLeaseId()).To(Equal(leaseID))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetLeaseId()).To(Equal(leaseID))
 			Expect(m.closeStdin()).To(Equal(0))
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			for _, req := range s.requests {
-				Expect(req).NotTo(BeAssignableToTypeOf(&daggerv1.ReleaseRequest{}))
+				Expect(req).NotTo(BeAssignableToTypeOf(&skiftv1.ReleaseRequest{}))
 			}
 		})
 
@@ -1183,7 +1183,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			defer s.mu.Unlock()
 			releases := 0
 			for _, req := range s.requests {
-				if _, ok := req.(*daggerv1.ReleaseRequest); ok {
+				if _, ok := req.(*skiftv1.ReleaseRequest); ok {
 					releases++
 				}
 			}
@@ -1195,8 +1195,8 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		It("reaches a service at a network address given with --address", func() {
 			By("given the stub served over HTTP, as a tailnet address is")
 			mux := http.NewServeMux()
-			mux.Handle(daggerv1connect.NewGraphServiceHandler(s))
-			mux.Handle(daggerv1connect.NewWorkServiceHandler(s))
+			mux.Handle(skiftv1connect.NewGraphServiceHandler(s))
+			mux.Handle(skiftv1connect.NewWorkServiceHandler(s))
 			ts := httptest.NewServer(mux)
 			DeferCleanup(ts.Close)
 			s.newNode("Remote work")
@@ -1222,7 +1222,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		})
 
 		It("refuses to start on an address that is not a URL", func() {
-			m := startMCP("--address", "dagger.tail1234.ts.net")
+			m := startMCP("--address", "skift.tail1234.ts.net")
 			var code int
 			Eventually(m.exit, 10*time.Second).Should(Receive(&code))
 			Expect(code).NotTo(BeZero())
@@ -1235,7 +1235,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 
 		BeforeEach(func() {
 			var err error
-			binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
+			binary, err = gexec.Build("github.com/steading-ai/skift/cmd/skift")
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -1243,7 +1243,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 		startProcess := func(args ...string) (*mcpSession, *exec.Cmd) {
 			GinkgoHelper()
 			cmd := exec.Command(binary, append(args, "mcp")...)
-			cmd.Env = append(os.Environ(), "DG_CONFIG=", "DG_ADDRESS=", "DG_SOCKET=", "DG_PROJECT=")
+			cmd.Env = append(os.Environ(), "SKIFT_CONFIG=", "SKIFT_ADDRESS=", "SKIFT_SOCKET=", "SKIFT_PROJECT=")
 			stdin, err := cmd.StdinPipe()
 			Expect(err).NotTo(HaveOccurred())
 			stdout, err := cmd.StdoutPipe()
@@ -1305,7 +1305,7 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 				s.mu.Lock()
 				defer s.mu.Unlock()
 				for _, req := range s.requests {
-					Expect(req).NotTo(BeAssignableToTypeOf(&daggerv1.ReleaseRequest{}), "nothing released it; it expired")
+					Expect(req).NotTo(BeAssignableToTypeOf(&skiftv1.ReleaseRequest{}), "nothing released it; it expired")
 				}
 			})
 		})
@@ -1323,24 +1323,24 @@ var _ = Describe("dg mcp", Label("unit"), func() {
 			Eventually(m.exit, 10*time.Second).Should(Receive(&code))
 			Expect(code).To(BeZero(), m.stderr.String())
 
-			released := last[*daggerv1.ReleaseRequest](s)
+			released := last[*skiftv1.ReleaseRequest](s)
 			Expect(released.GetLeaseId()).To(Equal(leaseID))
-			Expect(released.GetReason()).To(Equal(daggerv1.ReleaseReason_RELEASE_REASON_CRASH))
+			Expect(released.GetReason()).To(Equal(skiftv1.ReleaseReason_RELEASE_REASON_CRASH))
 			Expect(released.GetDetail()).To(ContainSubstring("signal received"))
 			Expect(strings.TrimSpace(m.stderr.String())).NotTo(BeEmpty())
 		})
 	})
 })
 
-// requestEnums maps the name of every enum-valued field of a dagger.v1
+// requestEnums maps the name of every enum-valued field of a skift.v1
 // request message to the enum it takes, which is what a tool argument of
 // that name has to declare.
 func requestEnums() map[string]protoreflect.EnumDescriptor {
 	out := map[string]protoreflect.EnumDescriptor{}
 	free := map[string]bool{}
 	for _, file := range []protoreflect.FileDescriptor{
-		daggerv1.File_dagger_v1_dagger_proto,
-		daggerv1.File_dagger_v1_service_proto,
+		skiftv1.File_skift_v1_skift_proto,
+		skiftv1.File_skift_v1_service_proto,
 	} {
 		for i := range file.Messages().Len() {
 			message := file.Messages().Get(i)
@@ -1367,7 +1367,7 @@ func requestEnums() map[string]protoreflect.EnumDescriptor {
 	return out
 }
 
-// cliJSON runs one dg command against the stub's socket and returns its
+// cliJSON runs one skift command against the stub's socket and returns its
 // JSON output, so a spec can hold an MCP answer against the CLI's.
 func cliJSON(socket string, args ...string) map[string]any {
 	GinkgoHelper()

@@ -17,7 +17,7 @@ import (
 	"tailscale.com/client/local"
 	"tailscale.com/tsnet"
 
-	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/server/interceptor"
 )
 
 // Defaults for the fields of TailnetConfig that may be left zero.

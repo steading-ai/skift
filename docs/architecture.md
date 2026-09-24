@@ -5,19 +5,19 @@ How the pieces fit. The decisions behind them are in [docs/adrs/](adrs/); this d
 ## One binary, three faces
 
 ```
-dg              CLI. Connect client, JSON output
-dg mcp          stdio MCP server. The same client, wrapped for a harness
-dg serve        The service. Connect handlers over PostgreSQL
+skift              CLI. Connect client, JSON output
+skift mcp          stdio MCP server. The same client, wrapped for a harness
+skift serve        The service. Connect handlers over PostgreSQL
 ```
 
-The CLI and the MCP server are the same client with different framing, so an agent reaching dagger through Claude Code and an operator typing at a terminal exercise identical code. Which transport that client uses is configuration, not a code path.
+The CLI and the MCP server are the same client with different framing, so an agent reaching skift through Claude Code and an operator typing at a terminal exercise identical code. Which transport that client uses is configuration, not a code path.
 
 ## Request path
 
 ```
 agent / human / orchestrator
         │
-        ├── dg, dg mcp                 (client)
+        ├── skift, skift mcp                 (client)
         │
         ▼
    Connect  ── unix socket │ tsnet │ HTTPS
@@ -62,24 +62,24 @@ An identity is a row, not a principal, so one principal may hold several. Adding
 
 ## Deployment
 
-Dagger is a wellspring service in [homestead](https://github.com/ivy/homestead) terms: it shares the platform PostgreSQL, and agents in application zones reach it as clients. That places it where Artifactory sat in the incident [ADR-006](adrs/006-provenance-not-authority.md) describes, which is why tenancy scoping is load-bearing rather than convenient.
+Skift is a wellspring service in [homestead](https://github.com/ivy/homestead) terms: it shares the platform PostgreSQL, and agents in application zones reach it as clients. That places it where Artifactory sat in the incident [ADR-006](adrs/006-provenance-not-authority.md) describes, which is why tenancy scoping is load-bearing rather than convenient.
 
 ```
 wellspring                         grove
-  dagger.service   ◄── unix socket ── agents, orchestrator
+  skift.service   ◄── unix socket ── agents, orchestrator
   postgresql
-  dagger-reap.timer                laptop
-                   ◄── tsnet ────── dg, dg mcp
+  skift-reap.timer                laptop
+                   ◄── tsnet ────── skift, skift mcp
 ```
 
 | Unit | Does |
 |---|---|
-| `dagger.service` | The Connect service. Logs to the journal, notifies readiness with sd_notify |
-| `dagger-reap.timer` | Expires stale leases. The only background work in v1 |
+| `skift.service` | The Connect service. Logs to the journal, notifies readiness with sd_notify |
+| `skift-reap.timer` | Expires stale leases. The only background work in v1 |
 
 ## Consumers
 
-Dagger stores and serves. Everything reactive is a separate program reading the [change stream](domain-model.md#change-stream):
+Skift stores and serves. Everything reactive is a separate program reading the [change stream](domain-model.md#change-stream):
 
 | Consumer | Reads | Does |
 |---|---|---|
@@ -88,13 +88,13 @@ Dagger stores and serves. Everything reactive is a separate program reading the 
 | Retrieval | Content events | Indexes for semantic search and synthesis. Successor to [kb](https://github.com/ivy/kb) |
 | Moderation | Content events | Inspects what enters the backlog |
 
-None of them are dagger, and dagger works without any of them.
+None of them are skift, and skift works without any of them.
 
 ## Trust boundaries
 
-- **Between agent and dagger.** The agent holds no database credential. Every write carries a transport-resolved principal it cannot forge.
+- **Between agent and skift.** The agent holds no database credential. Every write carries a transport-resolved principal it cannot forge.
 - **Between projects.** Tenancy columns on every row, every query scoped, cross-project edges permitted but policy-gated.
-- **Between dagger and the platform.** Dagger is not a sandbox, not an egress control, and not a supervisor. Compute isolation and network policy are homestead's.
+- **Between skift and the platform.** Skift is not a sandbox, not an egress control, and not a supervisor. Compute isolation and network policy are homestead's.
 
 ## What v1 is
 

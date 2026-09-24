@@ -1,7 +1,7 @@
 -- The repository a project delivers to. See the Project section of
 -- docs/domain-model.md.
 --
--- Dagger stores the URL for the orchestrators that work the project and
+-- Skift stores the URL for the orchestrators that work the project and
 -- never reads it: the column is an annotation, not a fifth thing a project
 -- is. Empty is the default, so every existing project stays valid.
 

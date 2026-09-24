@@ -1,7 +1,7 @@
 -- Blobs, artifacts, and their parts. See the Artifact section of
 -- docs/domain-model.md and docs/adrs/003-artifacts-are-content-addressed.md.
 --
--- Dagger never stores raw bytes inside a node. A blob row is the identity,
+-- Skift never stores raw bytes inside a node. A blob row is the identity,
 -- media type, and size of bytes held by a storage backend; a part is inline
 -- text under the cap, a managed blob, or a reference to something that lives
 -- elsewhere. Blobs and references carry a digest.

@@ -4,13 +4,13 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 )
 
 func (a *app) searchCommand() *cobra.Command {
 	var includeArchived bool
 	var page pageFlags
-	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
+	view := viewFlag{def: skiftv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Search titles, bodies, results, and comments across the organization",
@@ -31,8 +31,8 @@ unless --project narrows it.`,
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.SearchResponse, error) {
-				res, err := c.Graph.Search(cmd.Context(), connect.NewRequest(&daggerv1.SearchRequest{
+			return send(a, cmd, func() (*skiftv1.SearchResponse, error) {
+				res, err := c.Graph.Search(cmd.Context(), connect.NewRequest(&skiftv1.SearchRequest{
 					Query: args[0], Project: project, IncludeArchived: includeArchived,
 					PageSize: page.size, PageToken: page.token, View: v,
 				}))
@@ -60,8 +60,8 @@ func (a *app) explainCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.ExplainResponse, error) {
-				res, err := c.Graph.Explain(cmd.Context(), connect.NewRequest(&daggerv1.ExplainRequest{Project: project, Node: ref}))
+			return send(a, cmd, func() (*skiftv1.ExplainResponse, error) {
+				res, err := c.Graph.Explain(cmd.Context(), connect.NewRequest(&skiftv1.ExplainRequest{Project: project, Node: ref}))
 				return unwrap(res, err)
 			})
 		},

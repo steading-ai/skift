@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/logging"
+	"github.com/steading-ai/skift/internal/logging"
 )
 
 var _ = Describe("Structured logging", Label("unit"), func() {
@@ -18,10 +18,10 @@ var _ = Describe("Structured logging", Label("unit"), func() {
 
 	It("writes plain key=value records outside the journal", func() {
 		log := slog.New(logging.NewHandler(buf, slog.LevelInfo, false))
-		log.Info("listening", "socket", "/run/dagger/dg.sock")
+		log.Info("listening", "socket", "/run/skift/skift.sock")
 		Expect(buf.String()).To(SatisfyAll(
 			HavePrefix("time="),
-			ContainSubstring(`msg=listening socket=/run/dagger/dg.sock`),
+			ContainSubstring(`msg=listening socket=/run/skift/skift.sock`),
 		))
 	})
 

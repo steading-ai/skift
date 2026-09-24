@@ -17,8 +17,8 @@ import (
 // notification never carries an event, so a dropped one costs latency
 // and never a loss. See the Change stream section of docs/domain-model.md.
 
-// eventsChannel is the NOTIFY channel migration 00016 raises on.
-const eventsChannel = "dagger_events"
+// eventsChannel is the NOTIFY channel migration 00020 raises on.
+const eventsChannel = "skift_events"
 
 // A listening session that breaks reconnects with this backoff.
 const (

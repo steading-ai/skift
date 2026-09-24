@@ -14,17 +14,17 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // The handler specs run the real handlers over the real domain against a
 // spec-private database, reached through a unix socket with the principal
-// interceptor in front: the in-process shape of `dg serve`. The spec
+// interceptor in front: the in-process shape of `skift serve`. The spec
 // process is the only client, so its uid is the one identity, and which
 // principal that identity maps to is switched per call.
 
@@ -106,25 +106,25 @@ func newFixture(ctx context.Context) *fixture {
 // as switches which principal the spec's calls are attributed to.
 func (f *fixture) as(p interceptor.Principal) { f.lookup.set(p) }
 
-func (f *fixture) graph() daggerv1connect.GraphServiceClient  { return f.run.graph() }
-func (f *fixture) work() daggerv1connect.WorkServiceClient    { return f.run.work() }
-func (f *fixture) events() daggerv1connect.EventServiceClient { return f.run.events() }
+func (f *fixture) graph() skiftv1connect.GraphServiceClient  { return f.run.graph() }
+func (f *fixture) work() skiftv1connect.WorkServiceClient    { return f.run.work() }
+func (f *fixture) events() skiftv1connect.EventServiceClient { return f.run.events() }
 
 // project creates a project over the wire and returns it.
-func (f *fixture) project(ctx context.Context, title string) *daggerv1.Project {
+func (f *fixture) project(ctx context.Context, title string) *skiftv1.Project {
 	GinkgoHelper()
-	res, err := f.graph().CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{RequestId: newID(), Title: title}))
+	res, err := f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: title}))
 	Expect(err).NotTo(HaveOccurred())
 	return res.Msg.GetProject()
 }
 
 // apply sends one patch to project with a fresh request id.
-func (f *fixture) apply(ctx context.Context, project string, ops ...*daggerv1.PatchOp) (*daggerv1.ApplyPatchResponse, error) {
+func (f *fixture) apply(ctx context.Context, project string, ops ...*skiftv1.PatchOp) (*skiftv1.ApplyPatchResponse, error) {
 	GinkgoHelper()
-	return f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: project, Ops: ops})
+	return f.applyWith(ctx, &skiftv1.ApplyPatchRequest{RequestId: newID(), Project: project, Ops: ops})
 }
 
-func (f *fixture) applyWith(ctx context.Context, req *daggerv1.ApplyPatchRequest) (*daggerv1.ApplyPatchResponse, error) {
+func (f *fixture) applyWith(ctx context.Context, req *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error) {
 	GinkgoHelper()
 	res, err := f.graph().ApplyPatch(ctx, connect.NewRequest(req))
 	if err != nil {
@@ -135,7 +135,7 @@ func (f *fixture) applyWith(ctx context.Context, req *daggerv1.ApplyPatchRequest
 
 // mustApply is apply for fixtures, against the "platform" project every
 // spec creates first.
-func (f *fixture) mustApply(ctx context.Context, ops ...*daggerv1.PatchOp) *daggerv1.ApplyPatchResponse {
+func (f *fixture) mustApply(ctx context.Context, ops ...*skiftv1.PatchOp) *skiftv1.ApplyPatchResponse {
 	GinkgoHelper()
 	res, err := f.apply(ctx, "platform", ops...)
 	Expect(err).NotTo(HaveOccurred())
@@ -143,21 +143,21 @@ func (f *fixture) mustApply(ctx context.Context, ops ...*daggerv1.PatchOp) *dagg
 }
 
 // getNode reads one node by reference.
-func (f *fixture) getNode(ctx context.Context, project, ref string) *daggerv1.GetNodeResponse {
+func (f *fixture) getNode(ctx context.Context, project, ref string) *skiftv1.GetNodeResponse {
 	GinkgoHelper()
-	res, err := f.graph().GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref}))
+	res, err := f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: project, Node: ref}))
 	Expect(err).NotTo(HaveOccurred())
 	return res.Msg
 }
 
 // claim claims the next ready node of project as the agent, with the
 // given TTL, and returns the response.
-func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Duration) *daggerv1.ClaimNextResponse {
+func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Duration) *skiftv1.ClaimNextResponse {
 	GinkgoHelper()
 	f.as(f.agent)
 	defer f.as(f.user)
-	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
-		RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{project}}, Ttl: ttl, Harness: "spec", AgentRef: "spec",
+	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+		RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{project}}, Ttl: ttl, Harness: "spec", AgentRef: "spec",
 	}))
 	Expect(err).NotTo(HaveOccurred())
 	return res.Msg
@@ -166,10 +166,10 @@ func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Dur
 // claimAsUser claims the next ready node of project as the user
 // principal: the shape an orchestrator takes work in, holding the lease
 // itself while it dispatches an agent under it.
-func (f *fixture) claimAsUser(ctx context.Context, project string) *daggerv1.ClaimNextResponse {
+func (f *fixture) claimAsUser(ctx context.Context, project string) *skiftv1.ClaimNextResponse {
 	GinkgoHelper()
-	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
-		RequestId: newID(), Filter: &daggerv1.NodeFilter{Projects: []string{project}}, Harness: "spec", AgentRef: "spec",
+	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+		RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{project}}, Harness: "spec", AgentRef: "spec",
 	}))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(res.Msg.GetNode()).NotTo(BeNil())
@@ -178,46 +178,46 @@ func (f *fixture) claimAsUser(ctx context.Context, project string) *daggerv1.Cla
 
 // Operation builders.
 
-func createOp(alias, title string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_CreateNode{CreateNode: &daggerv1.CreateNodeOp{Alias: alias, Title: title}}}
+func createOp(alias, title string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_CreateNode{CreateNode: &skiftv1.CreateNodeOp{Alias: alias, Title: title}}}
 }
 
-func estimateOp(e *daggerv1.EstimateNodeOp) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_EstimateNode{EstimateNode: e}}
+func estimateOp(e *skiftv1.EstimateNodeOp) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_EstimateNode{EstimateNode: e}}
 }
 
-func createOpWith(c *daggerv1.CreateNodeOp) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_CreateNode{CreateNode: c}}
+func createOpWith(c *skiftv1.CreateNodeOp) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_CreateNode{CreateNode: c}}
 }
 
-func edgeOp(from, to string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_AddEdge{AddEdge: &daggerv1.AddEdgeOp{From: from, To: to}}}
+func edgeOp(from, to string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_AddEdge{AddEdge: &skiftv1.AddEdgeOp{From: from, To: to}}}
 }
 
-func updateOp(u *daggerv1.UpdateNodeOp) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_UpdateNode{UpdateNode: u}}
+func updateOp(u *skiftv1.UpdateNodeOp) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_UpdateNode{UpdateNode: u}}
 }
 
-func completeOp(node, body string, artifacts ...*daggerv1.Artifact) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_CompleteNode{CompleteNode: &daggerv1.CompleteNodeOp{
-		Node: node, Result: &daggerv1.Result{Body: body, Artifacts: artifacts},
+func completeOp(node, body string, artifacts ...*skiftv1.Artifact) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_CompleteNode{CompleteNode: &skiftv1.CompleteNodeOp{
+		Node: node, Result: &skiftv1.Result{Body: body, Artifacts: artifacts},
 	}}}
 }
 
-func attachOp(node string, artifact *daggerv1.Artifact) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_AttachArtifact{AttachArtifact: &daggerv1.AttachArtifactOp{Node: node, Artifact: artifact}}}
+func attachOp(node string, artifact *skiftv1.Artifact) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_AttachArtifact{AttachArtifact: &skiftv1.AttachArtifactOp{Node: node, Artifact: artifact}}}
 }
 
-func commentOp(node, body string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_AddComment{AddComment: &daggerv1.AddCommentOp{Node: node, Body: body}}}
+func commentOp(node, body string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_AddComment{AddComment: &skiftv1.AddCommentOp{Node: node, Body: body}}}
 }
 
-func textArtifact(name, text string) *daggerv1.Artifact {
-	return &daggerv1.Artifact{Name: name, Parts: []*daggerv1.Part{{Content: &daggerv1.Part_Text{Text: &daggerv1.TextPart{Text: text}}}}}
+func textArtifact(name, text string) *skiftv1.Artifact {
+	return &skiftv1.Artifact{Name: name, Parts: []*skiftv1.Part{{Content: &skiftv1.Part_Text{Text: &skiftv1.TextPart{Text: text}}}}}
 }
 
 // numbers renders nodes as their numbers, in order.
-func numbers(nodes []*daggerv1.Node) []int64 {
+func numbers(nodes []*skiftv1.Node) []int64 {
 	out := make([]int64, 0, len(nodes))
 	for _, n := range nodes {
 		out = append(out, n.GetNumber())

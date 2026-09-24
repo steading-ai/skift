@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // Every mutation writes one event, in the transaction that made it, so the

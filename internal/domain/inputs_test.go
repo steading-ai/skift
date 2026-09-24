@@ -8,10 +8,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // readInputs reads the inputs of a node under bundle, in a transaction of
@@ -87,7 +87,7 @@ var _ = Describe("Reading the inputs of a node", Label(testsupport.DBLabel), fun
 			By("given a policy that lets a principal read the inputs of one project only")
 			elsewhere := g.newProject(ctx, "elsewhere")
 			narrow, err := policy.Load(ctx, fstest.MapFS{"narrow.rego": &fstest.MapFile{Data: []byte(fmt.Sprintf(`
-package dagger.authz
+package skift.authz
 
 default allow := false
 

@@ -4,7 +4,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 )
 
 // What work costs, from the two ends of it. An agent estimates: a patch
@@ -39,7 +39,7 @@ func (t *tokenFlags) bind(cmd *cobra.Command, expected bool) {
 func (a *app) estimateCommand() *cobra.Command {
 	var tokens tokenFlags
 	var basis, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "estimate <ref>",
 		Short: "Record what a node is expected to cost, and why",
@@ -49,11 +49,11 @@ the node nor its readiness, so an agent planning work estimates the nodes
 it files without claiming them.
 
 Estimating again adds a record rather than replacing one; the node's
-current estimate is the most recent, and "dg node show" carries it beside
+current estimate is the most recent, and "skift node show" carries it beside
 the rollup of what the node and its descendants have actually cost.
 
 Reporting what an attempt did cost is the orchestrator's, through
-"dg usage report".`,
+"skift usage report".`,
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := parseRef(args[0])
@@ -68,10 +68,10 @@ Reporting what an attempt did cost is the orchestrator's, through
 			if err != nil {
 				return err
 			}
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
-				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_EstimateNode{EstimateNode: &daggerv1.EstimateNodeOp{
+				Ops: []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_EstimateNode{EstimateNode: &skiftv1.EstimateNodeOp{
 					Node: ref.String(), Model: tokens.model, Basis: basis,
 					InputTokens: tokens.input, OutputTokens: tokens.output,
 					CacheReadTokens: tokens.cacheRead, CacheWriteTokens: tokens.cacheWrite,
@@ -109,7 +109,7 @@ a retry under a new lease is counted apart from the first.
 
 This is the orchestrator's call, and the service refuses it from an agent
 principal: the process running an agent is the one that can count its
-tokens. An agent records an estimate with "dg estimate" instead.`,
+tokens. An agent records an estimate with "skift estimate" instead.`,
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := parseRef(args[0])
@@ -127,8 +127,8 @@ tokens. An agent records an estimate with "dg estimate" instead.`,
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.ReportUsageResponse, error) {
-				res, err := c.Work.ReportUsage(cmd.Context(), connect.NewRequest(&daggerv1.ReportUsageRequest{
+			return send(a, cmd, func() (*skiftv1.ReportUsageResponse, error) {
+				res, err := c.Work.ReportUsage(cmd.Context(), connect.NewRequest(&skiftv1.ReportUsageRequest{
 					RequestId: orMint(requestID), Project: project, LeaseId: lease, Node: ref.String(),
 					Model: tokens.model, InputTokens: tokens.input, OutputTokens: tokens.output,
 					CacheReadTokens: tokens.cacheRead, CacheWriteTokens: tokens.cacheWrite,

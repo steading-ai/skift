@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // Errors a patch is rejected with before any operation runs.
@@ -619,7 +619,7 @@ func mutatesWaits(p Patch) bool {
 
 // lockNamespace is the first half of the advisory lock key, so the lock
 // cannot collide with any other use of advisory locks on the server.
-const lockNamespace = "dagger:graph"
+const lockNamespace = "skift:graph"
 
 // lockOrganization takes the organization's graph lock for the rest of the
 // transaction. It blocks until any holder commits or rolls back.

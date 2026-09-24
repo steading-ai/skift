@@ -1,4 +1,4 @@
-// Package protodoc reads the comments in dagger's own proto files at
+// Package protodoc reads the comments in skift's own proto files at
 // runtime.
 //
 // The comments on a message and its fields are the contract's

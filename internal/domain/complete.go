@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // Completion carries the result: a markdown body under the size cap, plus

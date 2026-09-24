@@ -2,7 +2,7 @@
 
 Milestones toward the [vision](vision.md), in dependency order rather than on a calendar. Each one is defined by what becomes possible, not by a date.
 
-The rule that keeps this honest: **nothing moves to the next milestone until the current one is used daily.** Dagger exists to remove a bottleneck, and a milestone that is not in use has not removed anything.
+The rule that keeps this honest: **nothing moves to the next milestone until the current one is used daily.** Skift exists to remove a bottleneck, and a milestone that is not in use has not removed anything.
 
 ## M0 — Walking skeleton
 
@@ -18,15 +18,15 @@ Excludes artifacts, search, comments, the change stream, cost tracking, tsnet, M
 
 In progress. The plan is [docs/plans/2026-09-prove-the-bet.md](plans/2026-09-prove-the-bet.md).
 
-Dagger holds its own backlog and the work of building it. Adds what a human needs to stay in the loop: gates with a notifier, `Explain`, comments, and lexical search.
+Skift holds its own backlog and the work of building it. Adds what a human needs to stay in the loop: gates with a notifier, `Explain`, comments, and lexical search.
 
 This is the first milestone where the vision's human-escalation story actually works, and the first real evidence about whether the model fits real work.
 
-**Done when** the flat-file backlog is retired because dagger holds it instead.
+**Done when** the flat-file backlog is retired because skift holds it instead.
 
 ## M2 — Orchestration
 
-The hive successor dispatches from dagger. Adds artifacts, usage records and cost rollups, `ClaimNext` affinity by `agent_ref`, and the MCP server so a laptop session is a first-class client.
+The hive successor dispatches from skift. Adds artifacts, usage records and cost rollups, `ClaimNext` affinity by `agent_ref`, and the MCP server so a laptop session is a first-class client.
 
 **Done when** work reaches pull requests without a human choosing what runs next.
 
@@ -42,11 +42,11 @@ The first deployment that is not the author's. Adds a second organization and ev
 
 Most of the [external review's](../docs/adrs/) deferred findings live here. That is deliberate: they are the cost of a second tenant, and paying it before there is one is how projects die before shipping.
 
-**Done when** someone else runs dagger and it survives.
+**Done when** someone else runs skift and it survives.
 
 ## Deliberately unscheduled
 
-- **Semantic retrieval and synthesis.** A separate program consuming the change stream, successor to [kb](https://github.com/ivy/kb). Blocked on M3, not on dagger.
+- **Semantic retrieval and synthesis.** A separate program consuming the change stream, successor to [kb](https://github.com/ivy/kb). Blocked on M3, not on skift.
 - **Supervision and moderation.** Consumers, not features. See [ADR-006](adrs/006-provenance-not-authority.md).
 - **Budget enforcement.** Records exist from M2. Enforcement is the orchestrator's until someone proves otherwise.
 - **Metering-grade usage.** Estimate-grade is best effort by design. Billing would change that, and there is no billing.

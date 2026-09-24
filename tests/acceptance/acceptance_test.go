@@ -6,18 +6,18 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
-// Every scenario starts from a clean database with dg serve freshly
+// Every scenario starts from a clean database with skift serve freshly
 // started over it, and speaks to the service only through the CLI and the
 // MCP server. The person is on the laptop, over the tailnet; the agent is
 // on the host, over the socket. See harness_test.go.
 
 // blockedBy returns the numbers of the open blockers Explain names.
-func blockedBy(res *daggerv1.ExplainResponse) []int64 {
+func blockedBy(res *skiftv1.ExplainResponse) []int64 {
 	var out []int64
 	for _, r := range res.GetReasons() {
 		if b := r.GetBlocked(); b != nil {
@@ -30,9 +30,9 @@ func blockedBy(res *daggerv1.ExplainResponse) []int64 {
 // gateFiled is the state after an agent filed a gate: the lease it holds
 // on its node, and the gate.
 type gateFiled struct {
-	node  *daggerv1.Node
-	lease *daggerv1.Lease
-	gate  *daggerv1.Node
+	node  *skiftv1.Node
+	lease *skiftv1.Lease
+	gate  *skiftv1.Node
 }
 
 // fileGate has the agent claim the one node of platform and file a gate
@@ -41,15 +41,15 @@ func fileGate(d *deployment) gateFiled {
 	GinkgoHelper()
 	claimed := d.host.claim()
 	res := d.host.patch(request(platform,
-		createOpWith(&daggerv1.CreateNodeOp{
+		createOpWith(&skiftv1.CreateNodeOp{
 			Alias: "gate", Parent: ref(claimed.GetNode()), Title: "Approve the production deploy",
-			AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_USER,
+			AssigneeKind: skiftv1.AssigneeKind_ASSIGNEE_KIND_USER,
 		}),
 		edgeOp("gate", ref(claimed.GetNode())),
 	), "--lease", claimed.GetLease().GetId())
-	var gate *daggerv1.Node
+	var gate *skiftv1.Node
 	for _, n := range res.GetNodes() {
-		if n.GetAssigneeKind() == daggerv1.AssigneeKind_ASSIGNEE_KIND_USER {
+		if n.GetAssigneeKind() == skiftv1.AssigneeKind_ASSIGNEE_KIND_USER {
 			gate = n
 		}
 	}
@@ -64,7 +64,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 
 			By("given an empty database")
 			Expect(d.health(ctx).Status).To(Equal("ok"))
-			projects := &daggerv1.ListProjectsResponse{}
+			projects := &skiftv1.ListProjectsResponse{}
 			d.laptop.call(projects, "project", "list", "--include-archived")
 			Expect(projects.GetProjects()).To(BeEmpty())
 
@@ -72,13 +72,13 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			project := d.laptop.createProject("Platform")
 			Expect(project.GetSlug()).To(Equal(platform))
 			res := d.laptop.patch(request(platform,
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "auth", Title: "Authentication", Body: "Synthesize the findings"}),
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "spike", Parent: "auth", Kind: "spike", Title: "Spike the OAuth flow"}),
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "server", Parent: "auth", Title: "Implement the server side", BlockedBy: []string{"spike"}}),
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "client", Parent: "auth", Title: "Implement the client side", BlockedBy: []string{"spike"}}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "auth", Title: "Authentication", Body: "Synthesize the findings"}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "spike", Parent: "auth", Kind: "spike", Title: "Spike the OAuth flow"}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "server", Parent: "auth", Title: "Implement the server side", BlockedBy: []string{"spike"}}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "client", Parent: "auth", Title: "Implement the client side", BlockedBy: []string{"spike"}}),
 			))
 			Expect(res.GetAliases()).To(HaveLen(4))
-			byAlias := map[string]*daggerv1.Node{}
+			byAlias := map[string]*skiftv1.Node{}
 			for _, n := range res.GetNodes() {
 				for alias, r := range res.GetAliases() {
 					if strings.HasSuffix(r, "#"+ref(n)[1:]) {
@@ -102,7 +102,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 				completeOp(ref(spike), "Authorization code with PKCE; see the notes.",
 					textArtifact("notes", "# OAuth spike\n\nUse the authorization code flow with PKCE."))),
 				"--lease", claimed.GetLease().GetId())
-			Expect(completed.GetNodes()[0].GetStatus()).To(Equal(daggerv1.Status_STATUS_DONE))
+			Expect(completed.GetNodes()[0].GetStatus()).To(Equal(skiftv1.Status_STATUS_DONE))
 			shown := d.host.show(ref(spike))
 			Expect(shown.GetResult().GetBody()).To(ContainSubstring("PKCE"))
 			Expect(shown.GetResult().GetArtifacts()).To(HaveLen(1))
@@ -114,7 +114,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			By("when both are claimed and completed")
 			for range 2 {
 				c := d.host.claim("--agent-ref", "grove-2")
-				d.host.call(&daggerv1.ApplyPatchResponse{}, "complete", "--project", platform, ref(c.GetNode()),
+				d.host.call(&skiftv1.ApplyPatchResponse{}, "complete", "--project", platform, ref(c.GetNode()),
 					"--lease", c.GetLease().GetId(), "--result", "Implemented and merged.")
 			}
 
@@ -137,10 +137,10 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 
 			By("when it applies a patch creating a prerequisite and blocking itself on it")
 			res := d.host.patch(request(platform,
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "grammar", Parent: ref(node), Kind: "spike", Title: "Settle the grammar first"}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "grammar", Parent: ref(node), Kind: "spike", Title: "Settle the grammar first"}),
 				edgeOp("grammar", ref(node)),
 			), "--lease", claimed.GetLease().GetId())
-			var prerequisite *daggerv1.Node
+			var prerequisite *skiftv1.Node
 			for _, n := range res.GetNodes() {
 				if n.GetNumber() != node.GetNumber() {
 					prerequisite = n
@@ -168,7 +168,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			d.laptop.createProject("Platform")
 			d.laptop.patch(request(platform, createOp("deploy", "Deploy the new release")))
 			agent := d.host.mcp(platform)
-			claimed := &daggerv1.ClaimNextResponse{}
+			claimed := &skiftv1.ClaimNextResponse{}
 			agent.call("claim", map[string]any{}).into(claimed)
 			node := claimed.GetNode()
 			Expect(node).NotTo(BeNil())
@@ -177,27 +177,27 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			// The service has no single call that files and releases: the
 			// gate is a patch under the lease, and the release follows it.
 			// docs/domain-model.md asks for one atomic operation.
-			filed := &daggerv1.ApplyPatchResponse{}
+			filed := &skiftv1.ApplyPatchResponse{}
 			agent.call("apply_patch", patchArgs(request(platform,
-				createOpWith(&daggerv1.CreateNodeOp{
+				createOpWith(&skiftv1.CreateNodeOp{
 					Alias: "gate", Parent: ref(node), Title: "Approve the production deploy",
-					AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_USER,
+					AssigneeKind: skiftv1.AssigneeKind_ASSIGNEE_KIND_USER,
 				}),
 				edgeOp("gate", ref(node)),
 			))).into(filed)
-			var gate *daggerv1.Node
+			var gate *skiftv1.Node
 			for _, n := range filed.GetNodes() {
-				if n.GetAssigneeKind() == daggerv1.AssigneeKind_ASSIGNEE_KIND_USER {
+				if n.GetAssigneeKind() == skiftv1.AssigneeKind_ASSIGNEE_KIND_USER {
 					gate = n
 				}
 			}
 			Expect(gate).NotTo(BeNil())
-			released := &daggerv1.ReleaseResponse{}
+			released := &skiftv1.ReleaseResponse{}
 			agent.call("release", map[string]any{"reason": "gate", "detail": "waiting on approval of " + ref(gate)}).into(released)
 
 			By(`then the lease is released with reason "gate"`)
 			Expect(released.GetLease().GetId()).To(Equal(claimed.GetLease().GetId()))
-			Expect(released.GetLease().GetReleaseReason()).To(Equal(daggerv1.ReleaseReason_RELEASE_REASON_GATE))
+			Expect(released.GetLease().GetReleaseReason()).To(Equal(skiftv1.ReleaseReason_RELEASE_REASON_GATE))
 			Expect(d.host.show(ref(node)).GetLease()).To(BeNil())
 
 			By("and the gate appears in the ready set filtered to user work")
@@ -210,10 +210,10 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect(numbers(d.host.ready())).NotTo(ContainElement(node.GetNumber()))
 
 			By("when the gate is completed by a user principal")
-			completed := &daggerv1.ApplyPatchResponse{}
+			completed := &skiftv1.ApplyPatchResponse{}
 			d.laptop.call(completed, "complete", "--project", platform, ref(gate), "--result", "Approved.", "--view", "full")
 			Expect(completed.GetEvents()).NotTo(BeEmpty())
-			Expect(completed.GetEvents()[0].GetPrincipalKind()).To(Equal(daggerv1.PrincipalKind_PRINCIPAL_KIND_USER))
+			Expect(completed.GetEvents()[0].GetPrincipalKind()).To(Equal(skiftv1.PrincipalKind_PRINCIPAL_KIND_USER))
 
 			By("then the agent's node is ready again")
 			Expect(numbers(d.host.ready())).To(Equal([]int64{node.GetNumber()}))
@@ -233,10 +233,10 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect(blockedBy(d.host.explain(ref(filed.node)))).To(Equal([]int64{filed.gate.GetNumber()}))
 
 			By("when it attempts to drop, complete, reassign or unlink that gate")
-			attempts := map[string]*daggerv1.PatchOp{
+			attempts := map[string]*skiftv1.PatchOp{
 				"drop":     dropOp(ref(filed.gate)),
 				"complete": completeOp(ref(filed.gate), "Approving my own gate."),
-				"reassign": updateOp(&daggerv1.UpdateNodeOp{Node: ref(filed.gate), AssigneeKind: daggerv1.AssigneeKind_ASSIGNEE_KIND_AGENT.Enum()}),
+				"reassign": updateOp(&skiftv1.UpdateNodeOp{Node: ref(filed.gate), AssigneeKind: skiftv1.AssigneeKind_ASSIGNEE_KIND_AGENT.Enum()}),
 				"unlink":   removeEdgeOp(ref(filed.gate), ref(filed.node)),
 			}
 			for _, holding := range []bool{true, false} {
@@ -251,7 +251,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 					Expect(e.Code).To(Equal("permission_denied"), "%s (holding lease: %v): %s", name, holding, e.Message)
 				}
 				if holding {
-					d.host.call(&daggerv1.ReleaseResponse{}, "release", "--project", platform, filed.lease.GetId(), "--reason", "gate")
+					d.host.call(&skiftv1.ReleaseResponse{}, "release", "--project", platform, filed.lease.GetId(), "--reason", "gate")
 				}
 			}
 
@@ -260,8 +260,8 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect(explained.GetNode().GetBlocked()).To(BeTrue())
 			Expect(blockedBy(explained)).To(Equal([]int64{filed.gate.GetNumber()}))
 			gate := d.laptop.show(ref(filed.gate))
-			Expect(gate.GetNode().GetStatus()).To(Equal(daggerv1.Status_STATUS_OPEN))
-			Expect(gate.GetNode().GetAssigneeKind()).To(Equal(daggerv1.AssigneeKind_ASSIGNEE_KIND_USER))
+			Expect(gate.GetNode().GetStatus()).To(Equal(skiftv1.Status_STATUS_OPEN))
+			Expect(gate.GetNode().GetAssigneeKind()).To(Equal(skiftv1.AssigneeKind_ASSIGNEE_KIND_USER))
 			Expect(gate.GetEdges()).To(HaveLen(1))
 			Expect(numbers(d.laptop.ready("--assignee-kind", "user"))).To(Equal([]int64{filed.gate.GetNumber()}))
 		})
@@ -277,7 +277,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			cursor := d.host.cursorNow(platform)
 			first := d.host.claim("--agent-ref", "grove-7")
 			Expect(first.GetLease().GetAgentRef()).To(Equal("grove-7"))
-			d.host.call(&daggerv1.ReleaseResponse{}, "release", "--project", platform, first.GetLease().GetId(), "--reason", "crash", "--detail", "sandbox died")
+			d.host.call(&skiftv1.ReleaseResponse{}, "release", "--project", platform, first.GetLease().GetId(), "--reason", "crash", "--detail", "sandbox died")
 
 			By("when it is claimed again")
 			second := d.host.claim("--agent-ref", "grove-9")
@@ -308,10 +308,10 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			consumer := d.laptop.events(platform, cursor)
 
 			By("when nodes, comments and results are written")
-			var written []*daggerv1.Event
+			var written []*skiftv1.Event
 			created := d.laptop.patch(request(platform,
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "index", Title: "Index the corpus", Body: "Chunk and embed every document."}),
-				createOpWith(&daggerv1.CreateNodeOp{Alias: "rank", Title: "Rank the results", Body: "Hybrid ranking over the index."}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "index", Title: "Index the corpus", Body: "Chunk and embed every document."}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "rank", Title: "Rank the results", Body: "Hybrid ranking over the index."}),
 			))
 			written = append(written, created.GetEvents()...)
 			index, rank := created.GetNodes()[0], created.GetNodes()[1]
@@ -320,8 +320,8 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 
 			By("then it receives every event once")
 			// received is every event in delivery order; seen indexes it by id.
-			var received []*daggerv1.Event
-			seen := map[string]*daggerv1.Event{}
+			var received []*skiftv1.Event
+			seen := map[string]*skiftv1.Event{}
 			receive := func(s *eventStream, n int) (last string) {
 				GinkgoHelper()
 				for range n {
@@ -383,7 +383,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 					n.comments = append(n.comments, after["Body"].GetStringValue())
 				}
 			}
-			for _, n := range []*daggerv1.Node{index, rank} {
+			for _, n := range []*skiftv1.Node{index, rank} {
 				shown := d.laptop.show(ref(n))
 				Expect(state).To(HaveKey(n.GetId()))
 				Expect(state[n.GetId()].title).To(Equal(shown.GetNode().GetTitle()))
@@ -408,17 +408,17 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			session := d.laptop.mcp(platform)
 
 			By("when a session claims, comments, and completes a node")
-			claimed := &daggerv1.ClaimNextResponse{}
+			claimed := &skiftv1.ClaimNextResponse{}
 			session.call("claim", map[string]any{}).into(claimed)
 			Expect(claimed.GetNode()).NotTo(BeNil())
 			Expect(claimed.GetLease().GetHolder()).To(Equal(userID))
 			Expect(claimed.GetLease().GetHarness()).To(Equal("claude-code"))
 			node := ref(claimed.GetNode())
-			commented := &daggerv1.ApplyPatchResponse{}
+			commented := &skiftv1.ApplyPatchResponse{}
 			session.call("comment", map[string]any{"ref": node, "body": "Checked every item."}).into(commented)
-			completed := &daggerv1.ApplyPatchResponse{}
+			completed := &skiftv1.ApplyPatchResponse{}
 			session.call("complete", map[string]any{"ref": node, "result": "All clear for launch."}).into(completed)
-			Expect(completed.GetNodes()[0].GetStatus()).To(Equal(daggerv1.Status_STATUS_DONE))
+			Expect(completed.GetNodes()[0].GetStatus()).To(Equal(skiftv1.Status_STATUS_DONE))
 			session.close()
 
 			By("then the events record the tailscale identity scheme")
@@ -429,7 +429,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 				ops = append(ops, ev.GetOp())
 				schemes = append(schemes, ev.GetIdentityScheme())
 				Expect(ev.GetPrincipal()).To(Equal(userID))
-				Expect(ev.GetPrincipalKind()).To(Equal(daggerv1.PrincipalKind_PRINCIPAL_KIND_USER))
+				Expect(ev.GetPrincipalKind()).To(Equal(skiftv1.PrincipalKind_PRINCIPAL_KIND_USER))
 			}
 			Expect(ops).To(Equal([]string{"claim_node", "add_comment", "complete_node"}))
 			Expect(schemes).To(HaveEach(interceptor.SchemeTailscale))
@@ -453,7 +453,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect(numbers(d.host.ready())).To(ConsistOf(keep.GetNumber(), park.GetNumber()))
 
 			By("when a person focuses the project on one of them")
-			focus := &daggerv1.FocusResponse{}
+			focus := &skiftv1.FocusResponse{}
 			d.laptop.call(focus, "focus", "--project", platform, "--reason", "this week", ref(keep))
 			Expect(focus.GetHeldCount()).To(Equal(int32(1)))
 
@@ -462,7 +462,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 
 			By("and the parked node says who parked it and why, while staying open")
 			explained := d.host.explain(ref(park))
-			Expect(explained.GetNode().GetStatus()).To(Equal(daggerv1.Status_STATUS_OPEN))
+			Expect(explained.GetNode().GetStatus()).To(Equal(skiftv1.Status_STATUS_OPEN))
 			Expect(explained.GetNode().GetHeld()).To(BeTrue())
 			Expect(explained.GetReasons()).To(HaveLen(1))
 			held := explained.GetReasons()[0].GetHeld()
@@ -476,7 +476,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect(stderr).To(ContainSubstring("no rule permits agent hold_node"))
 
 			By("when the sweep is cleared without naming it")
-			cleared := &daggerv1.ClearFocusResponse{}
+			cleared := &skiftv1.ClearFocusResponse{}
 			d.laptop.call(cleared, "focus", "--project", platform, "--clear", "--reason", "week over")
 			Expect(cleared.GetReleasedCount()).To(Equal(int32(1)))
 
@@ -494,16 +494,16 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			for _, title := range []string{"Alpha", "Beta", "Gamma"} {
 				p := d.laptop.createProject(title)
 				ids[p.GetSlug()] = p.GetId()
-				d.laptop.patch(request(p.GetSlug(), createOpWith(&daggerv1.CreateNodeOp{
+				d.laptop.patch(request(p.GetSlug(), createOpWith(&skiftv1.CreateNodeOp{
 					Alias: "n", Title: "Rotate the signing key", Body: "The signing key for " + title + " expires soon.",
 				})))
 			}
-			archived := &daggerv1.ArchiveProjectResponse{}
+			archived := &skiftv1.ArchiveProjectResponse{}
 			d.laptop.call(archived, "project", "archive", "gamma")
 			Expect(archived.GetProject().GetArchivedAt()).NotTo(BeNil())
 
 			By("when I search a term appearing in all three")
-			hits := &daggerv1.SearchResponse{}
+			hits := &skiftv1.SearchResponse{}
 			d.laptop.call(hits, "search", "signing key")
 
 			By("then results from the two active projects are returned by default")
@@ -513,7 +513,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			}
 			Expect(projects).To(ConsistOf(ids["alpha"], ids["beta"]))
 
-			all := &daggerv1.SearchResponse{}
+			all := &skiftv1.SearchResponse{}
 			d.laptop.call(all, "search", "signing key", "--include-archived")
 			Expect(all.GetHits()).To(HaveLen(3), "and the archived one only on request")
 		})
@@ -530,7 +530,7 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			d.laptop.patch(request(beta.GetSlug(), createOp("b", "Beta's work")))
 
 			By("when no project is named, ready lists both projects' ready nodes, in turn order")
-			ready := &daggerv1.ReadyResponse{}
+			ready := &skiftv1.ReadyResponse{}
 			d.host.call(ready, "ready")
 			Expect(ready.GetNodes()).To(HaveLen(2))
 			first := ready.GetNodes()[0].GetProjectId()
@@ -538,27 +538,27 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 			Expect([]string{first, second}).To(ConsistOf(alpha.GetId(), beta.GetId()))
 
 			By("and claiming takes the first turn's project's node")
-			claimed := &daggerv1.ClaimNextResponse{}
+			claimed := &skiftv1.ClaimNextResponse{}
 			d.host.call(claimed, "claim", "--harness", "acceptance")
 			Expect(claimed.GetNode().GetProjectId()).To(Equal(first))
 
 			By("then only the other project still has anything ready")
-			ready = &daggerv1.ReadyResponse{}
+			ready = &skiftv1.ReadyResponse{}
 			d.host.call(ready, "ready")
 			Expect(ready.GetNodes()).To(HaveLen(1))
 			Expect(ready.GetNodes()[0].GetProjectId()).To(Equal(second))
 
-			claimed = &daggerv1.ClaimNextResponse{}
+			claimed = &skiftv1.ClaimNextResponse{}
 			d.host.call(claimed, "claim", "--harness", "acceptance")
 			Expect(claimed.GetNode().GetProjectId()).To(Equal(second))
 
 			By("and naming one project claims only from it")
 			d.laptop.patch(request(alpha.GetSlug(), createOp("a2", "More of alpha's work")))
-			fromBeta := &daggerv1.ClaimNextResponse{}
+			fromBeta := &skiftv1.ClaimNextResponse{}
 			d.host.call(fromBeta, "claim", "--project", beta.GetSlug(), "--harness", "acceptance")
 			Expect(fromBeta.GetNode()).To(BeNil(), "beta has nothing ready")
 
-			fromAlpha := &daggerv1.ClaimNextResponse{}
+			fromAlpha := &skiftv1.ClaimNextResponse{}
 			d.host.call(fromAlpha, "claim", "--project", alpha.GetSlug(), "--harness", "acceptance")
 			Expect(fromAlpha.GetNode().GetProjectId()).To(Equal(alpha.GetId()))
 		})

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // Relation is one kind of wait between two nodes.

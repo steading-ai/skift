@@ -11,9 +11,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/server/interceptor"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/server/interceptor"
 )
 
 // whoIsTable is a WhoIs answering with one node for every address, the way
@@ -33,9 +33,9 @@ func (w *whoIsTable) WhoIs(_ context.Context, remoteAddr string) (string, error)
 // serveTailnet stands in for the tailnet transport: a loopback listener
 // whose connections are marked as tsnet's are, with the principal
 // interceptor in front of graph.
-func serveTailnet(lookup interceptor.Lookup, graph daggerv1connect.GraphServiceHandler, whoIs interceptor.WhoIs) *httptest.Server {
+func serveTailnet(lookup interceptor.Lookup, graph skiftv1connect.GraphServiceHandler, whoIs interceptor.WhoIs) *httptest.Server {
 	mux := http.NewServeMux()
-	mux.Handle(daggerv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
+	mux.Handle(skiftv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
 		interceptor.NewPrincipal(lookup, interceptor.UnixResolver{}, interceptor.TailscaleResolver{WhoIs: whoIs}),
 	)))
 	ts := httptest.NewUnstartedServer(mux)
@@ -55,8 +55,8 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 		ts := serveTailnet(interceptor.StaticLookup{laptop: alice}, graph, whoIs)
 
 		By("when the node calls the service over the tailnet")
-		_, err := daggerv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 		Expect(err).NotTo(HaveOccurred())
 
 		By("then the request is attributed to that principal through the tailscale scheme")
@@ -76,8 +76,8 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 		By("when an unmapped tailnet node calls the service")
 		graph := newRecordingGraph()
 		ts := serveTailnet(interceptor.StaticLookup{}, graph, &whoIsTable{node: "nSTRANGER"})
-		_, err := daggerv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 
 		By("then the call fails as unauthenticated")
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
@@ -87,8 +87,8 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 	It("fails the call when the tailnet cannot say who is calling", func(ctx SpecContext) {
 		graph := newRecordingGraph()
 		ts := serveTailnet(interceptor.StaticLookup{laptop: alice}, graph, &whoIsTable{err: errors.New("no such peer")})
-		_, err := daggerv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 		Expect(err.Error()).To(ContainSubstring("no such peer"))
 		Expect(graph.seen).NotTo(Receive())

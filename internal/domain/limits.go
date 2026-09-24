@@ -38,7 +38,7 @@ type Limits struct {
 	CommentBytes int
 	// InlinePartBytes bounds one inline text part of an artifact.
 	InlinePartBytes int
-	// BlobBytes bounds one managed blob. Dagger is not a data transport.
+	// BlobBytes bounds one managed blob. Skift is not a data transport.
 	BlobBytes int64
 	// LeaseTTL is the longest a claim or heartbeat can hold a node for
 	// without renewing. A longer request is clamped to it rather than

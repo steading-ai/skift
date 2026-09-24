@@ -91,7 +91,7 @@ func EnumName(e protoreflect.Enum) string {
 }
 
 // EnumNames lists the short forms of an enum's values, sorted, without the
-// zero value: it is the unspecified one on every dagger enum and naming it
+// zero value: it is the unspecified one on every skift enum and naming it
 // is never how a caller asks for a default.
 func EnumNames(ed protoreflect.EnumDescriptor) []string {
 	names := make([]string, 0, ed.Values().Len())

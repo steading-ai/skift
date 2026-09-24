@@ -14,9 +14,9 @@ A software project decomposes into a directed acyclic graph. Nodes are units of 
 
 The graph is not static. An agent doing a spike learns that the plan was wrong and rewrites the subtree below it. An agent mid-task discovers a missing prerequisite and files it, blocking its own work until it lands. An agent that needs a credential, a button click, or a clarification files a node that only a human can complete. All of these are ordinary graph mutations, and the system must make them cheap, atomic, and safe.
 
-## What dagger is
+## What skift is
 
-Dagger is the durable store for that graph and the API through which agents and humans build and mutate it. It answers four questions:
+Skift is the durable store for that graph and the API through which agents and humans build and mutate it. It answers four questions:
 
 1. What exists, and how does it depend on what?
 2. What is ready?
@@ -25,25 +25,25 @@ Dagger is the durable store for that graph and the API through which agents and 
 
 Agents are first-class principals. They create, decompose, link, claim, complete, and drop work through the same API humans use. Authorization policy decides what a given principal may do. The API is the domain model, so storage and transport can change underneath it.
 
-Dagger is a product. It is proved out on a single home server with one to five users, and it is shaped to reach an organization with a thousand daily active users and hundreds of concurrent agents. Components are swapped as scale demands; contracts are not.
+Skift is a product. It is proved out on a single home server with one to five users, and it is shaped to reach an organization with a thousand daily active users and hundreds of concurrent agents. Components are swapped as scale demands; contracts are not.
 
 ## Projects are free
 
 The cost of exploration is falling, so bets get made more often and projects live for hours as readily as for years. A tracker that makes a project expensive to start turns the space into the team, the team into a dumping ground, and the only exit into declaring bankruptcy and archiving everything.
 
-Creating a project in dagger takes no provisioning, no schema change, and no adjudication of a scarce name. Node numbers restart at 1 in each one, so a three-day project stays legible. Archiving reclaims nothing because nothing was scarce, and abandoned work is kept rather than tidied away: a failed spike is often the most useful record in the store.
+Creating a project in skift takes no provisioning, no schema change, and no adjudication of a scarce name. Node numbers restart at 1 in each one, so a three-day project stays legible. Archiving reclaims nothing because nothing was scarce, and abandoned work is kept rather than tidied away: a failed spike is often the most useful record in the store.
 
-Cheap projects trade a curation problem for a discovery problem. Hundreds of short-lived slugs mean search is how anything is found again, so lexical search arrives with the first dogfood milestone rather than being deferred indefinitely. Semantic retrieval and synthesized answers belong to a service consuming dagger's events, not to the store.
+Cheap projects trade a curation problem for a discovery problem. Hundreds of short-lived slugs mean search is how anything is found again, so lexical search arrives with the first dogfood milestone rather than being deferred indefinitely. Semantic retrieval and synthesized answers belong to a service consuming skift's events, not to the store.
 
-## What dagger is not
+## What skift is not
 
-- **Not an orchestrator.** Dagger stores which work is live and exposes it with leases. Deciding which live work runs next, which agent, where, in what order, and against what budget, belongs to the orchestrator. What is live is intent, and intent is recorded here; what runs next is scheduling, and it is not. Hive and its successors are consumers.
-- **Not an agent runtime.** Dagger never spawns, supervises, or talks to an agent. Agents and orchestrators talk to dagger.
-- **Not a model of the organization.** Departments, teams, objectives, and company goals are not dagger's to represent. Group membership arrives as an input to policy from wherever the organization already keeps it, and a project management agent can work with a separate system for high-level priorities. The graph is work decomposition; conflating it with reporting lines or intent hierarchies is how trackers acquire their reputation.
-- **Not a workflow engine.** There are no stages, columns, or state machines in dagger. A pipeline of define, plan, build, and review is four nodes and three edges. A gate that only a human can pass is a node assigned to a human.
+- **Not an orchestrator.** Skift stores which work is live and exposes it with leases. Deciding which live work runs next, which agent, where, in what order, and against what budget, belongs to the orchestrator. What is live is intent, and intent is recorded here; what runs next is scheduling, and it is not. Hive and its successors are consumers.
+- **Not an agent runtime.** Skift never spawns, supervises, or talks to an agent. Agents and orchestrators talk to skift.
+- **Not a model of the organization.** Departments, teams, objectives, and company goals are not skift's to represent. Group membership arrives as an input to policy from wherever the organization already keeps it, and a project management agent can work with a separate system for high-level priorities. The graph is work decomposition; conflating it with reporting lines or intent hierarchies is how trackers acquire their reputation.
+- **Not a workflow engine.** There are no stages, columns, or state machines in skift. A pipeline of define, plan, build, and review is four nodes and three edges. A gate that only a human can pass is a node assigned to a human.
 - **Not a message bus.** Nodes, comments, and attachments are for describing and delivering work. Agent-to-agent coordination goes over A2A between the agents themselves.
-- **Not a sandbox, a network boundary, or a misalignment detector.** Compute isolation, egress control, and supervision of agent behavior belong to the platform around dagger. Dagger makes coordination legible and attributed; it does not judge it.
-- **Not a distributed filesystem.** Dagger stores immutable, content-addressed, size-capped blobs and references to artifacts that live elsewhere. It does not move large data between agents.
+- **Not a sandbox, a network boundary, or a misalignment detector.** Compute isolation, egress control, and supervision of agent behavior belong to the platform around skift. Skift makes coordination legible and attributed; it does not judge it.
+- **Not a distributed filesystem.** Skift stores immutable, content-addressed, size-capped blobs and references to artifacts that live elsewhere. It does not move large data between agents.
 
 ## The end state
 

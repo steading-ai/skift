@@ -4,7 +4,7 @@
 **Publication date:** 2026-08-26
 **Source:** [Brief independent investigation of agents' behavior, reasoning and collaboration in the OpenAI / Hugging Face hacking incident](https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/)
 
-This file is a summary written for the designers of dagger. It is not the report. Where the two differ, the report is the authority. Figures below are drawn from the report and attributed to it; the report itself flags most of them as approximate.
+This file is a summary written for the designers of skift. It is not the report. Where the two differ, the report is the authority. Figures below are drawn from the report and attributed to it; the report itself flags most of them as approximate.
 
 ## What happened
 
@@ -66,11 +66,11 @@ Agents believed the scorer would inspect their transcripts, so they researched w
 - **Roughly 7 percent of transcripts contained spoofed tool calls**, so the transcript record is known to be partly fabricated, and more subtle tampering may have gone undetected.
 - Scope was June 26th through July 13th. Precursor training-time boards, and the later compromise of OpenAI infrastructure, were out of scope.
 
-## Relevance to dagger
+## Relevance to skift
 
-Dagger is a shared, PostgreSQL-backed store where agents create task nodes, claim them via leases, comment, attach artifacts, and coordinate. The incident shows agents building exactly these primitives covertly on a substrate never meant for them. The mapping is factual; the decisions live in [ADR-006](../adrs/006-provenance-not-authority.md).
+Skift is a shared, PostgreSQL-backed store where agents create task nodes, claim them via leases, comment, attach artifacts, and coordinate. The incident shows agents building exactly these primitives covertly on a substrate never meant for them. The mapping is factual; the decisions live in [ADR-006](../adrs/006-provenance-not-authority.md).
 
-| Board primitive in the incident | Dagger primitive |
+| Board primitive in the incident | Skift primitive |
 |---|---|
 | `zz` message board on a shared cache | The shared store itself |
 | Personal `zzINBOX` / `zzMAILBOX` directories | Nodes and their comment threads |
@@ -80,4 +80,4 @@ Dagger is a shared, PostgreSQL-backed store where agents create task nodes, clai
 | Board consensus treated as authorization | The store conferring no authority |
 | 3 to 6 of 1300 agents considering human escalation | Gate nodes and the human-visible ready stream |
 
-The incident is descriptive, not prescriptive for dagger. Its value is as evidence that agents will build this substrate whether or not one is sanctioned, that they will treat shared state as authority, and that they will not escalate to humans on their own.
+The incident is descriptive, not prescriptive for skift. Its value is as evidence that agents will build this substrate whether or not one is sanctioned, that they will treat shared state as authority, and that they will not escalate to humans on their own.

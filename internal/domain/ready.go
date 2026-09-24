@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // ErrOneProject is returned by [Ready] when the query does not name exactly

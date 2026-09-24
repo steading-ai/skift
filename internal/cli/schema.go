@@ -6,9 +6,9 @@ import (
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/codec"
-	"github.com/ivy/dagger/internal/protodoc"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/codec"
+	"github.com/steading-ai/skift/internal/protodoc"
 )
 
 // The JSON Schema for a patch's operations, derived from the PatchOp
@@ -24,10 +24,10 @@ import (
 var targetFields = []protoreflect.Name{"node", "from", "to", "comment_id"}
 
 // opsProperty is the schema of the "ops" argument of apply_patch: an array
-// whose items are a oneOf over the forms of dagger.v1.PatchOp, one branch
+// whose items are a oneOf over the forms of skift.v1.PatchOp, one branch
 // per operation, each a single-key object naming that operation.
 var opsProperty = sync.OnceValue(func() map[string]any {
-	field := (&daggerv1.ApplyPatchRequest{}).ProtoReflect().Descriptor().Fields().ByName("ops")
+	field := (&skiftv1.ApplyPatchRequest{}).ProtoReflect().Descriptor().Fields().ByName("ops")
 	ops := field.Message().Oneofs().ByName("op").Fields()
 	branches := make([]any, 0, ops.Len())
 	for i := range ops.Len() {

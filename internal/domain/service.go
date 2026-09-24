@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/store/migrations"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/store/migrations"
 )
 
 // The rows the domain hands back, named here so that a caller outside the

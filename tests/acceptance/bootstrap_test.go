@@ -14,13 +14,13 @@ import (
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // A machine with the package installed has a binary, a unit, and an empty
 // database. What the package cannot know is the uid of the caller, so the
-// path from there to a working dagger is three commands of the binary's
+// path from there to a working skift is three commands of the binary's
 // own: migrate, bootstrap for that uid, and start. Nothing here touches
 // the database except to count what bootstrap left.
 
@@ -40,27 +40,27 @@ func admin(url string, args ...string) *gexec.Session {
 	GinkgoHelper()
 	session, err := gexec.Start(exec.Command(binary, append(args, "--database-url", url)...), GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
-	Eventually(session, 60*time.Second).Should(gexec.Exit(), "dg %v did not exit", args)
+	Eventually(session, 60*time.Second).Should(gexec.Exit(), "skift %v did not exit", args)
 	return session
 }
 
 var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func() {
-	It("Scenario: A clean machine becomes a working dagger", func(ctx SpecContext) {
-		By("given the dagger binary and a reachable empty database")
+	It("Scenario: A clean machine becomes a working skift", func(ctx SpecContext) {
+		By("given the skift binary and a reachable empty database")
 		url := pg.EmptyDatabase(ctx)
 		dir := GinkgoT().TempDir()
 		uid := strconv.Itoa(os.Getuid())
 
-		By("when dg migrate runs")
+		By("when skift migrate runs")
 		session := admin(url, "migrate")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
 
-		By("and dg admin bootstrap runs for the caller's user id")
+		By("and skift admin bootstrap runs for the caller's user id")
 		session = admin(url, "admin", "bootstrap", uid, "acme")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
 
 		By("and the service is started, as the unit starts it")
-		socket := filepath.Join(dir, "dg.sock")
+		socket := filepath.Join(dir, "skift.sock")
 		serve, err := gexec.Start(exec.Command(binary, "serve", "--socket", socket, "--database-url", url, "--shutdown-timeout", "5s"), GinkgoWriter, GinkgoWriter)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
@@ -69,11 +69,11 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 		})
 		Eventually(serve.Err, 30*time.Second).Should(gbytes.Say("database reachable; ready"))
 
-		By("then dg ready answers the bootstrapped user with an empty ready set and no error")
+		By("then skift ready answers the bootstrapped user with an empty ready set and no error")
 		me := face{name: "host", flags: []string{"--socket", socket}, env: cleanEnv(dir), unix: true}
 		project := me.createProject("Platform")
 		Expect(project.GetSlug()).To(Equal(platform))
-		res := &daggerv1.ReadyResponse{}
+		res := &skiftv1.ReadyResponse{}
 		me.call(res, "ready", "--project", platform)
 		Expect(res.GetNodes()).To(BeEmpty())
 	})
@@ -85,7 +85,7 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 		Expect(admin(url, "admin", "bootstrap", "1000", "acme").ExitCode()).To(BeZero())
 		before := principalCount(ctx, url)
 
-		By("when dg admin bootstrap is run again with the same user id")
+		By("when skift admin bootstrap is run again with the same user id")
 		session := admin(url, "admin", "bootstrap", "1000", "acme")
 
 		By("then it exits zero and the principal count is unchanged")

@@ -1,0 +1,21 @@
+# One run of the lease reaper: releases every lease whose TTL has passed,
+# as expired, returning its node to the ready set. skift-reap.timer starts
+# it; running it by hand is `systemctl start skift-reap.service`.
+# The run is idempotent and safe alongside another, so an overlap with a
+# manual run or a claim that expires the same lease first does no harm.
+
+[Unit]
+Description=skift: expire stale leases
+Documentation=https://github.com/steading-ai/skift
+After=skift.service
+
+[Service]
+Type=oneshot
+User=skift
+Group=skift
+EnvironmentFile=-%E/skift/env
+ExecStart=/usr/bin/skift reap
+StandardOutput=journal
+StandardError=journal
+SyslogLevelPrefix=true
+NoNewPrivileges=true

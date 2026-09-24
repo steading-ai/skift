@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/logging"
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 type migrateOptions struct {
@@ -30,9 +30,9 @@ in order, and print what was applied. A database already at the current
 schema applies nothing, and that is not an error, so this is safe to run
 on every deploy.
 
-"dg serve" does the same at start unless told not to; this command is for
+"skift serve" does the same at start unless told not to; this command is for
 running the migrations ahead of the service, as an installer or a person.
-Like "dg reap", it reaches the database directly rather than through the
+Like "skift reap", it reaches the database directly rather than through the
 service.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -48,28 +48,28 @@ service.`,
 func runMigrate(cmd *cobra.Command, opts migrateOptions) error {
 	var level slog.LevelVar
 	if err := level.UnmarshalText([]byte(opts.logLevel)); err != nil {
-		return fmt.Errorf("dg migrate: --log-level: %w", err)
+		return fmt.Errorf("skift migrate: --log-level: %w", err)
 	}
 	log := logging.New(cmd.ErrOrStderr(), &level)
 	if opts.databaseURL == "" {
-		return fmt.Errorf("dg migrate: a database URL is required; pass --database-url or set %s", databaseURLEnv)
+		return fmt.Errorf("skift migrate: a database URL is required; pass --database-url or set %s", databaseURLEnv)
 	}
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	log.Debug("dg migrate starting", "version", version.String())
+	log.Debug("skift migrate starting", "version", version.String())
 	report, err := domain.ApplyMigrations(ctx, opts.databaseURL)
 	if err != nil {
-		return fmt.Errorf("dg migrate: %w", err)
+		return fmt.Errorf("skift migrate: %w", err)
 	}
 	for _, v := range report.Applied {
 		log.Info("migration applied", "version", v)
 	}
-	log.Info("dg migrate done", "applied", len(report.Applied), "schema_version", report.Version)
+	log.Info("skift migrate done", "applied", len(report.Applied), "schema_version", report.Version)
 	raw, err := json.Marshal(report)
 	if err != nil {
-		return fmt.Errorf("dg migrate: %w", err)
+		return fmt.Errorf("skift migrate: %w", err)
 	}
 	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
 	return err

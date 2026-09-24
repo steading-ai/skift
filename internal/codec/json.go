@@ -24,7 +24,7 @@ const wellKnown = "google.protobuf."
 // decoding, short for encoding.
 type rewrite func(protoreflect.EnumDescriptor, string) (string, error)
 
-// toShort spells a value the way dagger emits it.
+// toShort spells a value the way skift emits it.
 func toShort(ed protoreflect.EnumDescriptor, name string) (string, error) {
 	return Short(ed, name), nil
 }

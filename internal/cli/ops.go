@@ -6,27 +6,27 @@ import (
 
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/client"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/client"
 )
 
 // The single-operation commands: each is one patch with one op, for the
-// common cases a shell one-liner covers. Anything more is `dg patch apply`.
+// common cases a shell one-liner covers. Anything more is `skift patch apply`.
 
 func (a *app) createCommand() *cobra.Command {
-	op := &daggerv1.CreateNodeOp{}
+	op := &skiftv1.CreateNodeOp{}
 	var body, priority, assigneeKind, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "create <title>",
 		Short: "Create a node in the current project",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var err error
-			if op.Priority, err = enumFlag[daggerv1.Priority]("priority", priority); err != nil {
+			if op.Priority, err = enumFlag[skiftv1.Priority]("priority", priority); err != nil {
 				return err
 			}
-			if op.AssigneeKind, err = enumFlag[daggerv1.AssigneeKind]("assignee-kind", assigneeKind); err != nil {
+			if op.AssigneeKind, err = enumFlag[skiftv1.AssigneeKind]("assignee-kind", assigneeKind); err != nil {
 				return err
 			}
 			refs := make([]client.NodeRef, 0, 1+len(op.GetBlockedBy()))
@@ -56,17 +56,17 @@ func (a *app) createCommand() *cobra.Command {
 				return err
 			}
 			op.Title = args[0]
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
-				Ops:       []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_CreateNode{CreateNode: op}}},
+				Ops:       []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_CreateNode{CreateNode: op}}},
 				View:      v,
 			})
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&body, "body", "", "markdown body, the prompt an agent receives; - reads stdin")
-	f.StringVar(&op.Kind, "kind", "", "single-valued free-form label dagger never interprets; task, bug, spike and chore are conventional (default: task)")
+	f.StringVar(&op.Kind, "kind", "", "single-valued free-form label skift never interprets; task, bug, spike and chore are conventional (default: task)")
 	f.StringVar(&priority, "priority", "", "advisory priority ordering the ready set within a project, never a gate: p0 to p4 (default: p2)")
 	f.StringVar(&op.Parent, "parent", "", "node reference of the parent")
 	f.StringArrayVar(&op.BlockedBy, "blocked-by", nil, "node reference that must finish first; repeatable")
@@ -86,7 +86,7 @@ var updateNodeFieldFlags = []string{"title", "body", "kind", "priority", "parent
 func (a *app) updateCommand() *cobra.Command {
 	var title, body, kind, priority, parent, assignee, assigneeKind, lease, requestID string
 	var labels []string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "update <ref>",
 		Short: "Change the mutable fields of a node: title, body, kind, priority, parent, labels, assignee",
@@ -105,9 +105,9 @@ the whole set rather than adding to it.`,
 			}
 			f := cmd.Flags()
 			if !slices.ContainsFunc(updateNodeFieldFlags, f.Changed) {
-				return usage("dg update needs a field to change: --%s", strings.Join(updateNodeFieldFlags, ", --"))
+				return usage("skift update needs a field to change: --%s", strings.Join(updateNodeFieldFlags, ", --"))
 			}
-			op := &daggerv1.UpdateNodeOp{Node: ref.String()}
+			op := &skiftv1.UpdateNodeOp{Node: ref.String()}
 			refs := []client.NodeRef{ref}
 			if f.Changed("title") {
 				op.Title = &title
@@ -123,7 +123,7 @@ the whole set rather than adding to it.`,
 				op.Kind = &kind
 			}
 			if f.Changed("priority") {
-				p, err := requiredEnumFlag[daggerv1.Priority]("priority", priority)
+				p, err := requiredEnumFlag[skiftv1.Priority]("priority", priority)
 				if err != nil {
 					return err
 				}
@@ -140,10 +140,10 @@ the whole set rather than adding to it.`,
 				op.Parent = &parent
 			}
 			if f.Changed("label") {
-				op.Labels = &daggerv1.Labels{Values: nonEmpty(labels)}
+				op.Labels = &skiftv1.Labels{Values: nonEmpty(labels)}
 			}
 			if f.Changed("assignee-kind") {
-				k, err := requiredEnumFlag[daggerv1.AssigneeKind]("assignee-kind", assigneeKind)
+				k, err := requiredEnumFlag[skiftv1.AssigneeKind]("assignee-kind", assigneeKind)
 				if err != nil {
 					return err
 				}
@@ -160,11 +160,11 @@ the whole set rather than adding to it.`,
 			if err != nil {
 				return err
 			}
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
 				LeaseId:   lease,
-				Ops:       []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_UpdateNode{UpdateNode: op}}},
+				Ops:       []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_UpdateNode{UpdateNode: op}}},
 				View:      v,
 			})
 		},
@@ -198,7 +198,7 @@ func nonEmpty(values []string) []string {
 
 func (a *app) linkCommand() *cobra.Command {
 	var kind, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "link <from> <to>",
 		Short: "Add an edge: for blocks, <from> must finish before <to> is ready",
@@ -212,7 +212,7 @@ func (a *app) linkCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			edgeKind, err := enumFlag[daggerv1.EdgeKind]("kind", kind)
+			edgeKind, err := enumFlag[skiftv1.EdgeKind]("kind", kind)
 			if err != nil {
 				return err
 			}
@@ -224,10 +224,10 @@ func (a *app) linkCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
-				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_AddEdge{AddEdge: &daggerv1.AddEdgeOp{
+				Ops: []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_AddEdge{AddEdge: &skiftv1.AddEdgeOp{
 					From: from.String(), To: to.String(), Kind: edgeKind,
 				}}}},
 				View: v,
@@ -243,7 +243,7 @@ func (a *app) linkCommand() *cobra.Command {
 func (a *app) dropCommand() *cobra.Command {
 	var reason, detail, requestID string
 	var maxNodes int
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "drop <ref>",
 		Short: "Drop a node with a reason, optionally cascading within a stated bound",
@@ -262,19 +262,19 @@ reopen undoing the drop works from.`,
 			if err != nil {
 				return err
 			}
-			dropReason, err := enumFlag[daggerv1.DropReason]("reason", reason)
+			dropReason, err := enumFlag[skiftv1.DropReason]("reason", reason)
 			if err != nil {
 				return err
 			}
-			if dropReason == daggerv1.DropReason_DROP_REASON_UNSPECIFIED {
+			if dropReason == skiftv1.DropReason_DROP_REASON_UNSPECIFIED {
 				return usage("--reason is required: a drop is an assertion about the work, and the event keeps it")
 			}
-			op := &daggerv1.DropNodeOp{Node: ref.String(), Reason: dropReason, Detail: detail}
+			op := &skiftv1.DropNodeOp{Node: ref.String(), Reason: dropReason, Detail: detail}
 			if cmd.Flags().Changed("cascade") {
 				if maxNodes < 1 {
 					return usage("--cascade takes the most nodes the cascade may drop, at least 1")
 				}
-				op.Cascade = &daggerv1.Cascade{MaxNodes: int32(maxNodes)} //nolint:gosec // bounded below by the check above and above by the patch ceiling the server applies
+				op.Cascade = &skiftv1.Cascade{MaxNodes: int32(maxNodes)} //nolint:gosec // bounded below by the check above and above by the patch ceiling the server applies
 			}
 			project, err := a.projectFor(ref)
 			if err != nil {
@@ -284,10 +284,10 @@ reopen undoing the drop works from.`,
 			if err != nil {
 				return err
 			}
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
-				Ops:       []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_DropNode{DropNode: op}}},
+				Ops:       []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_DropNode{DropNode: op}}},
 				View:      v,
 			})
 		},
@@ -303,7 +303,7 @@ reopen undoing the drop works from.`,
 
 func (a *app) holdCommand() *cobra.Command {
 	var reason, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "hold <ref>",
 		Short: "Park a node and everything under it, with a reason",
@@ -330,7 +330,7 @@ refused.`,
 
 func (a *app) unholdCommand() *cobra.Command {
 	var reason, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "unhold <ref>",
 		Short: "Release a node's hold, with a reason",
@@ -355,14 +355,14 @@ const reasonRequired = "--reason is required: a hold nobody can explain is one n
 // holdOp is the patch operation that parks a node, or releases it. Both
 // the CLI and the MCP tool build it here, so the two surfaces cannot
 // disagree about which verb they sent.
-func holdOp(node, reason string, release bool) *daggerv1.PatchOp {
+func holdOp(node, reason string, release bool) *skiftv1.PatchOp {
 	if release {
-		return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_UnholdNode{
-			UnholdNode: &daggerv1.UnholdNodeOp{Node: node, Reason: reason},
+		return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_UnholdNode{
+			UnholdNode: &skiftv1.UnholdNodeOp{Node: node, Reason: reason},
 		}}
 	}
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_HoldNode{
-		HoldNode: &daggerv1.HoldNodeOp{Node: node, Reason: reason},
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_HoldNode{
+		HoldNode: &skiftv1.HoldNodeOp{Node: node, Reason: reason},
 	}}
 }
 
@@ -383,17 +383,17 @@ func (a *app) setHold(cmd *cobra.Command, arg, reason, requestID string, view vi
 	if err != nil {
 		return err
 	}
-	return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+	return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 		RequestId: orMint(requestID),
 		Project:   project,
-		Ops:       []*daggerv1.PatchOp{holdOp(ref.String(), reason, release)},
+		Ops:       []*skiftv1.PatchOp{holdOp(ref.String(), reason, release)},
 		View:      v,
 	})
 }
 
 func (a *app) completeCommand() *cobra.Command {
 	var lease, result, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "complete <ref>",
 		Short: "Complete a node with a result, under the lease that holds it",
@@ -419,12 +419,12 @@ as the fencing token; the lease is released as part of the same patch.`,
 			if err != nil {
 				return err
 			}
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
 				LeaseId:   lease,
-				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_CompleteNode{CompleteNode: &daggerv1.CompleteNodeOp{
-					Node: ref.String(), Result: &daggerv1.Result{Body: body},
+				Ops: []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_CompleteNode{CompleteNode: &skiftv1.CompleteNodeOp{
+					Node: ref.String(), Result: &skiftv1.Result{Body: body},
 				}}}},
 				View: v,
 			})
@@ -439,7 +439,7 @@ as the fencing token; the lease is released as part of the same patch.`,
 
 func (a *app) commentCommand() *cobra.Command {
 	var inReplyTo, lease, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "comment <ref> <body|->",
 		Short: "Add a comment to a node",
@@ -461,11 +461,11 @@ func (a *app) commentCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.apply(cmd, &daggerv1.ApplyPatchRequest{
+			return a.apply(cmd, &skiftv1.ApplyPatchRequest{
 				RequestId: orMint(requestID),
 				Project:   project,
 				LeaseId:   lease,
-				Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_AddComment{AddComment: &daggerv1.AddCommentOp{
+				Ops: []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_AddComment{AddComment: &skiftv1.AddCommentOp{
 					Node: ref.String(), Body: body, InReplyTo: inReplyTo,
 				}}}},
 				View: v,

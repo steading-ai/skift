@@ -1,13 +1,13 @@
 {
-  "name": "dagger",
-  "description": "The dagger plugin: teaches an agent to drive the dagger graph through its MCP server or its CLI, and registers the MCP server itself.",
+  "name": "skift",
+  "description": "The skift plugin: teaches an agent to drive the skift graph through its MCP server or its CLI, and registers the MCP server itself.",
   "owner": {
     "name": "Ivy Evans"
   },
   "plugins": [
     {
-      "name": "dagger",
-      "source": "./dagger",
+      "name": "skift",
+      "source": "./skift",
       "version": "0.3.1"
     }
   ]

@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/sdnotify"
+	"github.com/steading-ai/skift/internal/sdnotify"
 )
 
 // listen opens a datagram socket the way systemd does for a notify unit,

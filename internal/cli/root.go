@@ -1,7 +1,7 @@
-// Package cli assembles the cobra command tree for the dg binary.
+// Package cli assembles the cobra command tree for the skift binary.
 //
-// One binary has three faces: dg the CLI, dg mcp the stdio MCP server, and
-// dg serve the service. The CLI commands are thin: each builds one request,
+// One binary has three faces: skift the CLI, skift mcp the stdio MCP server, and
+// skift serve the service. The CLI commands are thin: each builds one request,
 // sends it through the shared client, and prints the response. Every
 // command emits JSON when asked, or whenever stdout is not a terminal, and
 // every failure is a JSON object on stderr with a non-zero exit code.
@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 // ErrNotImplemented is returned by a face of the binary that is wired into the
@@ -36,26 +36,26 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return ExitCode(err)
 }
 
-// NewRootCommand builds the dg command tree. Output is written to stdout and
+// NewRootCommand builds the skift command tree. Output is written to stdout and
 // diagnostics to stderr; callers, including specs, may redirect either.
 func NewRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	a := &app{}
 	root := &cobra.Command{
-		Use:     "dg",
+		Use:     "skift",
 		Short:   "Agent-first project management on a directed acyclic graph",
 		Version: version.String(),
-		Long: `dg is the single entry point to dagger.
+		Long: `skift is the single entry point to skift.
 
 Run without a subcommand it is the CLI, a Connect client with JSON output.
-"dg mcp" serves the same client over stdio as an MCP server.
-"dg serve" runs the service: Connect handlers over PostgreSQL.
-"dg migrate" brings the database to the current schema.
-"dg admin bootstrap" creates the first organization and principal.
-"dg reap" expires stale leases; dagger-reap.timer runs it.
+"skift mcp" serves the same client over stdio as an MCP server.
+"skift serve" runs the service: Connect handlers over PostgreSQL.
+"skift migrate" brings the database to the current schema.
+"skift admin bootstrap" creates the first organization and principal.
+"skift reap" expires stale leases; skift-reap.timer runs it.
 
 Node references are "#7" in the current project, "slug#7" in another
 project of the organization, or "org/slug#7" fully qualified. The current
-project comes from --project, $DG_PROJECT, or the config file.
+project comes from --project, $SKIFT_PROJECT, or the config file.
 
 Output is JSON whenever stdout is not a terminal, and on request with
 --output json. Errors are a JSON object on stderr: {"code": ..., "message": ...}.`,
@@ -120,7 +120,7 @@ func newVersionCommand() *cobra.Command {
 		Short: "Print the version of this build",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "dg version %s\n", version.String())
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "skift version %s\n", version.String())
 			return err
 		},
 	}

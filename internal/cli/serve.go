@@ -16,14 +16,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/logging"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/sdnotify"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/server/transport"
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/sdnotify"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/server/transport"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 // databaseURLEnv is the variable the service reads its connection string
@@ -40,9 +40,9 @@ const tailnetAuthKeyEnv = "TS_AUTHKEY"
 // a systemd RuntimeDirectory= puts it.
 func defaultSocketPath() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "dagger", "dg.sock")
+		return filepath.Join(dir, "skift", "skift.sock")
 	}
-	return "/run/dagger/dg.sock"
+	return "/run/skift/skift.sock"
 }
 
 type serveOptions struct {
@@ -60,8 +60,8 @@ func newServeCommand() *cobra.Command {
 	opts := serveOptions{}
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Run the dagger service",
-		Long: `Run the dagger service: the dagger.v1 Connect handlers over PostgreSQL,
+		Short: "Run the skift service",
+		Long: `Run the skift service: the skift.v1 Connect handlers over PostgreSQL,
 listening on a unix socket and, when --tailnet-hostname is given, as a node
 on a tailnet as well. Both serve the same handlers; a caller over the socket
 is identified by its unix user, over the tailnet by its tailscale node.
@@ -70,7 +70,7 @@ The service brings the database to the current schema once it answers,
 and reports itself ready only then, so a deployment needs no migration
 step of its own. With --no-migrate it applies nothing and instead refuses
 to serve a database that is behind the schema the binary carries; run
-"dg migrate" first.
+"skift migrate" first.
 
 Logs go to stderr as structured records. Under systemd they carry journal
 priorities, and under a Type=notify unit the service reports itself ready
@@ -103,7 +103,7 @@ process exits.`,
 func tailnetTransport(opts serveOptions, log *slog.Logger) (*transport.Tailnet, error) {
 	if opts.tailnet.Hostname == "" {
 		if len(opts.tailnet.Tags) > 0 {
-			return nil, errors.New("dg serve: --tailnet-tag needs --tailnet-hostname")
+			return nil, errors.New("skift serve: --tailnet-tag needs --tailnet-hostname")
 		}
 		return nil, nil
 	}
@@ -111,7 +111,7 @@ func tailnetTransport(opts serveOptions, log *slog.Logger) (*transport.Tailnet, 
 	cfg.Logger = log
 	tn, err := transport.NewTailnet(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("dg serve: %w", err)
+		return nil, fmt.Errorf("skift serve: %w", err)
 	}
 	return tn, nil
 }
@@ -119,16 +119,16 @@ func tailnetTransport(opts serveOptions, log *slog.Logger) (*transport.Tailnet, 
 func runServe(cmd *cobra.Command, opts serveOptions) error {
 	var level slog.LevelVar
 	if err := level.UnmarshalText([]byte(opts.logLevel)); err != nil {
-		return fmt.Errorf("dg serve: --log-level: %w", err)
+		return fmt.Errorf("skift serve: --log-level: %w", err)
 	}
 	log := logging.New(cmd.ErrOrStderr(), &level)
 
 	mode, err := strconv.ParseUint(opts.socketMode, 8, 32)
 	if err != nil || mode > 0o777 {
-		return fmt.Errorf("dg serve: --socket-mode %q is not an octal permission set", opts.socketMode)
+		return fmt.Errorf("skift serve: --socket-mode %q is not an octal permission set", opts.socketMode)
 	}
 	if opts.databaseURL == "" {
-		return fmt.Errorf("dg serve: a database URL is required; pass --database-url or set %s", databaseURLEnv)
+		return fmt.Errorf("skift serve: a database URL is required; pass --database-url or set %s", databaseURLEnv)
 	}
 	tailnet, err := tailnetTransport(opts, log)
 	if err != nil {
@@ -143,7 +143,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// starting.
 	bundle, err := policy.LoadDefault(ctx)
 	if err != nil {
-		return fmt.Errorf("dg serve: %w", err)
+		return fmt.Errorf("skift serve: %w", err)
 	}
 
 	// The pool connects lazily, so a database that is down at startup is
@@ -151,7 +151,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// listening; systemd would otherwise restart it in a loop.
 	pool, err := pgxpool.New(ctx, opts.databaseURL)
 	if err != nil {
-		return fmt.Errorf("dg serve: database url: %w", err)
+		return fmt.Errorf("skift serve: database url: %w", err)
 	}
 	defer pool.Close()
 
@@ -182,9 +182,9 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		Events: server.NewEventService(svc),
 	}, pool)
 
-	log.Info("dg serve starting", "version", version.String(), "policy_version", bundle.Version())
+	log.Info("skift serve starting", "version", version.String(), "policy_version", bundle.Version())
 	if err := srv.Listen(); err != nil {
-		return fmt.Errorf("dg serve: %w", err)
+		return fmt.Errorf("skift serve: %w", err)
 	}
 	// The shutdown notice is on the shutdown path itself, not in a
 	// goroutine racing the return: the signal cancels serveCtx only once
@@ -219,11 +219,11 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	}()
 
 	if err := srv.Serve(serveCtx); err != nil {
-		return fmt.Errorf("dg serve: %w", err)
+		return fmt.Errorf("skift serve: %w", err)
 	}
 	select {
 	case err := <-fatal:
-		return fmt.Errorf("dg serve: %w", err)
+		return fmt.Errorf("skift serve: %w", err)
 	default:
 		return nil
 	}
@@ -240,7 +240,7 @@ func schemaPreparer(opts serveOptions) func(ctx context.Context, log *slog.Logge
 				return err
 			}
 			if status.Pending() {
-				return fmt.Errorf("schema is at version %d but this build expects %d; run dg migrate, or start without --no-migrate", status.Current, status.Latest)
+				return fmt.Errorf("schema is at version %d but this build expects %d; run skift migrate, or start without --no-migrate", status.Current, status.Latest)
 			}
 			log.Info("schema current", "schema_version", status.Current)
 			return nil

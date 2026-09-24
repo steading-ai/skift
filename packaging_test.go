@@ -1,4 +1,4 @@
-package dagger_test
+package skift_test
 
 import (
 	"os"
@@ -108,37 +108,37 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 		})
 
 		installed := []string{
-			"/usr/bin/dg",
-			"/usr/lib/systemd/system/dagger.service",
-			"/usr/lib/systemd/system/dagger-reap.service",
-			"/usr/lib/systemd/system/dagger-reap.timer",
-			"/usr/lib/sysusers.d/dagger.conf",
-			"/usr/lib/tmpfiles.d/dagger.conf",
-			"/etc/dagger/env",
+			"/usr/bin/skift",
+			"/usr/lib/systemd/system/skift.service",
+			"/usr/lib/systemd/system/skift-reap.service",
+			"/usr/lib/systemd/system/skift-reap.timer",
+			"/usr/lib/sysusers.d/skift.conf",
+			"/usr/lib/tmpfiles.d/skift.conf",
+			"/etc/skift/env",
 		}
 
 		It("is built for both architectures with the units and fragments", func() {
-			for _, rpm := range []string{"dagger-9.9.9-1.x86_64.rpm", "dagger-9.9.9-1.aarch64.rpm"} {
+			for _, rpm := range []string{"skift-9.9.9-1.x86_64.rpm", "skift-9.9.9-1.aarch64.rpm"} {
 				Expect(rpmPaths(filepath.Join(dir, "dist", rpm))).To(ContainElements(installed), rpm)
 			}
 		})
 
-		It("runs the service as the dagger system user, not a login account", func() {
-			unit, err := os.ReadFile(filepath.Join(dir, "contrib/systemd/dagger.service"))
+		It("runs the service as the skift system user, not a login account", func() {
+			unit, err := os.ReadFile(filepath.Join(dir, "contrib/systemd/skift.service"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(unit)).To(MatchRegexp(`(?m)^User=dagger$`))
+			Expect(string(unit)).To(MatchRegexp(`(?m)^User=skift$`))
 			Expect(string(unit)).To(MatchRegexp(`(?m)^WantedBy=multi-user\.target$`))
 			Expect(string(unit)).NotTo(ContainSubstring("tailnet"), "the packaged unit carries no tailnet options")
 
-			sysusers, err := os.ReadFile(filepath.Join(dir, "packaging/sysusers.d/dagger.conf"))
+			sysusers, err := os.ReadFile(filepath.Join(dir, "packaging/sysusers.d/skift.conf"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(sysusers)).To(MatchRegexp(`(?m)^u dagger - `))
+			Expect(string(sysusers)).To(MatchRegexp(`(?m)^u skift - `))
 		})
 
-		It("declares the socket directory in the dagger group, setgid, mode 2750", func() {
-			tmpfiles, err := os.ReadFile(filepath.Join(dir, "packaging/tmpfiles.d/dagger.conf"))
+		It("declares the socket directory in the skift group, setgid, mode 2750", func() {
+			tmpfiles, err := os.ReadFile(filepath.Join(dir, "packaging/tmpfiles.d/skift.conf"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(tmpfiles)).To(MatchRegexp(`(?m)^d /run/dagger 2750 dagger dagger -$`))
+			Expect(string(tmpfiles)).To(MatchRegexp(`(?m)^d /run/skift 2750 skift skift -$`))
 		})
 
 		It("does not start the service from a scriptlet on first install", func() {
@@ -152,7 +152,7 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 		It("stops and disables the units when the package is removed", func() {
 			body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts/preremove.sh"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(body)).To(ContainSubstring("disable --now dagger.service dagger-reap.timer"))
+			Expect(string(body)).To(ContainSubstring("disable --now skift.service skift-reap.timer"))
 		})
 	})
 })
@@ -166,11 +166,11 @@ var _ = Describe("The image", Label("db", "slow"), Ordered, func() {
 
 	BeforeAll(func() {
 		dir = checkout()
-		runIn(dir, 5*time.Minute, "make", "dist/dg-linux-"+runtime.GOARCH, "VERSION=9.9.9")
+		runIn(dir, 5*time.Minute, "make", "dist/skift-linux-"+runtime.GOARCH, "VERSION=9.9.9")
 
 		// Scoped to the checkout so two parallel Ginkgo processes building
 		// this spec at once don't collide on the same image tag.
-		image = "dagger-image-test-" + filepath.Base(dir)
+		image = "skift-image-test-" + filepath.Base(dir)
 		runIn(dir, 5*time.Minute, "podman", "build",
 			"--build-arg", "TARGETARCH="+runtime.GOARCH,
 			"--build-arg", "REVISION=deadbeef",
@@ -182,8 +182,8 @@ var _ = Describe("The image", Label("db", "slow"), Ordered, func() {
 	})
 
 	It("reports the version the Makefile stamped it with", func() {
-		Expect(runIn(dir, time.Minute, "podman", "run", "--rm", image, "dg", "version")).
-			To(Equal("dg version 9.9.9"))
+		Expect(runIn(dir, time.Minute, "podman", "run", "--rm", image, "skift", "version")).
+			To(Equal("skift version 9.9.9"))
 	})
 
 	It("carries the revision as an OCI label", func() {

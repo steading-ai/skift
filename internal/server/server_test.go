@@ -16,18 +16,18 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 	It("A client on the same host connects", func(ctx SpecContext) {
-		By(`given "dg serve" is running on a unix socket`)
+		By(`given "skift serve" is running on a unix socket`)
 		r := start(server.Config{}, server.Services{Graph: graphStub{}}, pinger{})
 
 		By("when a client calls GetProject over that socket")
-		res, err := r.graph().GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+		res, err := r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 
 		By("then a response is returned")
 		Expect(err).NotTo(HaveOccurred())
@@ -39,8 +39,8 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		r := start(server.Config{}, server.Services{}, pinger{})
 
 		By("when the generated client calls each service")
-		_, graphErr := r.graph().GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{}))
-		_, workErr := r.work().Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{}))
+		_, graphErr := r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{}))
+		_, workErr := r.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
 
 		By("then every call is answered by the handler, as a Connect error rather than a 404")
 		Expect(connect.CodeOf(graphErr)).To(Equal(connect.CodeUnimplemented))
@@ -73,10 +73,10 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 	})
 
 	It("refuses an unknown socket group rather than serving world-readable", func() {
-		path := filepath.Join(GinkgoT().TempDir(), "dg.sock")
+		path := filepath.Join(GinkgoT().TempDir(), "skift.sock")
 		srv := server.New(server.Config{
 			SocketPath:  path,
-			SocketGroup: "no-such-group-for-dagger",
+			SocketGroup: "no-such-group-for-skift",
 			Logger:      specLogger(),
 		}, server.Services{}, pinger{})
 		Expect(srv.Listen()).To(MatchError(ContainSubstring("resolve socket group")))
@@ -86,7 +86,7 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 
 	It("replaces a stale socket and refuses a live one", func() {
 		By("given a socket file nobody listens on")
-		path := filepath.Join(GinkgoT().TempDir(), "dg.sock")
+		path := filepath.Join(GinkgoT().TempDir(), "skift.sock")
 		stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 		Expect(err).NotTo(HaveOccurred())
 		// A crashed process leaves its socket file behind; Close would
@@ -110,15 +110,15 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		work := newWorkStub()
 		r := start(server.Config{}, server.Services{Work: work}, pinger{})
 		type result struct {
-			res *connect.Response[daggerv1.ClaimNextResponse]
+			res *connect.Response[skiftv1.ClaimNextResponse]
 			err error
 		}
 		results := make(chan result, 1)
 		go func() {
 			defer GinkgoRecover()
-			res, err := r.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
+			res, err := r.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
 				RequestId: "wait-1",
-				Filter:    &daggerv1.NodeFilter{Projects: []string{"skeleton"}},
+				Filter:    &skiftv1.NodeFilter{Projects: []string{"skeleton"}},
 				Wait:      durationpb.New(time.Minute),
 			}))
 			results <- result{res, err}
@@ -150,9 +150,9 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		for i := range waiters {
 			go func() {
 				defer GinkgoRecover()
-				_, err := r.work().ClaimNext(ctx, connect.NewRequest(&daggerv1.ClaimNextRequest{
+				_, err := r.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
 					RequestId: "wait-" + strconv.Itoa(i),
-					Filter:    &daggerv1.NodeFilter{Projects: []string{"skeleton"}},
+					Filter:    &skiftv1.NodeFilter{Projects: []string{"skeleton"}},
 					Wait:      durationpb.New(time.Minute),
 				}))
 				errs <- err

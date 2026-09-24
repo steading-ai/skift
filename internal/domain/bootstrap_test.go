@@ -8,8 +8,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // counts is how many organizations, principals, and identities a database

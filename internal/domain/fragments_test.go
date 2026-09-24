@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
+	"github.com/steading-ai/skift/internal/domain"
 )
 
 // Readiness is one rule stated in three places: the ready query negates

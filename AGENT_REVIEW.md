@@ -1,6 +1,6 @@
 # Agent review
 
-Notes from driving dagger as a client rather than building it: interface
+Notes from driving skift as a client rather than building it: interface
 friction, and where the token cost falls. Every number here was measured
 against this repository and a live service on 2026-09-06; every claim about
 behaviour is cited to a file.
@@ -9,7 +9,7 @@ The user's feedback and comments are between `%%` markers.
 
 ## How this was produced
 
-One agent session used dagger for real work: created a project, filed 28 nodes
+One agent session used skift for real work: created a project, filed 28 nodes
 in four patches, then rewrote all 28 bodies in a single 28-operation patch, and
 read the graph back throughout. The findings below are the places that cost
 something — a failed call, a wrong graph, or context window.
@@ -21,7 +21,7 @@ mistakes an agent could reasonably avoid, and both are fixable at the source.
 
 ## 1. Responses echo the request back, at 20–215×
 
-The largest single cost, and the one that most limits dagger in a harness where
+The largest single cost, and the one that most limits skift in a harness where
 MCP is the only door.
 
 Measured, on the 28-operation patch that rewrote every node body:
@@ -43,10 +43,10 @@ For context: filing that one patch through MCP would consume roughly a quarter
 of a 200k context window in echo alone, before any work is done.
 
 **The workaround makes it worse.** The skill written for this plugin advises
-using the CLI for bulk writes, because `dg patch apply - < patch.json` returns
+using the CLI for bulk writes, because `skift patch apply - < patch.json` returns
 the same result where it can be summarised by a pipeline instead of landing in
 the conversation. That is real advice today, and it is unavailable in a
-harness that has only MCP — the environments dagger most wants to serve.
+harness that has only MCP — the environments skift most wants to serve.
 
 **Suggestion.** A `view` parameter on the read and write paths:
 
@@ -79,7 +79,7 @@ from prose. Both first-attempt failures in the session trace here.
 
 The prose is also wrong. `internal/cli/mcp_tools.go:219-221` names nine
 operations; compared against the `PatchOp` oneof in
-`proto/dagger/v1/service.proto:122-146`:
+`proto/skift/v1/service.proto:122-146`:
 
 - **Named but do not exist:** `drop_edge`, `reparent_node`, `set_priority`
 - **Exist but unnamed:** `update_node`, `attach_artifact`, `edit_comment`,
@@ -88,7 +88,7 @@ operations; compared against the `PatchOp` oneof in
 `update_node` is the operation an agent revising a backlog needs most, and it is
 the one the description omits. Having no schema and no mention, the session
 guessed its target field was `ref`; it is `node`
-(`proto/dagger/v1/service.proto:185`).
+(`proto/skift/v1/service.proto:185`).
 
 The three named-but-absent operations are a naming question rather than missing
 features — all eleven `PatchOp` variants are implemented and dispatched. §6
@@ -263,9 +263,9 @@ Beyond the project tools of §5, MCP omits two more of the fourteen RPCs:
 
 | RPC | CLI | MCP |
 |---|---|---|
-| `ListNodes` | `dg node list` | — |
-| `CreateProject` / `GetProject` / `ListProjects` / `ArchiveProject` | `dg project …` | — |
-| `WatchEvents` | `dg events` | — |
+| `ListNodes` | `skift node list` | — |
+| `CreateProject` / `GetProject` / `ListProjects` / `ArchiveProject` | `skift project …` | — |
+| `WatchEvents` | `skift events` | — |
 
 `ListNodes` is the sharpest. Without it an MCP-only agent can see the ready set
 and run a text search, and nothing else — it cannot ask what is blocked, what is
@@ -298,10 +298,10 @@ structural gate beats prose.
    policy engine.
 2. **Always return the dropped set** (refs only — cheap even under §1's `refs`
    view), so the undo is mechanical rather than archaeological.
-3. **A policy veto for the large case.** Dagger already evaluates Rego in
+3. **A policy veto for the large case.** Skift already evaluates Rego in
    process. A rule refusing a cascade above some size to a non-`user` principal
    is a gate that holds regardless of what the model was told, in the same
-   place the other vetoes live (`policy/dagger.rego:226-241`).
+   place the other vetoes live (`policy/skift.rego:226-241`).
 
 %%
 Policy veto could make sense. I don't think we need it *now* though.
@@ -318,7 +318,7 @@ out of the way.
 
 This one deserves rethinking rather than documenting.
 
-**What is actually enforced.** `policy/dagger.rego:228-233` vetoes
+**What is actually enforced.** `policy/skift.rego:228-233` vetoes
 `complete_node` on a gate by any non-`user` principal, and `:237-241` vetoes the
 principal that *filed* a gate from disposing of it at all. Both are about
 **completion**. Nothing prevents an agent from claiming a gate — the "never
@@ -396,7 +396,7 @@ message that failed. Both are available from the descriptor.
 
 ## 10. Smaller things
 
-- **`ready` means two things.** The CLI's `dg ready --wait` blocks and returns
+- **`ready` means two things.** The CLI's `skift ready --wait` blocks and returns
   the node *claimed under a lease* (`internal/cli/work.go:82-90`), while the MCP
   `ready` tool has no `wait` parameter and never claims. One name, two
   behaviours, split across interfaces. Consider making `--wait` on the CLI an
@@ -404,9 +404,9 @@ message that failed. Both are available from the descriptor.
   thing everywhere.
 - **`drop` has no CLI verb.** `create`, `link`, `comment` and `complete` all have
   shortcuts that build a patch; dropping requires hand-writing one. Given §7,
-  a `dg drop` that requires an explicit blast radius would be a good place to
+  a `skift drop` that requires an explicit blast radius would be a good place to
   put the guardrail.
-- **`dg events` cannot answer "what happened"** — it streams until interrupted,
+- **`skift events` cannot answer "what happened"** — it streams until interrupted,
   so a scripted verification hangs. Already filed as issue #5.
 - **`kind` is a free string with a convention no interface states.**
   `task`/`bug`/`spike`/`chore` appear in the CLI help as examples; nothing says
@@ -424,7 +424,7 @@ Ordered by benefit per unit of work.
    mistake rather than a trade-off.
 2. **§1, `view` with `refs` as the write default and no `body` echo.** The
    single largest token win in the system, and the thing standing between
-   dagger and an MCP-only harness.
+   skift and an MCP-only harness.
 3. **§6, an RPC and tool for `Inputs`.** The domain is written and tested; what
    is missing is a door. Until there is one, an agent cannot read what the work
    it depends on produced, which is the premise the rest of the design rests
@@ -446,7 +446,7 @@ Ordered by benefit per unit of work.
     discussion before it wants a node.
 
 Items 1, 4 and 6 are each an afternoon at most and would change the experience
-of using dagger through MCP more than anything else on the list.
+of using skift through MCP more than anything else on the list.
 
 ## A note on what this review is not
 

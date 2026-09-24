@@ -1,9 +1,9 @@
-# The distribution image: scratch, the dg binary, and nothing else. A
+# The distribution image: scratch, the skift binary, and nothing else. A
 # distribution of files, not a service definition — no ENTRYPOINT, so
-# `podman run --rm <image> dg version` runs dg as the container's command
+# `podman run --rm <image> skift version` runs skift as the container's command
 # rather than as an argument appended to a baked-in one.
 #
-# The binary is cross-compiled by `make dist/dg-linux-%` before this
+# The binary is cross-compiled by `make dist/skift-linux-%` before this
 # build starts (see Makefile), so VERSION/LDFLAGS is computed in exactly
 # one place. TARGETARCH is set by buildx per platform during a multi-arch
 # build; COPY never executes the binary it copies, so no emulation is
@@ -11,7 +11,7 @@
 FROM scratch
 
 ARG TARGETARCH
-COPY dist/dg-linux-${TARGETARCH} /usr/local/bin/dg
+COPY dist/skift-linux-${TARGETARCH} /usr/local/bin/skift
 
 ARG REVISION
 LABEL org.opencontainers.image.revision=${REVISION}

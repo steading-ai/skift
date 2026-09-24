@@ -9,7 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 )
 
 func (a *app) eventsCommand() *cobra.Command {
@@ -43,7 +43,7 @@ Delivery is at least once: consumers deduplicate by event id.`,
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			stream, err := c.Events.WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{
+			stream, err := c.Events.WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{
 				Cursor: cursor, Project: project, Ops: ops,
 			}))
 			if err != nil {

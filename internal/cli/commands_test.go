@@ -17,13 +17,13 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/cli"
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/codec"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/cli"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
-// run executes dg with args against the stub's socket, with stdin as its
+// run executes skift with args against the stub's socket, with stdin as its
 // input, and returns the exit code and both streams.
 type result struct {
 	code   int
@@ -47,7 +47,7 @@ func (r result) stderrError() cli.Error {
 	return e
 }
 
-var _ = Describe("dg commands", Label("unit"), func() {
+var _ = Describe("skift commands", Label("unit"), func() {
 	var (
 		s      *stub
 		socket string
@@ -84,12 +84,12 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			  ]
 			}`)
 
-			By(`when I run "dg patch apply -"`)
+			By(`when I run "skift patch apply -"`)
 			r := run(patch, "patch", "apply", "-")
 
 			By("then the response lists both created nodes with their numbers")
 			Expect(r.stderr.String()).To(BeEmpty())
-			res := &daggerv1.ApplyPatchResponse{}
+			res := &skiftv1.ApplyPatchResponse{}
 			Expect(codec.Unmarshal(r.stdout.Bytes(), res)).To(Succeed())
 			Expect(res.GetNodes()).To(HaveLen(2))
 			Expect(res.GetNodes()[0].GetNumber()).To(BeEquivalentTo(1))
@@ -101,7 +101,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(r.code).To(Equal(0))
 
 			By("and the patch reached the service with a minted request id and every operation")
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetRequestId()).To(HaveLen(26))
 			Expect(sent.GetOps()).To(HaveLen(3))
 			Expect(sent.GetOps()[2].GetAddEdge().GetFrom()).To(Equal("spike"))
@@ -111,7 +111,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			r := run(strings.NewReader(`{"ops": [{"create_node": {"title": "A"}}]}`),
 				"--project", "platform", "patch", "apply", "-", "--lease", "01JLEASE0000000000000000001", "--request-id", "01JFIXED000000000000000000")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetProject()).To(Equal("platform"))
 			Expect(sent.GetLeaseId()).To(Equal("01JLEASE0000000000000000001"))
 			Expect(sent.GetRequestId()).To(Equal("01JFIXED000000000000000000"))
@@ -160,7 +160,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			msg := r.stderrError().Message
 			Expect(msg).To(ContainSubstring("ops[1]"))
 			Expect(msg).To(ContainSubstring("priority"))
-			legal := codec.EnumNames(daggerv1.Priority(0).Descriptor())
+			legal := codec.EnumNames(skiftv1.Priority(0).Descriptor())
 			Expect(legal).NotTo(BeEmpty())
 			Expect(msg).To(ContainSubstring(strings.Join(legal, ", ")))
 			for _, value := range legal {
@@ -193,7 +193,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			msg := r.stderrError().Message
 			Expect(msg).To(ContainSubstring("ops[0].update_node"))
 			Expect(msg).To(ContainSubstring(`unknown field "ref"`))
-			fields := (&daggerv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
+			fields := (&skiftv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
 			_, listed, found := strings.Cut(msg, "fields are ")
 			Expect(found).To(BeTrue(), "the error lists the legal fields: %s", msg)
 			for _, name := range []string{"node", "title", "body", "priority"} {
@@ -213,7 +213,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		It("Output is parseable when piped", func() {
 			s.newNode("Ready work")
 
-			By(`when I run "dg ready" with stdout redirected to a file`)
+			By(`when I run "skift ready" with stdout redirected to a file`)
 			path := filepath.Join(GinkgoT().TempDir(), "ready.json")
 			file, err := os.Create(path)
 			Expect(err).NotTo(HaveOccurred())
@@ -226,7 +226,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			raw, err := os.ReadFile(path)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(json.Valid(raw)).To(BeTrue(), "not JSON: %s", raw)
-			res := &daggerv1.ReadyResponse{}
+			res := &skiftv1.ReadyResponse{}
 			Expect(codec.Unmarshal(raw, res)).To(Succeed())
 			Expect(res.GetNodes()).To(HaveLen(1))
 			Expect(res.GetNodes()[0].GetTitle()).To(Equal("Ready work"))
@@ -257,19 +257,19 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 		It("defaults reads to a summary, node show to full, and writes to refs", func() {
 			Expect(run(nil, "-p", "platform", "ready").code).To(Equal(0))
-			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.ReadyRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 
 			Expect(run(nil, "-p", "platform", "node", "list").code).To(Equal(0))
-			Expect(last[*daggerv1.ListNodesRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.ListNodesRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 
 			Expect(run(nil, "-p", "platform", "search", "viewed").code).To(Equal(0))
-			Expect(last[*daggerv1.SearchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.SearchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 
 			Expect(run(nil, "-p", "platform", "node", "show", "#1").code).To(Equal(0))
-			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 
 			Expect(run(strings.NewReader(`{"ops": [{"create_node": {"title": "A", "body": "long"}}]}`), "-p", "platform", "patch", "apply", "-").code).To(Equal(0))
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_REFS))
 
 			for _, args := range [][]string{
 				{"create", "B", "--body", "long"},
@@ -279,25 +279,25 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			} {
 				r := run(nil, append([]string{"-p", "platform"}, args...)...)
 				Expect(r.code).To(Equal(0), r.stderr.String())
-				Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS), strings.Join(args, " "))
+				Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_REFS), strings.Join(args, " "))
 			}
 		})
 
 		It("--view overrides the default and rejects a view that is not one", func() {
 			Expect(run(nil, "-p", "platform", "ready", "--view", "full").code).To(Equal(0))
-			Expect(last[*daggerv1.ReadyRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(last[*skiftv1.ReadyRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 
 			Expect(run(nil, "-p", "platform", "node", "show", "#1", "--view", "refs").code).To(Equal(0))
-			Expect(last[*daggerv1.GetNodeRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(last[*skiftv1.GetNodeRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_REFS))
 
 			Expect(run(strings.NewReader(`{"ops": [{"create_node": {"title": "A"}}]}`), "-p", "platform", "patch", "apply", "-", "--view", "full").code).To(Equal(0))
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 
 			By("a view the patch file names is kept unless the flag overrides it")
 			Expect(run(strings.NewReader(`{"view": "VIEW_SUMMARY", "ops": [{"create_node": {"title": "A"}}]}`), "-p", "platform", "patch", "apply", "-").code).To(Equal(0))
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 			Expect(run(strings.NewReader(`{"view": "VIEW_SUMMARY", "ops": [{"create_node": {"title": "A"}}]}`), "-p", "platform", "patch", "apply", "-", "--view", "refs").code).To(Equal(0))
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_REFS))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_REFS))
 
 			r := run(nil, "-p", "platform", "ready", "--view", "huge")
 			Expect(r.code).To(Equal(cli.ExitUsage))
@@ -353,19 +353,19 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
-	Describe("dg drop", func() {
+	Describe("skift drop", func() {
 		BeforeEach(func() { s.newNode("Target") })
 
 		It("builds the same patch as the hand-written JSON", func() {
-			By(`when I run "dg drop dagger#7 --reason superseded"`)
-			r := run(nil, "drop", "dagger#7", "--reason", "superseded")
+			By(`when I run "skift drop skift#7 --reason superseded"`)
+			r := run(nil, "drop", "skift#7", "--reason", "superseded")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			built := last[*daggerv1.ApplyPatchRequest](s)
+			built := last[*skiftv1.ApplyPatchRequest](s)
 
 			By("then the operation is the one the same patch written by hand sends")
-			r = run(strings.NewReader(`{"project": "dagger", "ops": [{"drop_node": {"node": "dagger#7", "reason": "superseded"}}]}`), "patch", "apply", "-")
+			r = run(strings.NewReader(`{"project": "skift", "ops": [{"drop_node": {"node": "skift#7", "reason": "superseded"}}]}`), "patch", "apply", "-")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			written := last[*daggerv1.ApplyPatchRequest](s)
+			written := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(built.GetProject()).To(Equal(written.GetProject()))
 			Expect(proto.Equal(built.GetOps()[0], written.GetOps()[0])).To(BeTrue(), "built %v, written %v", built.GetOps()[0], written.GetOps()[0])
 
@@ -376,9 +376,9 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		It("carries the detail and the reason as the operation's fields", func() {
 			r := run(nil, "-p", "platform", "drop", "#7", "--reason", "other", "--detail", "folded into #9")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			op := last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode()
+			op := last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode()
 			Expect(op.GetNode()).To(Equal("#7"))
-			Expect(op.GetReason()).To(Equal(daggerv1.DropReason_DROP_REASON_OTHER))
+			Expect(op.GetReason()).To(Equal(skiftv1.DropReason_DROP_REASON_OTHER))
 			Expect(op.GetDetail()).To(Equal("folded into #9"))
 			Expect(op.GetCascade()).To(BeNil())
 		})
@@ -386,11 +386,11 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		It("--cascade N states the bound and no --cascade cascades nothing", func() {
 			r := run(nil, "-p", "platform", "drop", "#7", "--reason", "superseded", "--cascade", "5")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode().GetCascade().GetMaxNodes()).To(BeEquivalentTo(5))
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode().GetCascade().GetMaxNodes()).To(BeEquivalentTo(5))
 
 			r = run(nil, "-p", "platform", "drop", "#7", "--reason", "superseded")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			Expect(last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode().GetCascade()).To(BeNil())
+			Expect(last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetDropNode().GetCascade()).To(BeNil())
 		})
 
 		It("refuses --cascade without a number, and a bound below one", func() {
@@ -411,14 +411,14 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
-	Describe("dg update", func() {
+	Describe("skift update", func() {
 		BeforeEach(func() { s.newNode("Target") })
 
-		update := func(stdin io.Reader, args ...string) *daggerv1.UpdateNodeOp {
+		update := func(stdin io.Reader, args ...string) *skiftv1.UpdateNodeOp {
 			GinkgoHelper()
 			r := run(stdin, args...)
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetOps()).To(HaveLen(1))
 			op := sent.GetOps()[0].GetUpdateNode()
 			Expect(op).NotTo(BeNil())
@@ -426,13 +426,13 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		}
 
 		It("reprioritises with one update_node op and changes nothing else", func() {
-			By(`when I run "dg update dagger#7 --priority p0"`)
-			op := update(nil, "update", "dagger#7", "--priority", "p0")
+			By(`when I run "skift update skift#7 --priority p0"`)
+			op := update(nil, "update", "skift#7", "--priority", "p0")
 
 			By("then the op sets priority P0 on that node")
-			Expect(op.GetNode()).To(Equal("dagger#7"))
+			Expect(op.GetNode()).To(Equal("skift#7"))
 			Expect(op.Priority).NotTo(BeNil())
-			Expect(op.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P0))
+			Expect(op.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P0))
 
 			By("and every other field is unset, so the server leaves it alone")
 			Expect(op.Title).To(BeNil())
@@ -444,31 +444,31 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(op.Labels).To(BeNil())
 
 			By("and the patch is the one the same JSON written by hand sends")
-			built := last[*daggerv1.ApplyPatchRequest](s)
-			r := run(strings.NewReader(`{"project": "dagger", "ops": [{"update_node": {"node": "dagger#7", "priority": "p0"}}]}`), "patch", "apply", "-")
+			built := last[*skiftv1.ApplyPatchRequest](s)
+			r := run(strings.NewReader(`{"project": "skift", "ops": [{"update_node": {"node": "skift#7", "priority": "p0"}}]}`), "patch", "apply", "-")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			written := last[*daggerv1.ApplyPatchRequest](s)
+			written := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(built.GetProject()).To(Equal(written.GetProject()))
 			Expect(proto.Equal(built.GetOps()[0], written.GetOps()[0])).To(BeTrue(), "built %v, written %v", built.GetOps()[0], written.GetOps()[0])
 		})
 
 		It("reparents, and --parent '' clears the parent", func() {
-			By(`when I run "dg update dagger#7 --parent dagger#3"`)
-			op := update(nil, "update", "dagger#7", "--parent", "dagger#3")
+			By(`when I run "skift update skift#7 --parent skift#3"`)
+			op := update(nil, "update", "skift#7", "--parent", "skift#3")
 
 			By("then the op carries the new parent")
 			Expect(op.Parent).NotTo(BeNil())
-			Expect(op.GetParent()).To(Equal("dagger#3"))
+			Expect(op.GetParent()).To(Equal("skift#3"))
 
-			By(`when I run "dg update dagger#7 --parent ''"`)
-			op = update(nil, "update", "dagger#7", "--parent", "")
+			By(`when I run "skift update skift#7 --parent ''"`)
+			op = update(nil, "update", "skift#7", "--parent", "")
 
 			By("then the parent is present and empty, which makes the node a root")
 			Expect(op.Parent).NotTo(BeNil())
 			Expect(op.GetParent()).To(BeEmpty())
 
 			By("and with no --parent at all the field is unset")
-			op = update(nil, "update", "dagger#7", "--title", "Renamed")
+			op = update(nil, "update", "skift#7", "--title", "Renamed")
 			Expect(op.Parent).To(BeNil())
 		})
 
@@ -479,8 +479,8 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 
 		It("reads the body from stdin for --body -", func() {
-			By(`when I run "dg update dagger#7 --body -" with a body on stdin`)
-			op := update(strings.NewReader("# Rewritten\n\nthe new prompt\n"), "update", "dagger#7", "--body", "-")
+			By(`when I run "skift update skift#7 --body -" with a body on stdin`)
+			op := update(strings.NewReader("# Rewritten\n\nthe new prompt\n"), "update", "skift#7", "--body", "-")
 
 			By("then the op carries what stdin held")
 			Expect(op.Body).NotTo(BeNil())
@@ -488,24 +488,24 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 
 		It("replaces the label set, and --label '' clears it", func() {
-			op := update(nil, "update", "dagger#7", "--label", "api", "--label", "backend")
+			op := update(nil, "update", "skift#7", "--label", "api", "--label", "backend")
 			Expect(op.GetLabels().GetValues()).To(ConsistOf("api", "backend"))
 
-			op = update(nil, "update", "dagger#7", "--label", "")
+			op = update(nil, "update", "skift#7", "--label", "")
 			Expect(op.Labels).NotTo(BeNil())
 			Expect(op.GetLabels().GetValues()).To(BeEmpty())
 		})
 
 		It("carries the title, kind, assignee and assignee kind, and the lease", func() {
-			r := run(nil, "update", "dagger#7", "--title", "Renamed", "--kind", "bug",
+			r := run(nil, "update", "skift#7", "--title", "Renamed", "--kind", "bug",
 				"--assignee-kind", "user", "--assignee", "01JPRINCIPAL0000000000000A", "--lease", "01JLEASE0000000000000000001")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetLeaseId()).To(Equal("01JLEASE0000000000000000001"))
 			op := sent.GetOps()[0].GetUpdateNode()
 			Expect(op.GetTitle()).To(Equal("Renamed"))
 			Expect(op.GetKind()).To(Equal("bug"))
-			Expect(op.GetAssigneeKind()).To(Equal(daggerv1.AssigneeKind_ASSIGNEE_KIND_USER))
+			Expect(op.GetAssigneeKind()).To(Equal(skiftv1.AssigneeKind_ASSIGNEE_KIND_USER))
 			Expect(op.GetAssignee()).To(Equal("01JPRINCIPAL0000000000000A"))
 		})
 
@@ -537,7 +537,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			// node is the positional argument; labels is repeatable, so its
 			// flag is singular. Every other field is its own name in kebab.
 			flagNames := map[string]string{"node": "", "labels": "label"}
-			fields := (&daggerv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
+			fields := (&skiftv1.UpdateNodeOp{}).ProtoReflect().Descriptor().Fields()
 			isField := map[string]bool{}
 			for i := range fields.Len() {
 				fd := fields.Get(i)
@@ -574,7 +574,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 				}
 				r := run(nil, args...)
 				Expect(r.code).To(Equal(0), r.stderr.String())
-				sent := last[*daggerv1.GetNodeRequest](s)
+				sent := last[*skiftv1.GetNodeRequest](s)
 				Expect(sent.GetNode()).To(Equal(ref))
 				Expect(sent.GetProject()).To(Equal(wantProject))
 			},
@@ -600,7 +600,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		It("derives the patch's project from a qualified reference", func() {
 			r := run(nil, "link", "acme/platform#1", "acme/platform#2")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			sent := last[*daggerv1.ApplyPatchRequest](s)
+			sent := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(sent.GetProject()).To(Equal("acme/platform"))
 			Expect(sent.GetOps()[0].GetAddEdge().GetFrom()).To(Equal("acme/platform#1"))
 			Expect(sent.GetOps()[0].GetAddEdge().GetTo()).To(Equal("acme/platform#2"))
@@ -621,7 +621,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 			By("nothing returns while nothing is ready")
 			Consistently(done, 200*time.Millisecond).ShouldNot(Receive())
-			Expect(last[*daggerv1.ClaimNextRequest](s).GetFilter().GetLabels()).To(Equal([]string{"infra"}))
+			Expect(last[*skiftv1.ClaimNextRequest](s).GetFilter().GetLabels()).To(Equal([]string{"infra"}))
 
 			By("work appears")
 			s.mu.Lock()
@@ -632,16 +632,16 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			var r result
 			Eventually(done, 5*time.Second).Should(Receive(&r))
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			res := &daggerv1.ClaimNextResponse{}
+			res := &skiftv1.ClaimNextResponse{}
 			Expect(codec.Unmarshal(r.stdout.Bytes(), res)).To(Succeed())
 			Expect(res.GetNode().GetTitle()).To(Equal("Appeared"))
 			Expect(res.GetNode().GetClaimed()).To(BeTrue())
 			Expect(res.GetLease().GetId()).NotTo(BeEmpty())
 			Expect(res.GetComments().GetUnresolved()).To(Equal(int32(1)), "the comments hint passes through")
 
-			sent := last[*daggerv1.ClaimNextRequest](s)
+			sent := last[*skiftv1.ClaimNextRequest](s)
 			Expect(sent.GetTtl().AsDuration()).To(Equal(5 * time.Minute))
-			Expect(sent.GetHarness()).To(Equal("dg"))
+			Expect(sent.GetHarness()).To(Equal("skift"))
 		})
 
 		It("gives up after a bounded wait with an empty response", func() {
@@ -658,26 +658,26 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			s.newNode("Ready work")
 			r := run(nil, "-p", "platform", "ready", "--min-priority", "p1", "--kind", "bug")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			sent := last[*daggerv1.ReadyRequest](s)
-			Expect(sent.GetFilter().GetMinPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
+			sent := last[*skiftv1.ReadyRequest](s)
+			Expect(sent.GetFilter().GetMinPriority()).To(Equal(skiftv1.Priority_PRIORITY_P1))
 			Expect(sent.GetFilter().GetKinds()).To(Equal([]string{"bug"}))
 			Expect(s.nodes[0].GetClaimed()).To(BeFalse())
-			Expect(count[*daggerv1.ClaimNextRequest](s)).To(Equal(0))
+			Expect(count[*skiftv1.ClaimNextRequest](s)).To(Equal(0))
 		})
 
-		It("refuses --wait and points at dg claim --wait", func() {
+		It("refuses --wait and points at skift claim --wait", func() {
 			r := run(nil, "-p", "platform", "ready", "--wait", "30s")
 			Expect(r.code).NotTo(Equal(0))
 			Expect(r.code).To(Equal(cli.ExitUsage))
-			Expect(r.stderrError().Message).To(ContainSubstring("dg claim --wait"))
-			Expect(count[*daggerv1.ClaimNextRequest](s)).To(Equal(0))
-			Expect(count[*daggerv1.ReadyRequest](s)).To(Equal(0))
+			Expect(r.stderrError().Message).To(ContainSubstring("skift claim --wait"))
+			Expect(count[*skiftv1.ClaimNextRequest](s)).To(Equal(0))
+			Expect(count[*skiftv1.ReadyRequest](s)).To(Equal(0))
 		})
 
 		It("refuses a bare --wait too", func() {
 			r := run(nil, "-p", "platform", "ready", "--wait")
 			Expect(r.code).To(Equal(cli.ExitUsage))
-			Expect(r.stderrError().Message).To(ContainSubstring("dg claim --wait"))
+			Expect(r.stderrError().Message).To(ContainSubstring("skift claim --wait"))
 		})
 	})
 
@@ -687,24 +687,24 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()["project"]).To(HaveKeyWithValue("slug", "platform"))
 			Expect(r.decode()["project"]).To(HaveKeyWithValue("vcs_url", "https://gitlab.example/x/y.git"))
-			Expect(last[*daggerv1.CreateProjectRequest](s).GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
-			Expect(last[*daggerv1.CreateProjectRequest](s).GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+			Expect(last[*skiftv1.CreateProjectRequest](s).GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P1))
+			Expect(last[*skiftv1.CreateProjectRequest](s).GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
 
 			r = run(nil, "project", "update", "platform")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			Expect(last[*daggerv1.UpdateProjectRequest](s).VcsUrl).To(BeNil(), "a flag left alone leaves the field alone")
+			Expect(last[*skiftv1.UpdateProjectRequest](s).VcsUrl).To(BeNil(), "a flag left alone leaves the field alone")
 
 			r = run(nil, "project", "update", "platform", "--vcs-url", "")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			Expect(last[*daggerv1.UpdateProjectRequest](s).VcsUrl).NotTo(BeNil(), "an empty --vcs-url is sent, to clear the field")
-			Expect(last[*daggerv1.UpdateProjectRequest](s).GetVcsUrl()).To(BeEmpty())
+			Expect(last[*skiftv1.UpdateProjectRequest](s).VcsUrl).NotTo(BeNil(), "an empty --vcs-url is sent, to clear the field")
+			Expect(last[*skiftv1.UpdateProjectRequest](s).GetVcsUrl()).To(BeEmpty())
 			Expect(r.decode()["project"]).NotTo(HaveKey("vcs_url"))
 
 			r = run(nil, "project", "list", "--include-archived", "--page-size", "5")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()["projects"]).To(HaveLen(1))
 			Expect(r.decode()).To(HaveKeyWithValue("next_page_token", "next"))
-			Expect(last[*daggerv1.ListProjectsRequest](s).GetPageSize()).To(BeEquivalentTo(5))
+			Expect(last[*skiftv1.ListProjectsRequest](s).GetPageSize()).To(BeEquivalentTo(5))
 
 			r = run(nil, "project", "show", "platform")
 			Expect(r.code).To(Equal(0), r.stderr.String())
@@ -719,22 +719,22 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			r := run(nil, "-p", "platform", "create", "Spike", "--kind", "spike", "--priority", "p0", "-l", "infra", "--body", "-")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()["nodes"]).To(HaveLen(1))
-			op := last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetCreateNode()
+			op := last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetCreateNode()
 			Expect(op.GetKind()).To(Equal("spike"))
-			Expect(op.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P0))
+			Expect(op.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P0))
 			Expect(op.GetLabels()).To(Equal([]string{"infra"}))
 
 			r = run(strings.NewReader("# Body\n"), "-p", "platform", "create", "Impl", "--blocked-by", "#1", "--body", "-", "--assignee-kind", "user")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			op = last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetCreateNode()
+			op = last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetCreateNode()
 			Expect(op.GetBody()).To(Equal("# Body\n"))
 			Expect(op.GetBlockedBy()).To(Equal([]string{"#1"}))
-			Expect(op.GetAssigneeKind()).To(Equal(daggerv1.AssigneeKind_ASSIGNEE_KIND_USER))
+			Expect(op.GetAssigneeKind()).To(Equal(skiftv1.AssigneeKind_ASSIGNEE_KIND_USER))
 
 			r = run(nil, "-p", "platform", "link", "#1", "#2")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()).NotTo(BeNil())
-			edge := last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetAddEdge()
+			edge := last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetAddEdge()
 			Expect(edge.GetFrom()).To(Equal("#1"))
 			Expect(edge.GetTo()).To(Equal("#2"))
 
@@ -758,7 +758,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			lease, _ := r.decode()["lease"].(map[string]any)
 			Expect(lease).To(HaveKey("id"))
 			id, _ := lease["id"].(string)
-			sent := last[*daggerv1.ClaimNextRequest](s)
+			sent := last[*skiftv1.ClaimNextRequest](s)
 			Expect(sent.GetHarness()).To(Equal("claude-code"))
 			Expect(sent.GetAgentRef()).To(Equal("laptop"))
 			Expect(sent.GetWait().AsDuration()).To(BeZero())
@@ -766,7 +766,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			r = run(nil, "heartbeat", id, "--ttl", "10m")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()["lease"]).To(HaveKeyWithValue("id", id))
-			Expect(last[*daggerv1.HeartbeatRequest](s).GetTtl().AsDuration()).To(Equal(10 * time.Minute))
+			Expect(last[*skiftv1.HeartbeatRequest](s).GetTtl().AsDuration()).To(Equal(10 * time.Minute))
 
 			r = run(nil, "release", id, "--reason", "crash", "--detail", "oom")
 			Expect(r.code).To(Equal(0), r.stderr.String())
@@ -778,14 +778,14 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 			r = run(strings.NewReader("Shipped it.\n"), "-p", "platform", "complete", "#1", "--lease", id, "--result", "-")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			patch := last[*daggerv1.ApplyPatchRequest](s)
+			patch := last[*skiftv1.ApplyPatchRequest](s)
 			Expect(patch.GetLeaseId()).To(Equal(id))
 			Expect(patch.GetOps()[0].GetCompleteNode().GetResult().GetBody()).To(Equal("Shipped it.\n"))
 			Expect(r.decode()["nodes"]).To(HaveLen(1))
 
 			r = run(nil, "-p", "platform", "comment", "#1", "Looks good", "--in-reply-to", "01JCOMMENT0000000000000000")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			op := last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetAddComment()
+			op := last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetAddComment()
 			Expect(op.GetBody()).To(Equal("Looks good"))
 			Expect(op.GetInReplyTo()).To(Equal("01JCOMMENT0000000000000000"))
 		})
@@ -795,7 +795,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			r := run(nil, "-p", "platform", "search", "parser", "--include-archived")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 			Expect(r.decode()["hits"]).To(HaveLen(1))
-			sent := last[*daggerv1.SearchRequest](s)
+			sent := last[*skiftv1.SearchRequest](s)
 			Expect(sent.GetProject()).To(Equal("platform"))
 			Expect(sent.GetIncludeArchived()).To(BeTrue())
 
@@ -808,30 +808,30 @@ var _ = Describe("dg commands", Label("unit"), func() {
 				Expect(json.Valid([]byte(line))).To(BeTrue(), line)
 			}
 			Expect(lines[1]).To(ContainSubstring(`"cursor":"c2"`))
-			Expect(last[*daggerv1.WatchEventsRequest](s).GetCursor()).To(Equal("c0"))
-			Expect(last[*daggerv1.WatchEventsRequest](s).GetOps()).To(Equal([]string{"create_node"}))
+			Expect(last[*skiftv1.WatchEventsRequest](s).GetCursor()).To(Equal("c0"))
+			Expect(last[*skiftv1.WatchEventsRequest](s).GetOps()).To(Equal([]string{"create_node"}))
 		})
 	})
 
-	Describe("dg inputs", func() {
+	Describe("skift inputs", func() {
 		It("prints the same JSON the RPC returned, and asks for the full view by default", func() {
 			s.newNode("Alpha")
 			s.newNode("Beta")
 			s.newNode("Gamma")
 
-			By(`when I run "dg inputs 'platform#3'"`)
+			By(`when I run "skift inputs 'platform#3'"`)
 			r := run(nil, "inputs", "platform#3")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 
 			By("then the reference is sent as written, in the full view")
-			req := last[*daggerv1.GetInputsRequest](s)
+			req := last[*skiftv1.GetInputsRequest](s)
 			Expect(req.GetNode()).To(Equal("platform#3"))
-			Expect(req.GetView()).To(Equal(daggerv1.View_VIEW_FULL))
+			Expect(req.GetView()).To(Equal(skiftv1.View_VIEW_FULL))
 
 			By("and stdout is the response the RPC gives for the same request")
 			c, err := client.New(client.Config{Socket: socket})
 			Expect(err).NotTo(HaveOccurred())
-			res, err := c.Graph.GetInputs(GinkgoT().Context(), connect.NewRequest(&daggerv1.GetInputsRequest{Node: "platform#3"}))
+			res, err := c.Graph.GetInputs(GinkgoT().Context(), connect.NewRequest(&skiftv1.GetInputsRequest{Node: "platform#3"}))
 			Expect(err).NotTo(HaveOccurred())
 			expected, err := codec.Marshal(res.Msg)
 			Expect(err).NotTo(HaveOccurred())
@@ -841,31 +841,31 @@ var _ = Describe("dg commands", Label("unit"), func() {
 
 			By("and --view summary is sent as asked")
 			Expect(run(nil, "inputs", "platform#3", "--view", "summary").code).To(Equal(0))
-			Expect(last[*daggerv1.GetInputsRequest](s).GetView()).To(Equal(daggerv1.View_VIEW_SUMMARY))
+			Expect(last[*skiftv1.GetInputsRequest](s).GetView()).To(Equal(skiftv1.View_VIEW_SUMMARY))
 
 			By("and a bare reference needs a project, as every other command does")
 			Expect(run(nil, "inputs", "#3").code).To(Equal(cli.ExitUsage))
 		})
 	})
 
-	Describe("dg estimate", func() {
+	Describe("skift estimate", func() {
 		BeforeEach(func() { s.newNode("Target") })
 
 		It("builds one estimate_node op carrying the counts and the basis", func() {
-			By(`when I run "dg estimate dagger#7" with counts, a model and a basis`)
-			r := run(nil, "estimate", "dagger#7", "--basis", "two nodes of the same shape",
+			By(`when I run "skift estimate skift#7" with counts, a model and a basis`)
+			r := run(nil, "estimate", "skift#7", "--basis", "two nodes of the same shape",
 				"--model", "claude-opus-5", "--input", "120000", "--output", "8000",
 				"--cache-read", "500", "--cache-write", "250")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 
 			By("then the patch carries the operation as its only one, and no lease")
-			sent := last[*daggerv1.ApplyPatchRequest](s)
-			Expect(sent.GetProject()).To(Equal("dagger"))
+			sent := last[*skiftv1.ApplyPatchRequest](s)
+			Expect(sent.GetProject()).To(Equal("skift"))
 			Expect(sent.GetLeaseId()).To(BeEmpty())
 			Expect(sent.GetOps()).To(HaveLen(1))
 			op := sent.GetOps()[0].GetEstimateNode()
 			Expect(op).NotTo(BeNil())
-			Expect(op.GetNode()).To(Equal("dagger#7"))
+			Expect(op.GetNode()).To(Equal("skift#7"))
 			Expect(op.GetModel()).To(Equal("claude-opus-5"))
 			Expect(op.GetBasis()).To(Equal("two nodes of the same shape"))
 			Expect(op.GetInputTokens()).To(BeEquivalentTo(120000))
@@ -874,9 +874,9 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(op.GetCacheWriteTokens()).To(BeEquivalentTo(250))
 
 			By("and it is the same operation the hand-written patch sends")
-			r = run(strings.NewReader(`{"project": "dagger", "ops": [{"estimate_node": {"node": "dagger#7", "model": "claude-opus-5", "basis": "two nodes of the same shape", "input_tokens": 120000, "output_tokens": 8000, "cache_read_tokens": 500, "cache_write_tokens": 250}}]}`), "patch", "apply", "-")
+			r = run(strings.NewReader(`{"project": "skift", "ops": [{"estimate_node": {"node": "skift#7", "model": "claude-opus-5", "basis": "two nodes of the same shape", "input_tokens": 120000, "output_tokens": 8000, "cache_read_tokens": 500, "cache_write_tokens": 250}}]}`), "patch", "apply", "-")
 			Expect(r.code).To(Equal(0), r.stderr.String())
-			Expect(proto.Equal(op, last[*daggerv1.ApplyPatchRequest](s).GetOps()[0].GetEstimateNode())).To(BeTrue())
+			Expect(proto.Equal(op, last[*skiftv1.ApplyPatchRequest](s).GetOps()[0].GetEstimateNode())).To(BeTrue())
 		})
 
 		It("refuses a malformed reference before any round trip", func() {
@@ -886,11 +886,11 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
-	Describe("dg node show", func() {
+	Describe("skift node show", func() {
 		It("shows the estimate and the usage rollup beside the node", func() {
 			s.newNode("Target")
 
-			By(`when I run "dg node show platform#1" as JSON`)
+			By(`when I run "skift node show platform#1" as JSON`)
 			r := run(nil, "node", "show", "platform#1")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 
@@ -913,17 +913,17 @@ var _ = Describe("dg commands", Label("unit"), func() {
 		})
 	})
 
-	Describe("dg usage report", func() {
+	Describe("skift usage report", func() {
 		BeforeEach(func() { s.newNode("Target") })
 
 		It("sends a ReportUsage keyed by the lease, not a patch", func() {
-			By(`when I run "dg usage report #7 --lease ..."`)
+			By(`when I run "skift usage report #7 --lease ..."`)
 			r := run(nil, "-p", "platform", "usage", "report", "#7", "--lease", "01JLEASE0000000000000000001",
 				"--model", "claude-opus-5", "--input", "1200", "--output", "340", "--cache-read", "60", "--cache-write", "20")
 			Expect(r.code).To(Equal(0), r.stderr.String())
 
 			By("then the request names the attempt and carries the counts")
-			sent := last[*daggerv1.ReportUsageRequest](s)
+			sent := last[*skiftv1.ReportUsageRequest](s)
 			Expect(sent.GetProject()).To(Equal("platform"))
 			Expect(sent.GetNode()).To(Equal("#7"))
 			Expect(sent.GetLeaseId()).To(Equal("01JLEASE0000000000000000001"))
@@ -935,7 +935,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(sent.GetRequestId()).NotTo(BeEmpty())
 
 			By("and no patch was applied: reporting is not a graph mutation")
-			Expect(count[*daggerv1.ApplyPatchRequest](s)).To(Equal(0))
+			Expect(count[*skiftv1.ApplyPatchRequest](s)).To(Equal(0))
 
 			By("and the response is the record that was stored")
 			Expect(r.decode()["usage"]).To(HaveKeyWithValue("kind", "actual"))
@@ -958,14 +958,14 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := cli.Run([]string{"--config", path, "ready"}, strings.NewReader(""), stdout, stderr)
 			Expect(code).To(Equal(0), stderr.String())
-			Expect(last[*daggerv1.ReadyRequest](s).GetFilter().GetProjects()).To(Equal([]string{"from-file"}))
+			Expect(last[*skiftv1.ReadyRequest](s).GetFilter().GetProjects()).To(Equal([]string{"from-file"}))
 
 			GinkgoT().Setenv(client.EnvSocket, socket)
 			GinkgoT().Setenv(client.EnvProject, "from-env")
 			stdout.Reset()
 			code = cli.Run([]string{"ready"}, strings.NewReader(""), stdout, stderr)
 			Expect(code).To(Equal(0), stderr.String())
-			Expect(last[*daggerv1.ReadyRequest](s).GetFilter().GetProjects()).To(Equal([]string{"from-env"}))
+			Expect(last[*skiftv1.ReadyRequest](s).GetFilter().GetProjects()).To(Equal([]string{"from-env"}))
 		})
 	})
 })

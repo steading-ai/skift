@@ -11,23 +11,23 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/codec"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
-// The tools dg mcp offers. Each is one CLI command with its flags as
+// The tools skift mcp offers. Each is one CLI command with its flags as
 // arguments, described for the model that will call it: what the tool is
 // for, when to reach for it, and the syntax its inputs take.
 
-// priorityIdiom is what the p0-p4 scale means, stated once. Dagger derives
+// priorityIdiom is what the p0-p4 scale means, stated once. Skift derives
 // nothing from priority but the first sort key of the ready set; see
 // docs/domain-model.md.
 const priorityIdiom = `Priority is p0 to p4, p2 the default: advisory ordering within the ready
 set, not a gate. A backlog where everything is p1 orders by age.`
 
 // kindIdiom is what kind means, stated once.
-const kindIdiom = `kind is a free string dagger never interprets, task the default, bug,
+const kindIdiom = `kind is a free string skift never interprets, task the default, bug,
 spike and chore the rest of a conventional, open vocabulary.`
 
 // holdIdiom is what a hold means, stated once. Held work is absent from
@@ -41,9 +41,9 @@ func filterSchema() map[string]any {
 	return map[string]any{
 		"projects":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Projects to look in, by slug or org/slug; repeatable. Defaults to the current project, or every project you may read when none is configured."},
 		"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
-		"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
+		"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the skift skill says what an agent may do with one.", enumChoices[skiftv1.AssigneeKind]()),
 		"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
-		"min_priority":  enumProp("Only nodes at this priority or more urgent. Advisory ordering, p2 the default: this filters the list, it does not decide what may be worked on.", enumChoices[daggerv1.Priority]()),
+		"min_priority":  enumProp("Only nodes at this priority or more urgent. Advisory ordering, p2 the default: this filters the list, it does not decide what may be worked on.", enumChoices[skiftv1.Priority]()),
 	}
 }
 
@@ -105,17 +105,17 @@ type filterArgs struct {
 	MinPriority  string   `json:"min_priority"`
 }
 
-func (f *filterArgs) resolve(a *app) (projects []string, kind daggerv1.AssigneeKind, prio daggerv1.Priority, err error) {
+func (f *filterArgs) resolve(a *app) (projects []string, kind skiftv1.AssigneeKind, prio skiftv1.Priority, err error) {
 	projects = f.Projects
 	if len(projects) == 0 {
 		if projects, err = a.currentProjects(); err != nil {
 			return nil, 0, 0, err
 		}
 	}
-	if kind, err = parseEnum[daggerv1.AssigneeKind]("assignee_kind", f.AssigneeKind); err != nil {
+	if kind, err = parseEnum[skiftv1.AssigneeKind]("assignee_kind", f.AssigneeKind); err != nil {
 		return nil, 0, 0, err
 	}
-	if prio, err = parseEnum[daggerv1.Priority]("min_priority", f.MinPriority); err != nil {
+	if prio, err = parseEnum[skiftv1.Priority]("min_priority", f.MinPriority); err != nil {
 		return nil, 0, 0, err
 	}
 	return projects, kind, prio, nil
@@ -147,7 +147,7 @@ and priority is only advisory ordering, p2 the default.`,
 				"query":            stringProp("Search text in websearch syntax, such as: parser \"error handling\" -legacy"),
 				"project":          stringProp("Narrow to one project, by slug or org/slug. Defaults to the current project, or every project when none is configured."),
 				"include_archived": map[string]any{"type": "boolean", "description": "Also search nodes of archived projects."},
-				"view":             viewProp(daggerv1.View_VIEW_SUMMARY),
+				"view":             viewProp(skiftv1.View_VIEW_SUMMARY),
 			}), "query"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -163,7 +163,7 @@ and priority is only advisory ordering, p2 the default.`,
 				if args.Query == "" {
 					return nil, usage("query is required")
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_SUMMARY)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_SUMMARY)
 				if err != nil {
 					return nil, err
 				}
@@ -174,7 +174,7 @@ and priority is only advisory ordering, p2 the default.`,
 						return nil, err
 					}
 				}
-				return unwrap(c.Graph.Search(ctx, connect.NewRequest(&daggerv1.SearchRequest{
+				return unwrap(c.Graph.Search(ctx, connect.NewRequest(&skiftv1.SearchRequest{
 					Query: args.Query, Project: project, IncludeArchived: args.IncludeArchived,
 					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
@@ -188,7 +188,7 @@ comments. It carries the node's own result and never its predecessors':
 it reports only how many inputs there are, and inputs returns them.`,
 			schema: objectSchema(map[string]any{
 				"ref":  stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
-				"view": viewProp(daggerv1.View_VIEW_FULL),
+				"view": viewProp(skiftv1.View_VIEW_FULL),
 			}, "ref"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -202,11 +202,11 @@ it reports only how many inputs there are, and inputs returns them.`,
 				if err != nil {
 					return nil, err
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_FULL)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_FULL)
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref, View: view})))
+				return unwrap(c.Graph.GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: project, Node: ref, View: view})))
 			},
 		},
 		{
@@ -218,7 +218,7 @@ predecessor satisfies nothing and is not listed, and inputs are not
 transitive.`,
 			schema: objectSchema(map[string]any{
 				"ref":  stringProp(`Node reference of the node whose inputs to read: "#7", "slug#7", or "org/slug#7".`),
-				"view": viewProp(daggerv1.View_VIEW_FULL),
+				"view": viewProp(skiftv1.View_VIEW_FULL),
 			}, "ref"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -232,11 +232,11 @@ transitive.`,
 				if err != nil {
 					return nil, err
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_FULL)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_FULL)
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.GetInputs(ctx, connect.NewRequest(&daggerv1.GetInputsRequest{Project: project, Node: ref, View: view})))
+				return unwrap(c.Graph.GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{Project: project, Node: ref, View: view})))
 			},
 		},
 		{
@@ -248,13 +248,13 @@ Every node is in scope whatever its status, so filter or this is the
 whole backlog. Summaries, no bodies.`,
 			schema: objectSchema(pageSchema(map[string]any{
 				"projects":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Projects to list, by slug or org/slug; repeatable. Defaults to the current project, or every project you may read when none is configured."},
-				"status":        enumProp("Only nodes in this status. Unset means every status, open and closed alike.", enumChoices[daggerv1.Status]()),
+				"status":        enumProp("Only nodes in this status. Unset means every status, open and closed alike.", enumChoices[skiftv1.Status]()),
 				"kind":          stringProp("Only nodes of this kind. Free-form, not an enum; conventionally task, bug, spike, or chore."),
-				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the dagger skill says what an agent may do with one.", enumChoices[daggerv1.AssigneeKind]()),
+				"assignee_kind": enumProp("Only nodes completable by this kind of principal. A node whose assignee kind is user is a gate, satisfied only by a user completing it; the skift skill says what an agent may do with one.", enumChoices[skiftv1.AssigneeKind]()),
 				"labels":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only nodes carrying every one of these labels."},
 				"parent":        stringProp(`Only the children of this node, as a node reference such as "#7".`),
 				"held":          boolProp("Only parked nodes: held themselves, contained in something held, or in a held project. This is how held work is found again, since it is absent from the ready set."),
-				"view":          viewProp(daggerv1.View_VIEW_SUMMARY),
+				"view":          viewProp(skiftv1.View_VIEW_SUMMARY),
 			})),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -278,26 +278,26 @@ whole backlog. Summaries, no bodies.`,
 						return nil, err
 					}
 				}
-				status, err := parseEnum[daggerv1.Status]("status", args.Status)
+				status, err := parseEnum[skiftv1.Status]("status", args.Status)
 				if err != nil {
 					return nil, err
 				}
-				assigneeKind, err := parseEnum[daggerv1.AssigneeKind]("assignee_kind", args.AssigneeKind)
+				assigneeKind, err := parseEnum[skiftv1.AssigneeKind]("assignee_kind", args.AssigneeKind)
 				if err != nil {
 					return nil, err
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_SUMMARY)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_SUMMARY)
 				if err != nil {
 					return nil, err
 				}
-				filter := &daggerv1.NodeFilter{
+				filter := &skiftv1.NodeFilter{
 					Projects: projects, Status: status, AssigneeKind: assigneeKind,
 					Labels: args.Labels, Parent: args.Parent, Held: args.Held,
 				}
 				if args.Kind != "" {
 					filter.Kinds = []string{args.Kind}
 				}
-				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&daggerv1.ListNodesRequest{
+				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{
 					Filter: filter, PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
@@ -322,7 +322,7 @@ archived project. No reasons means it is ready.`,
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.Explain(ctx, connect.NewRequest(&daggerv1.ExplainRequest{Project: project, Node: ref})))
+				return unwrap(c.Graph.Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: project, Node: ref})))
 			},
 		},
 		{
@@ -365,14 +365,14 @@ hold_node and unhold_node park work; the hold tool is the shorter way.`,
 				"project":    stringProp("Project the patch applies to and bare references resolve in. Defaults to the current project."),
 				"lease_id":   stringProp("Fencing token of the lease you hold, required when the patch touches a leased node. Defaults to the one lease this session holds, if exactly one."),
 				"request_id": requestIDProp(),
-				"view":       viewProp(daggerv1.View_VIEW_REFS),
+				"view":       viewProp(skiftv1.View_VIEW_REFS),
 			}, "ops"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
-				view, rest, err := splitView(raw, daggerv1.View_VIEW_REFS)
+				view, rest, err := splitView(raw, skiftv1.View_VIEW_REFS)
 				if err != nil {
 					return nil, err
 				}
-				req := &daggerv1.ApplyPatchRequest{}
+				req := &skiftv1.ApplyPatchRequest{}
 				if err := codec.Unmarshal(rest, req); err != nil {
 					return nil, decodeUsage(err)
 				}
@@ -403,10 +403,10 @@ An empty answer carries held_count: held work is parked, not done, and
 explain says who parked it.
 
 ` + priorityIdiom + `
-It is the first sort key here, and the only thing dagger does with it.`,
+It is the first sort key here, and the only thing skift does with it.`,
 			schema: objectSchema(pageSchema(func() map[string]any {
 				props := filterSchema()
-				props["view"] = viewProp(daggerv1.View_VIEW_SUMMARY)
+				props["view"] = viewProp(skiftv1.View_VIEW_SUMMARY)
 				return props
 			}())),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
@@ -422,15 +422,15 @@ It is the first sort key here, and the only thing dagger does with it.`,
 				if err != nil {
 					return nil, err
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_SUMMARY)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_SUMMARY)
 				if err != nil {
 					return nil, err
 				}
-				filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio}
+				filter := &skiftv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio}
 				if args.Kind != "" {
 					filter.Kinds = []string{args.Kind}
 				}
-				return unwrap(c.Work.Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{
+				return unwrap(c.Work.Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{
 					Filter: filter, PageSize: args.PageSize, PageToken: args.PageToken, View: view,
 				})))
 			},
@@ -443,7 +443,7 @@ returns is the fencing token every later write to that node must carry —
 complete, comment and apply_patch alike. Most urgent is priority order,
 which is advisory: p2 is the default, and min_priority filters candidates
 rather than gating them. A node whose assignee_kind is user is a gate,
-satisfied only by a user completing it; the dagger skill says what an
+satisfied only by a user completing it; the skift skill says what an
 agent may do with one.
 
 The lease is renewed while this session runs, and released as "crash" if
@@ -481,11 +481,11 @@ it ends first.`,
 				if agentRef == "" {
 					agentRef = s.agentRef
 				}
-				filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio}
+				filter := &skiftv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: args.Labels, MinPriority: prio}
 				if args.Kind != "" {
 					filter.Kinds = []string{args.Kind}
 				}
-				req := &daggerv1.ClaimNextRequest{
+				req := &skiftv1.ClaimNextRequest{
 					RequestId: client.NewRequestID(), Filter: filter,
 					Harness: s.harness, AgentRef: agentRef, SessionRef: s.sessionRef,
 				}
@@ -528,7 +528,7 @@ rather than continuing.`,
 				if err != nil {
 					return nil, err
 				}
-				req := &daggerv1.HeartbeatRequest{RequestId: client.NewRequestID(), LeaseId: leaseID}
+				req := &skiftv1.HeartbeatRequest{RequestId: client.NewRequestID(), LeaseId: leaseID}
 				if ttl > 0 {
 					req.Ttl = durationpb.New(ttl)
 				}
@@ -545,10 +545,10 @@ instead.`,
 			schema: objectSchema(map[string]any{
 				"lease_id": stringProp("The lease to release. Defaults to the one lease this session holds, if exactly one."),
 				"reason": enumProp("Why the attempt ended.", shortNames(
-					daggerv1.ReleaseReason_RELEASE_REASON_GATE,
-					daggerv1.ReleaseReason_RELEASE_REASON_CRASH,
-					daggerv1.ReleaseReason_RELEASE_REASON_BUDGET,
-					daggerv1.ReleaseReason_RELEASE_REASON_PREEMPTED,
+					skiftv1.ReleaseReason_RELEASE_REASON_GATE,
+					skiftv1.ReleaseReason_RELEASE_REASON_CRASH,
+					skiftv1.ReleaseReason_RELEASE_REASON_BUDGET,
+					skiftv1.ReleaseReason_RELEASE_REASON_PREEMPTED,
 				)),
 				"detail": stringProp("Free text expanding on the reason, recorded on the event: what was tried, what is left."),
 			}, "reason"),
@@ -561,18 +561,18 @@ instead.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				reason, err := parseEnum[daggerv1.ReleaseReason]("reason", args.Reason)
+				reason, err := parseEnum[skiftv1.ReleaseReason]("reason", args.Reason)
 				if err != nil {
 					return nil, err
 				}
-				if reason == daggerv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
+				if reason == skiftv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
 					return nil, usage("reason is required: gate, crash, budget, or preempted")
 				}
 				leaseID, err := s.requireLease(args.LeaseID)
 				if err != nil {
 					return nil, err
 				}
-				res, err := unwrap(c.Work.Release(ctx, connect.NewRequest(&daggerv1.ReleaseRequest{
+				res, err := unwrap(c.Work.Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
 					RequestId: client.NewRequestID(), LeaseId: leaseID, Reason: reason, Detail: args.Detail,
 				})))
 				if err != nil {
@@ -592,7 +592,7 @@ lease is released with it; use release when the work is not done.`,
 				"ref":      stringProp(`Node reference: "#7", "slug#7", or "org/slug#7".`),
 				"result":   stringProp("Result body in markdown: what was produced and where."),
 				"lease_id": stringProp("Fencing token of the lease held on the node. Defaults to the lease this session holds on it."),
-				"view":     viewProp(daggerv1.View_VIEW_REFS),
+				"view":     viewProp(skiftv1.View_VIEW_REFS),
 			}, "ref", "result"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -612,14 +612,14 @@ lease is released with it; use release when the work is not done.`,
 				if err != nil {
 					return nil, err
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_REFS)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_REFS)
 				if err != nil {
 					return nil, err
 				}
-				return s.apply(ctx, &daggerv1.ApplyPatchRequest{
+				return s.apply(ctx, &skiftv1.ApplyPatchRequest{
 					RequestId: client.NewRequestID(), Project: project, LeaseId: s.leaseOr(args.LeaseID),
-					Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_CompleteNode{CompleteNode: &daggerv1.CompleteNodeOp{
-						Node: ref.String(), Result: &daggerv1.Result{Body: args.Result},
+					Ops: []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_CompleteNode{CompleteNode: &skiftv1.CompleteNodeOp{
+						Node: ref.String(), Result: &skiftv1.Result{Body: args.Result},
 					}}}},
 					View: view,
 				})
@@ -635,7 +635,7 @@ agent or person reads them. Use it for anything that is not the result.`,
 				"body":        stringProp("Comment body in markdown."),
 				"in_reply_to": stringProp("Id of the comment this one replies to."),
 				"lease_id":    stringProp("Fencing token of the lease held on the node, if any. Defaults to the lease this session holds on it."),
-				"view":        viewProp(daggerv1.View_VIEW_REFS),
+				"view":        viewProp(skiftv1.View_VIEW_REFS),
 			}, "ref", "body"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
 				var args struct {
@@ -656,13 +656,13 @@ agent or person reads them. Use it for anything that is not the result.`,
 				if err != nil {
 					return nil, err
 				}
-				view, err := parseView("view", args.View, daggerv1.View_VIEW_REFS)
+				view, err := parseView("view", args.View, skiftv1.View_VIEW_REFS)
 				if err != nil {
 					return nil, err
 				}
-				return s.apply(ctx, &daggerv1.ApplyPatchRequest{
+				return s.apply(ctx, &skiftv1.ApplyPatchRequest{
 					RequestId: client.NewRequestID(), Project: project, LeaseId: s.leaseOr(args.LeaseID),
-					Ops: []*daggerv1.PatchOp{{Op: &daggerv1.PatchOp_AddComment{AddComment: &daggerv1.AddCommentOp{
+					Ops: []*skiftv1.PatchOp{{Op: &skiftv1.PatchOp_AddComment{AddComment: &skiftv1.AddCommentOp{
 						Node: ref.String(), Body: args.Body, InReplyTo: args.InReplyTo,
 					}}}},
 					View: view,
@@ -700,10 +700,10 @@ it still blocks what depends on it.
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.ApplyPatch(ctx, connect.NewRequest(&daggerv1.ApplyPatchRequest{
+				return unwrap(c.Graph.ApplyPatch(ctx, connect.NewRequest(&skiftv1.ApplyPatchRequest{
 					RequestId: orMint(args.RequestID), Project: project,
-					Ops:  []*daggerv1.PatchOp{holdOp(ref.String(), args.Reason, args.Release)},
-					View: daggerv1.View_VIEW_SUMMARY,
+					Ops:  []*skiftv1.PatchOp{holdOp(ref.String(), args.Reason, args.Release)},
+					View: skiftv1.View_VIEW_SUMMARY,
 				})))
 			},
 		},
@@ -736,12 +736,12 @@ touches only its own holds.`,
 					return nil, err
 				}
 				if args.Release {
-					return unwrap(c.Graph.ClearFocus(ctx, connect.NewRequest(&daggerv1.ClearFocusRequest{
+					return unwrap(c.Graph.ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{
 						RequestId: orMint(args.RequestID), Project: args.Project,
 						Group: args.Group, Reason: args.Reason,
 					})))
 				}
-				return unwrap(c.Graph.Focus(ctx, connect.NewRequest(&daggerv1.FocusRequest{
+				return unwrap(c.Graph.Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{
 					RequestId: orMint(args.RequestID), Project: args.Project,
 					Keep: args.Keep, Reason: args.Reason,
 				})))
@@ -765,7 +765,7 @@ and left out unless asked for.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.ListProjects(ctx, connect.NewRequest(&daggerv1.ListProjectsRequest{
+				return unwrap(c.Graph.ListProjects(ctx, connect.NewRequest(&skiftv1.ListProjectsRequest{
 					IncludeArchived: args.IncludeArchived, PageSize: args.PageSize, PageToken: args.PageToken,
 				})))
 			},
@@ -794,7 +794,7 @@ is named by slug, "org/slug", or id, and a retired slug still resolves.`,
 						return nil, err
 					}
 				}
-				return unwrap(c.Graph.GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: project})))
+				return unwrap(c.Graph.GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: project})))
 			},
 		},
 		{
@@ -810,8 +810,8 @@ wrong project.`,
 			schema: objectSchema(map[string]any{
 				"title":      stringProp("Human-readable name of the project. The slug is derived from it."),
 				"slug":       stringProp("Requested slug. Defaults to one derived from the title; lowercased and disambiguated either way."),
-				"priority":   enumProp("Advisory priority of the project as a whole. Dagger never sorts by it; p2 is the default.", enumChoices[daggerv1.Priority]()),
-				"vcs_url":    stringProp("Clone URL of the repository the project delivers to, as an absolute URL. Dagger stores it for orchestrators and never reads it."),
+				"priority":   enumProp("Advisory priority of the project as a whole. Skift never sorts by it; p2 is the default.", enumChoices[skiftv1.Priority]()),
+				"vcs_url":    stringProp("Clone URL of the repository the project delivers to, as an absolute URL. Skift stores it for orchestrators and never reads it."),
 				"request_id": requestIDProp(),
 			}, "title"),
 			call: func(ctx context.Context, raw json.RawMessage) (proto.Message, error) {
@@ -828,11 +828,11 @@ wrong project.`,
 				if args.Title == "" {
 					return nil, usage("title is required")
 				}
-				prio, err := parseEnum[daggerv1.Priority]("priority", args.Priority)
+				prio, err := parseEnum[skiftv1.Priority]("priority", args.Priority)
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{
+				return unwrap(c.Graph.CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{
 					RequestId: orMint(args.RequestID), Title: args.Title, Slug: args.Slug, Priority: prio, VcsUrl: args.VCSURL,
 				})))
 			},
@@ -842,7 +842,7 @@ wrong project.`,
 
 // apply sends one patch. A held lease whose node the patch closed is
 // forgotten: the server released it with the patch.
-func (s *mcpServer) apply(ctx context.Context, req *daggerv1.ApplyPatchRequest) (proto.Message, error) {
+func (s *mcpServer) apply(ctx context.Context, req *skiftv1.ApplyPatchRequest) (proto.Message, error) {
 	res, err := unwrap(s.app.client.Graph.ApplyPatch(ctx, connect.NewRequest(req)))
 	if err != nil {
 		return nil, err
@@ -853,7 +853,7 @@ func (s *mcpServer) apply(ctx context.Context, req *daggerv1.ApplyPatchRequest) 
 				continue
 			}
 			for _, n := range res.GetNodes() {
-				if n.GetReference() == h.ref && n.GetStatus() != daggerv1.Status_STATUS_OPEN {
+				if n.GetReference() == h.ref && n.GetStatus() != skiftv1.Status_STATUS_OPEN {
 					s.forget(h.id)
 				}
 			}

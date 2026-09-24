@@ -17,10 +17,10 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/codec"
-	"github.com/ivy/dagger/internal/server"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/codec"
+	"github.com/steading-ai/skift/internal/server"
 )
 
 // wireJSON renders a response the way a JSON client, and so a context
@@ -41,12 +41,12 @@ func (p pinger) Ping(context.Context) error { return p.err }
 // handler node will replace; here it proves the transport carries a
 // successful response, not only an error.
 type graphStub struct {
-	daggerv1connect.UnimplementedGraphServiceHandler
+	skiftv1connect.UnimplementedGraphServiceHandler
 }
 
-func (graphStub) GetProject(_ context.Context, req *connect.Request[daggerv1.GetProjectRequest]) (*connect.Response[daggerv1.GetProjectResponse], error) {
-	return connect.NewResponse(&daggerv1.GetProjectResponse{
-		Project: &daggerv1.Project{Slug: req.Msg.GetProject(), Title: "Stub project"},
+func (graphStub) GetProject(_ context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
+	return connect.NewResponse(&skiftv1.GetProjectResponse{
+		Project: &skiftv1.Project{Slug: req.Msg.GetProject(), Title: "Stub project"},
 	}), nil
 }
 
@@ -55,7 +55,7 @@ func (graphStub) GetProject(_ context.Context, req *connect.Request[daggerv1.Get
 // appears, so a call returns only on wait or drain. claims counts leases it
 // would have handed out, and must stay zero across a drain.
 type workStub struct {
-	daggerv1connect.UnimplementedWorkServiceHandler
+	skiftv1connect.UnimplementedWorkServiceHandler
 	waiting chan struct{}
 	claims  atomic.Int32
 }
@@ -64,7 +64,7 @@ func newWorkStub() *workStub {
 	return &workStub{waiting: make(chan struct{}, 1)}
 }
 
-func (w *workStub) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.ClaimNextRequest]) (*connect.Response[daggerv1.ClaimNextResponse], error) {
+func (w *workStub) ClaimNext(ctx context.Context, req *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
 	w.waiting <- struct{}{}
 	wait := req.Msg.GetWait().AsDuration()
 	select {
@@ -75,7 +75,7 @@ func (w *workStub) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.
 	}
 	// A lease is created only when a node is handed out; an empty
 	// response carries neither.
-	return connect.NewResponse(&daggerv1.ClaimNextResponse{}), nil
+	return connect.NewResponse(&skiftv1.ClaimNextResponse{}), nil
 }
 
 // running is a server started for one spec.
@@ -89,12 +89,12 @@ type running struct {
 }
 
 // start listens on a socket in a scratch directory and serves until the
-// spec ends or stop is called. It is the in-process shape of "dg serve":
+// spec ends or stop is called. It is the in-process shape of "skift serve":
 // the same Server, the same drain path, with services injected.
 func start(cfg server.Config, svc server.Services, db server.Pinger) *running {
 	GinkgoHelper()
 	if cfg.SocketPath == "" {
-		cfg.SocketPath = filepath.Join(GinkgoT().TempDir(), "dg.sock")
+		cfg.SocketPath = filepath.Join(GinkgoT().TempDir(), "skift.sock")
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = specLogger()
@@ -113,7 +113,7 @@ func start(cfg server.Config, svc server.Services, db server.Pinger) *running {
 	return r
 }
 
-// stop cancels the serve context, as SIGTERM does in dg serve, and returns
+// stop cancels the serve context, as SIGTERM does in skift serve, and returns
 // what Serve returned. It is safe to call more than once.
 func (r *running) stop() error {
 	r.cancel()
@@ -138,18 +138,18 @@ func (r *running) httpClient() *http.Client {
 	}}
 }
 
-const baseURL = "http://dagger"
+const baseURL = "http://skift"
 
-func (r *running) graph() daggerv1connect.GraphServiceClient {
-	return daggerv1connect.NewGraphServiceClient(r.httpClient(), baseURL)
+func (r *running) graph() skiftv1connect.GraphServiceClient {
+	return skiftv1connect.NewGraphServiceClient(r.httpClient(), baseURL)
 }
 
-func (r *running) work() daggerv1connect.WorkServiceClient {
-	return daggerv1connect.NewWorkServiceClient(r.httpClient(), baseURL)
+func (r *running) work() skiftv1connect.WorkServiceClient {
+	return skiftv1connect.NewWorkServiceClient(r.httpClient(), baseURL)
 }
 
-func (r *running) events() daggerv1connect.EventServiceClient {
-	return daggerv1connect.NewEventServiceClient(r.httpClient(), baseURL)
+func (r *running) events() skiftv1connect.EventServiceClient {
+	return skiftv1connect.NewEventServiceClient(r.httpClient(), baseURL)
 }
 
 // specLogger routes the server's log to the spec's writer, shown only on

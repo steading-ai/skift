@@ -6,28 +6,28 @@ import (
 
 	"connectrpc.com/connect"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/server/interceptor"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/server/interceptor"
 )
 
-// WorkService is the dagger.v1.WorkService handler: the ready set, claims
+// WorkService is the skift.v1.WorkService handler: the ready set, claims
 // under a fencing token, heartbeats, and releases. Like GraphService it
 // translates and decides nothing.
 type WorkService struct {
 	svc *domain.Service
 }
 
-var _ daggerv1connect.WorkServiceHandler = (*WorkService)(nil)
+var _ skiftv1connect.WorkServiceHandler = (*WorkService)(nil)
 
 // NewWorkService returns the WorkService handler over svc.
 func NewWorkService(svc *domain.Service) *WorkService {
 	return &WorkService{svc: svc}
 }
 
-// Ready implements daggerv1connect.WorkServiceHandler.
-func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.ReadyRequest]) (*connect.Response[daggerv1.ReadyResponse], error) {
+// Ready implements skiftv1connect.WorkServiceHandler.
+func (w *WorkService) Ready(ctx context.Context, req *connect.Request[skiftv1.ReadyRequest]) (*connect.Response[skiftv1.ReadyResponse], error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
@@ -54,17 +54,17 @@ func (w *WorkService) Ready(ctx context.Context, req *connect.Request[daggerv1.R
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&daggerv1.ReadyResponse{
-		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), daggerv1.View_VIEW_SUMMARY)),
+	return connect.NewResponse(&skiftv1.ReadyResponse{
+		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), skiftv1.View_VIEW_SUMMARY)),
 		NextPageToken: nextPageToken(offset, size, len(nodes)),
 		HeldCount:     int32(held), //nolint:gosec // a project's open nodes
 	}), nil
 }
 
-// ClaimNext implements daggerv1connect.WorkServiceHandler. A waiting claim
+// ClaimNext implements skiftv1connect.WorkServiceHandler. A waiting claim
 // ends early, empty, when the server starts draining, so a shutdown never
 // cuts a client off mid-wait and never interrupts a claim mid-transaction.
-func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.ClaimNextRequest]) (*connect.Response[daggerv1.ClaimNextResponse], error) {
+func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[dagger
 	if err != nil {
 		return nil, connectError(err)
 	}
-	res := &daggerv1.ClaimNextResponse{}
+	res := &skiftv1.ClaimNextResponse{}
 	if out != nil {
 		res.Node = toNode(*out.Node)
 		res.Lease = toLease(out.Lease)
@@ -111,8 +111,8 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[dagger
 	return connect.NewResponse(res), nil
 }
 
-// Heartbeat implements daggerv1connect.WorkServiceHandler.
-func (w *WorkService) Heartbeat(ctx context.Context, req *connect.Request[daggerv1.HeartbeatRequest]) (*connect.Response[daggerv1.HeartbeatResponse], error) {
+// Heartbeat implements skiftv1connect.WorkServiceHandler.
+func (w *WorkService) Heartbeat(ctx context.Context, req *connect.Request[skiftv1.HeartbeatRequest]) (*connect.Response[skiftv1.HeartbeatResponse], error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
@@ -125,14 +125,14 @@ func (w *WorkService) Heartbeat(ctx context.Context, req *connect.Request[dagger
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&daggerv1.HeartbeatResponse{Lease: toLease(change.Lease)}), nil
+	return connect.NewResponse(&skiftv1.HeartbeatResponse{Lease: toLease(change.Lease)}), nil
 }
 
-// ReportUsage implements daggerv1connect.WorkServiceHandler. The report
+// ReportUsage implements skiftv1connect.WorkServiceHandler. The report
 // is applied as a one-operation patch carrying the attempt's lease, so it
 // is fenced, idempotent, and evented like every other write to a held
 // node.
-func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[daggerv1.ReportUsageRequest]) (*connect.Response[daggerv1.ReportUsageResponse], error) {
+func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[skiftv1.ReportUsageRequest]) (*connect.Response[skiftv1.ReportUsageResponse], error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[dagg
 	if err != nil {
 		return nil, connectError(err)
 	}
-	res := &daggerv1.ReportUsageResponse{}
+	res := &skiftv1.ReportUsageResponse{}
 	if len(out.Usage) > 0 {
 		res.Usage = toUsage(out.Usage[0])
 	}
@@ -180,8 +180,8 @@ func onlyOrchestrators(actor domain.Actor) error {
 		actor.PrincipalKind))
 }
 
-// Release implements daggerv1connect.WorkServiceHandler.
-func (w *WorkService) Release(ctx context.Context, req *connect.Request[daggerv1.ReleaseRequest]) (*connect.Response[daggerv1.ReleaseResponse], error) {
+// Release implements skiftv1connect.WorkServiceHandler.
+func (w *WorkService) Release(ctx context.Context, req *connect.Request[skiftv1.ReleaseRequest]) (*connect.Response[skiftv1.ReleaseResponse], error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
@@ -190,5 +190,5 @@ func (w *WorkService) Release(ctx context.Context, req *connect.Request[daggerv1
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&daggerv1.ReleaseResponse{Lease: toLease(change.Lease)}), nil
+	return connect.NewResponse(&skiftv1.ReleaseResponse{Lease: toLease(change.Lease)}), nil
 }

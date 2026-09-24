@@ -5,5 +5,5 @@
 set -e
 systemctl daemon-reload >/dev/null 2>&1 || :
 if [ "$1" -ge 1 ]; then
-  systemctl try-restart dagger.service >/dev/null 2>&1 || :
+  systemctl try-restart skift.service >/dev/null 2>&1 || :
 fi

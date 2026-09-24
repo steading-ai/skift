@@ -1,8 +1,8 @@
-// Package codec is dagger's JSON encoding of the wire messages, and the
+// Package codec is skift's JSON encoding of the wire messages, and the
 // one place the mapping between JSON and proto lives.
 //
 // It differs from protojson in two ways, both so that JSON says what every
-// other dagger surface says. Fields carry their proto names, which are the
+// other skift surface says. Fields carry their proto names, which are the
 // names docs/domain-model.md uses. Enums are the short lowercase form —
 // "p2", "open", "user" — which is the CLI's flag, the display's word, and
 // the model's vocabulary; the canonical name and the unprefixed name are

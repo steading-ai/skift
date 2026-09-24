@@ -23,12 +23,12 @@ import (
 
 	"github.com/open-policy-agent/opa/v1/rego"
 
-	defaultbundle "github.com/ivy/dagger/policy"
+	defaultbundle "github.com/steading-ai/skift/policy"
 )
 
 // decisionQuery is the rule the bundle must define: an object with `allow`
 // and the `reasons` the action was refused for.
-const decisionQuery = "data.dagger.authz.decision"
+const decisionQuery = "data.skift.authz.decision"
 
 // ErrDenied is what every refusal unwraps to, whatever its cause.
 var ErrDenied = errors.New("denied by policy")

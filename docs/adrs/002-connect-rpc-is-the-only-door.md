@@ -39,8 +39,8 @@ Server streaming, backed by PostgreSQL `LISTEN`/`NOTIFY`, serves change events. 
 ### Consequences
 
 - **Good**: Agents never hold database credentials. The credential isolation principle of the orchestrator is preserved.
-- **Good**: The MCP server and CLI are one Go client with a transport configuration. The same binary serves as `dg`, `dg mcp`, and `dg serve`.
-- **Good**: Proto types are versioned as `dagger.v1` from the start.
+- **Good**: The MCP server and CLI are one Go client with a transport configuration. The same binary serves as `skift`, `skift mcp`, and `skift serve`.
+- **Good**: Proto types are versioned as `skift.v1` from the start.
 - **Bad**: Two models, wire and storage, with a mapping layer between them. This is the price of swappability and is accepted deliberately.
 - **Bad**: Proto contract design is front-loaded work.
 - **Neutral**: `tsnet` is deferred until agents run on a second machine. Unix sockets suffice on one host.

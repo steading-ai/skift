@@ -37,7 +37,7 @@ const DBLabel = "db"
 const (
 	superuser    = "postgres"
 	password     = "postgres"
-	templateName = "dagger_template"
+	templateName = "skift_template"
 	// startTimeout covers a cold image pull with margin.
 	startTimeout = 3 * time.Minute
 )

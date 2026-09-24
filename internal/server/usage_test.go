@@ -5,8 +5,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // Estimates and usage reports over the wire: an agent estimates through a
@@ -26,7 +26,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			f.mustApply(ctx, createOp("work", "Do the work"))
 
 			By("when a patch estimates it")
-			f.mustApply(ctx, estimateOp(&daggerv1.EstimateNodeOp{
+			f.mustApply(ctx, estimateOp(&skiftv1.EstimateNodeOp{
 				Node: "#1", Model: "claude-opus-5", Basis: "two nodes of the same shape",
 				InputTokens: 120000, OutputTokens: 8000, CacheReadTokens: 500, CacheWriteTokens: 250,
 			}))
@@ -34,7 +34,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			By("then GetNode carries the estimate as it was recorded")
 			estimate := f.getNode(ctx, "platform", "#1").GetEstimate()
 			Expect(estimate).NotTo(BeNil())
-			Expect(estimate.GetKind()).To(Equal(daggerv1.UsageKind_USAGE_KIND_ESTIMATE))
+			Expect(estimate.GetKind()).To(Equal(skiftv1.UsageKind_USAGE_KIND_ESTIMATE))
 			Expect(estimate.GetModel()).To(Equal("claude-opus-5"))
 			Expect(estimate.GetBasis()).To(Equal("two nodes of the same shape"))
 			Expect(estimate.GetInputTokens()).To(Equal(int64(120000)))
@@ -53,8 +53,8 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 
 		It("re-estimating supersedes the earlier estimate", func(ctx SpecContext) {
 			f.mustApply(ctx, createOp("work", "Do the work"))
-			f.mustApply(ctx, estimateOp(&daggerv1.EstimateNodeOp{Node: "#1", Basis: "first pass", InputTokens: 1000}))
-			f.mustApply(ctx, estimateOp(&daggerv1.EstimateNodeOp{Node: "#1", Basis: "second pass", InputTokens: 4000}))
+			f.mustApply(ctx, estimateOp(&skiftv1.EstimateNodeOp{Node: "#1", Basis: "first pass", InputTokens: 1000}))
+			f.mustApply(ctx, estimateOp(&skiftv1.EstimateNodeOp{Node: "#1", Basis: "second pass", InputTokens: 4000}))
 
 			node := f.getNode(ctx, "platform", "#1")
 			Expect(node.GetEstimate().GetBasis()).To(Equal("second pass"))
@@ -65,7 +65,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 
 		It("refuses an estimate with no basis", func(ctx SpecContext) {
 			f.mustApply(ctx, createOp("work", "Do the work"))
-			_, err := f.apply(ctx, "platform", estimateOp(&daggerv1.EstimateNodeOp{Node: "#1", InputTokens: 10}))
+			_, err := f.apply(ctx, "platform", estimateOp(&skiftv1.EstimateNodeOp{Node: "#1", InputTokens: 10}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 			Expect(err.Error()).To(ContainSubstring("basis"))
 		})
@@ -78,7 +78,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			lease := f.claimAsUser(ctx, "platform").GetLease()
 
 			By("when it reports what the attempt has cost")
-			res, err := f.work().ReportUsage(ctx, connect.NewRequest(&daggerv1.ReportUsageRequest{
+			res, err := f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", LeaseId: lease.GetId(), Node: "#1",
 				Model: "claude-opus-5", InputTokens: 1200, OutputTokens: 340, CacheReadTokens: 60, CacheWriteTokens: 20,
 			}))
@@ -86,7 +86,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 
 			By("then the record it stored is attributed to that attempt")
 			stored := res.Msg.GetUsage()
-			Expect(stored.GetKind()).To(Equal(daggerv1.UsageKind_USAGE_KIND_ACTUAL))
+			Expect(stored.GetKind()).To(Equal(skiftv1.UsageKind_USAGE_KIND_ACTUAL))
 			Expect(stored.GetLeaseId()).To(Equal(lease.GetId()))
 			Expect(stored.GetPrincipal()).To(Equal(f.user.ID))
 			Expect(stored.GetInputTokens()).To(Equal(int64(1200)))
@@ -102,7 +102,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			Expect(actual[0].GetCacheWriteTokens()).To(Equal(int64(20)))
 
 			By("and reporting again adds to the attempt rather than replacing it")
-			_, err = f.work().ReportUsage(ctx, connect.NewRequest(&daggerv1.ReportUsageRequest{
+			_, err = f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", LeaseId: lease.GetId(), Node: "#1",
 				Model: "claude-opus-5", InputTokens: 800,
 			}))
@@ -121,7 +121,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			By("when the agent reports what its own attempt cost")
 			f.as(f.agent)
 			defer f.as(f.user)
-			_, err := f.work().ReportUsage(ctx, connect.NewRequest(&daggerv1.ReportUsageRequest{
+			_, err := f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", LeaseId: lease.GetId(), Node: "#1", InputTokens: 1200,
 			}))
 
@@ -139,7 +139,7 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 
 		It("refuses a report carrying no lease", func(ctx SpecContext) {
 			f.mustApply(ctx, createOp("work", "Do the work"))
-			_, err := f.work().ReportUsage(ctx, connect.NewRequest(&daggerv1.ReportUsageRequest{
+			_, err := f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", Node: "#1", InputTokens: 1200,
 			}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))

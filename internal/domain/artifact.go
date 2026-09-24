@@ -12,14 +12,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/store/blob"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/store/blob"
 )
 
 // An artifact is a named output attached to a node, shaped after A2A:
 // name, description, parts, metadata. A part is inline text under the
 // cap, a managed blob, or a reference to something that lives elsewhere.
-// Dagger is the manifest, not the pipe: it never stores raw bytes inside
+// Skift is the manifest, not the pipe: it never stores raw bytes inside
 // a node, and it never fetches a reference. See the Artifact section of
 // docs/domain-model.md and docs/adrs/003-artifacts-are-content-addressed.md.
 //
@@ -86,7 +86,7 @@ type BlobPart struct {
 	Digest string `json:"digest"`
 }
 
-// ReferencePart points at content dagger does not store. The URI is
+// ReferencePart points at content skift does not store. The URI is
 // agent-supplied and untrusted; whoever fetches it applies its own
 // restrictions. The digest is of the referenced content, and a reference
 // to something mutable carries the resolved immutable identity.
@@ -187,7 +187,7 @@ func (p *Part) validate(l Limits) error {
 
 // validate rejects a reference with no URI, a digest not in canonical
 // form, or a git URI that does not record the commit it resolved to. The
-// URI is otherwise taken as given: dagger stores it verbatim and never
+// URI is otherwise taken as given: skift stores it verbatim and never
 // resolves it.
 func (r *ReferencePart) validate() error {
 	if r.URI == "" {
@@ -227,7 +227,7 @@ func isGitURI(uri string) bool {
 type StoredPart struct {
 	store.ArtifactPart
 	// Untrusted is set on every reference part. Its URI is stored
-	// verbatim as the attaching agent gave it and dagger never fetched
+	// verbatim as the attaching agent gave it and skift never fetched
 	// it, so whoever does is responsible for scheme and host
 	// restrictions and for refusing link-local and cloud metadata
 	// destinations. The digest proves the bytes fetched are the bytes

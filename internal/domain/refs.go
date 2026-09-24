@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // ErrProjectNotFound is the sentinel a [*NotFoundError] for a project or

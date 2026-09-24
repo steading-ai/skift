@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 var _ = Describe("Change stream", Label(testsupport.DBLabel), func() {
@@ -27,7 +27,7 @@ var _ = Describe("Change stream", Label(testsupport.DBLabel), func() {
 		conn, err := db.Acquire(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Release()
-		_, err = conn.Exec(ctx, `LISTEN dagger_events`)
+		_, err = conn.Exec(ctx, `LISTEN skift_events`)
 		Expect(err).NotTo(HaveOccurred())
 
 		f.event(ctx, "create_node")
@@ -36,7 +36,7 @@ var _ = Describe("Change stream", Label(testsupport.DBLabel), func() {
 		defer cancel()
 		n, err := conn.Conn().WaitForNotification(waitCtx)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(n.Channel).To(Equal("dagger_events"))
+		Expect(n.Channel).To(Equal("skift_events"))
 		Expect(n.Payload).To(Equal(f.org))
 	})
 })

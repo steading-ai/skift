@@ -19,14 +19,14 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/codec"
-	"github.com/ivy/dagger/internal/logging"
-	"github.com/ivy/dagger/internal/version"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/codec"
+	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/version"
 )
 
-// dg mcp is the CLI's client wrapped for a harness: an MCP server on stdio
+// skift mcp is the CLI's client wrapped for a harness: an MCP server on stdio
 // whose tools are the commands, taking the same references and sending the
 // same requests. The protocol is JSON-RPC 2.0, one message per line, as
 // the MCP stdio transport specifies:
@@ -155,7 +155,7 @@ type leaseHold struct {
 	stop context.CancelFunc
 }
 
-// mcpServer is one dg mcp process: the client, the tools over it, and the
+// mcpServer is one skift mcp process: the client, the tools over it, and the
 // leases it holds.
 type mcpServer struct {
 	app *app
@@ -194,7 +194,7 @@ func (a *app) mcpCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp",
 		Short: "Serve the CLI as an MCP server over stdio",
-		Long: `Serve dagger to a harness such as Claude Code as an MCP server on stdin and
+		Long: `Serve skift to a harness such as Claude Code as an MCP server on stdin and
 stdout. Each tool is one CLI command: same node references, same requests,
 same responses as JSON.
 
@@ -217,7 +217,7 @@ func (a *app) runMCP(cmd *cobra.Command) error {
 	// Configuration and transport errors surface before the server
 	// answers anything; the client itself dials lazily.
 	if _, err := a.connect(); err != nil {
-		return fmt.Errorf("dg mcp: %w", err)
+		return fmt.Errorf("skift mcp: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -243,7 +243,7 @@ func (a *app) newMCPServer(in io.Reader, out, diag io.Writer) *mcpServer {
 // serve runs until stdin closes or ctx is cancelled, then releases every
 // lease still held.
 func (s *mcpServer) serve(ctx context.Context) error {
-	s.log.Info("dg mcp starting", "version", version.String(), "session_ref", s.sessionRef, "transport", s.app.client.Transport(), "target", s.app.client.Target())
+	s.log.Info("skift mcp starting", "version", version.String(), "session_ref", s.sessionRef, "transport", s.app.client.Transport(), "target", s.app.client.Target())
 
 	// In-flight calls share a context that ends with the session, so a
 	// waiting claim stops when the harness goes away.
@@ -284,10 +284,10 @@ loop:
 		}
 	}
 
-	s.log.Info("dg mcp shutting down", "cause", how)
+	s.log.Info("skift mcp shutting down", "cause", how)
 	cancelCalls()
 	s.calls.Wait()
-	s.releaseAll("dg mcp: session ended before the node was completed (" + how + ")")
+	s.releaseAll("skift mcp: session ended before the node was completed (" + how + ")")
 	return nil
 }
 
@@ -384,8 +384,8 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 	}
 	return mcpInitializeResult{
 		ProtocolVersion: protocol,
-		ServerInfo:      mcpServerInfo{Name: "dg", Version: version.String()},
-		Instructions: fmt.Sprintf(`dagger is a project management system: a graph of work whose nodes become
+		ServerInfo:      mcpServerInfo{Name: "skift", Version: version.String()},
+		Instructions: fmt.Sprintf(`skift is a project management system: a graph of work whose nodes become
 ready when their dependencies are done. Current project: %s. Session: %s.
 
 Typical flow: ready or search to find work, show_node and explain to read
@@ -400,7 +400,7 @@ Priority orders the ready set; a hold decides what is in it. Priority is
 p0 to p4, p2 the default: advisory ordering within a project's ready set,
 never a gate on what may be worked. A hold parks work until a person
 releases it, and only a user may place or release one.
-kind is a free string dagger never interprets, task the default and bug,
+kind is a free string skift never interprets, task the default and bug,
 spike and chore the rest of the conventional vocabulary.`, project, s.sessionRef),
 	}, nil
 }
@@ -459,7 +459,7 @@ func codeOf(name string) connect.Code {
 // Lease lifetime.
 
 // hold records a lease claimed on node and starts renewing it.
-func (s *mcpServer) hold(lease *daggerv1.Lease, node *daggerv1.Node) {
+func (s *mcpServer) hold(lease *skiftv1.Lease, node *skiftv1.Node) {
 	ctx, stop := context.WithCancel(context.Background())
 	h := &leaseHold{id: lease.GetId(), ref: node.GetReference(), stop: stop}
 	s.holdMu.Lock()
@@ -505,7 +505,7 @@ func (s *mcpServer) keepAlive(ctx context.Context, h *leaseHold, expiresAt time.
 			return
 		case <-time.After(wait):
 		}
-		res, err := s.app.client.Work.Heartbeat(ctx, connect.NewRequest(&daggerv1.HeartbeatRequest{
+		res, err := s.app.client.Work.Heartbeat(ctx, connect.NewRequest(&skiftv1.HeartbeatRequest{
 			RequestId: client.NewRequestID(), LeaseId: h.id,
 		}))
 		switch {
@@ -540,9 +540,9 @@ func (s *mcpServer) releaseAll(detail string) {
 	ctx, cancel := context.WithTimeout(context.Background(), mcpShutdownTimeout)
 	defer cancel()
 	for _, h := range held {
-		_, err := s.app.client.Work.Release(ctx, connect.NewRequest(&daggerv1.ReleaseRequest{
+		_, err := s.app.client.Work.Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
 			RequestId: client.NewRequestID(), LeaseId: h.id,
-			Reason: daggerv1.ReleaseReason_RELEASE_REASON_CRASH, Detail: detail,
+			Reason: skiftv1.ReleaseReason_RELEASE_REASON_CRASH, Detail: detail,
 		}))
 		if err != nil {
 			s.log.Error("release lease on shutdown; it will expire instead", "lease_id", h.id, "error", err)

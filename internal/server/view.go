@@ -1,18 +1,18 @@
 package server
 
 import (
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 )
 
 // Views: how much of a node a response carries. Every RPC that returns
 // nodes projects them through projectNode on the way out, so "summary"
 // means one thing on the wire. The default per RPC is the handler's; see
-// the View enum in proto/dagger/v1/service.proto for what each view is
+// the View enum in proto/skift/v1/service.proto for what each view is
 // for.
 
 // viewOr resolves an unspecified view to the RPC's default.
-func viewOr(v, def daggerv1.View) daggerv1.View {
-	if v == daggerv1.View_VIEW_UNSPECIFIED {
+func viewOr(v, def skiftv1.View) skiftv1.View {
+	if v == skiftv1.View_VIEW_UNSPECIFIED {
 		return def
 	}
 	return v
@@ -24,11 +24,11 @@ func viewOr(v, def daggerv1.View) daggerv1.View {
 // adds the id, the project (search crosses projects), the hold parking the
 // node if it carries one, and what choosing work reads. Neither carries the
 // body.
-func projectNode(n *daggerv1.Node, view daggerv1.View) *daggerv1.Node {
-	if n == nil || view == daggerv1.View_VIEW_FULL {
+func projectNode(n *skiftv1.Node, view skiftv1.View) *skiftv1.Node {
+	if n == nil || view == skiftv1.View_VIEW_FULL {
 		return n
 	}
-	out := &daggerv1.Node{
+	out := &skiftv1.Node{
 		Number:    n.GetNumber(),
 		Reference: n.GetReference(),
 		Status:    n.GetStatus(),
@@ -37,7 +37,7 @@ func projectNode(n *daggerv1.Node, view daggerv1.View) *daggerv1.Node {
 		Claimed:   n.GetClaimed(),
 		Held:      n.GetHeld(),
 	}
-	if view == daggerv1.View_VIEW_SUMMARY {
+	if view == skiftv1.View_VIEW_SUMMARY {
 		out.Id = n.GetId()
 		out.ProjectId = n.GetProjectId()
 		out.Title = n.GetTitle()

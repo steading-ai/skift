@@ -7,8 +7,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/cli"
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/cli"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 var _ = Describe("root command", Label("unit"), func() {
@@ -48,20 +48,20 @@ var _ = Describe("root command", Label("unit"), func() {
 	Describe("serve", func() {
 		It("requires a database URL", func() {
 			GinkgoT().Setenv("DATABASE_URL", "")
-			err := execute("serve", "--socket", filepath.Join(GinkgoT().TempDir(), "dg.sock"))
+			err := execute("serve", "--socket", filepath.Join(GinkgoT().TempDir(), "skift.sock"))
 			Expect(err).To(MatchError(ContainSubstring("database URL is required")))
 		})
 
 		It("rejects a socket mode that is not octal permissions", func() {
 			err := execute("serve",
-				"--socket", filepath.Join(GinkgoT().TempDir(), "dg.sock"),
-				"--database-url", "postgres://127.0.0.1:1/dagger",
+				"--socket", filepath.Join(GinkgoT().TempDir(), "skift.sock"),
+				"--database-url", "postgres://127.0.0.1:1/skift",
 				"--socket-mode", "rw-rw----")
 			Expect(err).To(MatchError(ContainSubstring("--socket-mode")))
 		})
 
 		It("rejects an unknown log level", func() {
-			err := execute("serve", "--database-url", "postgres://127.0.0.1:1/dagger", "--log-level", "loud")
+			err := execute("serve", "--database-url", "postgres://127.0.0.1:1/skift", "--log-level", "loud")
 			Expect(err).To(MatchError(ContainSubstring("--log-level")))
 		})
 	})

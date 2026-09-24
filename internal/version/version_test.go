@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 var _ = Describe("version", Label("unit"), func() {

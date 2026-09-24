@@ -10,10 +10,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // stream is one WatchEvents call running in the background, with what
@@ -114,7 +114,7 @@ func (g *graph) listeners(ctx context.Context) int {
 	GinkgoHelper()
 	var n int
 	Expect(g.s.Pool().QueryRow(ctx,
-		`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND query = 'LISTEN dagger_events'`,
+		`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND query = 'LISTEN skift_events'`,
 	).Scan(&n)).To(Succeed())
 	return n
 }
@@ -300,7 +300,7 @@ var _ = Describe("Change stream", Label(testsupport.DBLabel), func() {
 	It("advances the cursor through an interval the policy filtered entirely", func(ctx SpecContext) {
 		By("given a policy that lets only users watch, and an agent watching under it")
 		usersOnly, err := policy.Load(ctx, fstest.MapFS{"narrow.rego": &fstest.MapFile{Data: []byte(`
-package dagger.authz
+package skift.authz
 
 default allow := false
 

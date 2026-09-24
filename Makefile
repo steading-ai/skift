@@ -1,10 +1,10 @@
-# Build, test, and lint for dagger.
+# Build, test, and lint for skift.
 #
 # Tools come from mise.toml. Run `mise install` once; the shims put every tool
 # used below on PATH.
 
-MODULE  := github.com/ivy/dagger
-BINARY  := dg
+MODULE  := github.com/steading-ai/skift
+BINARY  := skift
 
 # Version is the tag when the tree is exactly at a v-prefixed tag and clean,
 # and otherwise the nearest tag carrying a development marker: the commits
@@ -34,9 +34,9 @@ export PODMAN_COMPOSE_WARNING_LOGS = false
 all: build
 
 build:
-	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/dg
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/skift
 
-# The version the next build would carry, as dg version will report it.
+# The version the next build would carry, as skift version will report it.
 version:
 	@echo $(VERSION)
 
@@ -105,7 +105,7 @@ clean:
 	rm -f $(BINARY)
 	rm -rf dist
 
-# The rpm, for each architecture in PACKAGE_ARCHES: a cross-compiled dg
+# The rpm, for each architecture in PACKAGE_ARCHES: a cross-compiled skift
 # and the units, fragments and scriptlets under contrib/ and packaging/,
 # assembled by nfpm from packaging/nfpm.yaml. Output lands in dist/.
 PACKAGE_ARCHES ?= amd64 arm64
@@ -113,14 +113,14 @@ PACKAGE_ARCHES ?= amd64 arm64
 # stays under dist/ regardless.
 DESTDIR ?= dist
 
-package: $(foreach arch,$(PACKAGE_ARCHES),dist/dg-linux-$(arch))
+package: $(foreach arch,$(PACKAGE_ARCHES),dist/skift-linux-$(arch))
 	mkdir -p $(DESTDIR)
 	for arch in $(PACKAGE_ARCHES); do \
 	  GOARCH=$$arch VERSION=$(VERSION) nfpm package --config packaging/nfpm.yaml --packager rpm --target $(DESTDIR)/ || exit 1; \
 	done
 
-dist/dg-linux-%: FORCE
-	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/dg
+dist/skift-linux-%: FORCE
+	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/skift
 
 FORCE:
 

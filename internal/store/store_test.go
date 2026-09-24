@@ -15,8 +15,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // query is one named statement from internal/store/queries, as sqlc sees it.

@@ -14,11 +14,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // attribution is what a handler saw in its context for one call.
@@ -32,7 +32,7 @@ type attribution struct {
 // It reads nothing from the request body, which is the whole point: the
 // same handler serves every transport and every spec below unchanged.
 type recordingGraph struct {
-	daggerv1connect.UnimplementedGraphServiceHandler
+	skiftv1connect.UnimplementedGraphServiceHandler
 	seen chan attribution
 }
 
@@ -40,12 +40,12 @@ func newRecordingGraph() *recordingGraph {
 	return &recordingGraph{seen: make(chan attribution, 8)}
 }
 
-func (g *recordingGraph) GetProject(ctx context.Context, req *connect.Request[daggerv1.GetProjectRequest]) (*connect.Response[daggerv1.GetProjectResponse], error) {
+func (g *recordingGraph) GetProject(ctx context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
 	p, ok := interceptor.PrincipalFromContext(ctx)
 	id, _ := interceptor.IdentityFromContext(ctx)
 	g.seen <- attribution{principal: p, identity: id, ok: ok}
-	return connect.NewResponse(&daggerv1.GetProjectResponse{
-		Project: &daggerv1.Project{Slug: req.Msg.GetProject()},
+	return connect.NewResponse(&skiftv1.GetProjectResponse{
+		Project: &skiftv1.Project{Slug: req.Msg.GetProject()},
 	}), nil
 }
 
@@ -77,7 +77,7 @@ var (
 // front of the given services and returns a client factory for it.
 func serve(lookup interceptor.Lookup, svc server.Services, resolvers ...interceptor.Resolver) *http.Client {
 	GinkgoHelper()
-	socket := filepath.Join(GinkgoT().TempDir(), "dg.sock")
+	socket := filepath.Join(GinkgoT().TempDir(), "skift.sock")
 	srv := server.New(server.Config{
 		SocketPath:   socket,
 		Logger:       slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
@@ -103,7 +103,7 @@ func serve(lookup interceptor.Lookup, svc server.Services, resolvers ...intercep
 	}}
 }
 
-const baseURL = "http://dagger"
+const baseURL = "http://skift"
 
 var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 	It("Identity comes from the socket", func(ctx SpecContext) {
@@ -114,8 +114,8 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		client := serve(lookup, server.Services{Graph: graph}, interceptor.UnixResolver{})
 
 		By("when a process running as that uid calls the service")
-		_, err := daggerv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(client, baseURL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 		Expect(err).NotTo(HaveOccurred())
 
 		By("then the request is attributed to that principal")
@@ -135,12 +135,12 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		client := serve(interceptor.StaticLookup{}, server.Services{Graph: graph}, interceptor.UnixResolver{})
 
 		By("when it calls any method")
-		_, graphErr := daggerv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
-		_, workErr := daggerv1connect.NewWorkServiceClient(client, baseURL).
-			Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{}))
-		stream, streamErr := daggerv1connect.NewEventServiceClient(client, baseURL).
-			WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{}))
+		_, graphErr := skiftv1connect.NewGraphServiceClient(client, baseURL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		_, workErr := skiftv1connect.NewWorkServiceClient(client, baseURL).
+			Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
+		stream, streamErr := skiftv1connect.NewEventServiceClient(client, baseURL).
+			WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{}))
 		Expect(streamErr).NotTo(HaveOccurred())
 		stream.Receive()
 		Expect(stream.Close()).To(Succeed())
@@ -198,14 +198,14 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		// A TCP server: no unix socket, so no peer credentials, so the
 		// unix resolver declines and the next resolver decides.
 		mux := http.NewServeMux()
-		mux.Handle(daggerv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
+		mux.Handle(skiftv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
 			interceptor.NewPrincipal(lookup, interceptor.UnixResolver{}, headerResolver{}),
 		)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
-		req := connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"})
+		req := connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"})
 		req.Header().Set("X-Spec-Identity", "bob")
-		_, err := daggerv1connect.NewGraphServiceClient(ts.Client(), ts.URL).GetProject(ctx, req)
+		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).GetProject(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("then the unchanged handler is attributed through the second scheme")
@@ -216,8 +216,8 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 
 		By("and the same handler over the socket is attributed through the unix scheme")
 		client := serve(lookup, server.Services{Graph: graph}, interceptor.UnixResolver{}, headerResolver{})
-		_, err = daggerv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+		_, err = skiftv1connect.NewGraphServiceClient(client, baseURL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(graph.seen).To(Receive(&seen))
 		Expect(seen.principal).To(Equal(alice))
@@ -227,13 +227,13 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 	It("rejects a caller no resolver recognises rather than serving it anonymously", func(ctx SpecContext) {
 		graph := newRecordingGraph()
 		mux := http.NewServeMux()
-		mux.Handle(daggerv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
+		mux.Handle(skiftv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
 			interceptor.NewPrincipal(interceptor.StaticLookup{}, interceptor.UnixResolver{}),
 		)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
-		_, err := daggerv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{}))
+		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{}))
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 		Expect(graph.seen).NotTo(Receive())
 	})

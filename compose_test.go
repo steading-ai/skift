@@ -1,4 +1,4 @@
-package dagger_test
+package skift_test
 
 import (
 	"encoding/binary"
@@ -17,7 +17,7 @@ import (
 
 // composeProject keeps the specs away from the developer's own stack: a
 // different project name gives separate containers and a separate volume.
-const composeProject = "dagger-spec"
+const composeProject = "skift-spec"
 
 // freePort asks the kernel for an unused TCP port on the loopback interface.
 func freePort() int {

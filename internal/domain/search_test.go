@@ -10,10 +10,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // createWithBody is a create_node operation with a title and a body.
@@ -214,7 +214,7 @@ var _ = Describe("Lexical search", Label(testsupport.DBLabel), func() {
 		shown := g.applyIn(ctx, actor, "visible", "shown", create("a", "Restricted phrase")).Nodes[0].ID
 		g.mustApply(ctx, actor, "hidden", create("b", "Restricted phrase"))
 		narrow, err := policy.Load(ctx, fstest.MapFS{"narrow.rego": &fstest.MapFile{Data: []byte(fmt.Sprintf(`
-package dagger.authz
+package skift.authz
 
 default allow := false
 

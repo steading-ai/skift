@@ -15,13 +15,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/cli"
-	"github.com/ivy/dagger/internal/sdnotify"
+	"github.com/steading-ai/skift/internal/cli"
+	"github.com/steading-ai/skift/internal/sdnotify"
 )
 
 // unreachableDB is a URL nothing listens on: the pool connects lazily, so
 // the service starts and reports itself unhealthy rather than failing.
-const unreachableDB = "postgres://dagger:dagger@127.0.0.1:1/dagger?sslmode=disable&connect_timeout=1"
+const unreachableDB = "postgres://skift:skift@127.0.0.1:1/skift?sslmode=disable&connect_timeout=1"
 
 // shutdownRuns is how many start-and-stop cycles the ordering spec runs.
 // The property is about a race, so one pass proves little.
@@ -71,7 +71,7 @@ func notifyListener() chan string {
 	return states
 }
 
-var _ = Describe("dg serve shutdown", Label("unit"), func() {
+var _ = Describe("skift serve shutdown", Label("unit"), func() {
 	// The shutdown notice must be written on the shutdown path itself. A
 	// goroutine that logs while runServe returns loses the race often
 	// enough that the line goes missing under load.
@@ -80,7 +80,7 @@ var _ = Describe("dg serve shutdown", Label("unit"), func() {
 		dir := GinkgoT().TempDir()
 
 		for i := range shutdownRuns {
-			socket := filepath.Join(dir, fmt.Sprintf("dg%d.sock", i))
+			socket := filepath.Join(dir, fmt.Sprintf("skift%d.sock", i))
 			stderr := &syncBuffer{}
 			root := cli.NewRootCommand(io.Discard, stderr)
 			root.SetArgs([]string{"serve",

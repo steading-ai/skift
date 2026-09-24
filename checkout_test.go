@@ -1,4 +1,4 @@
-package dagger_test
+package skift_test
 
 import (
 	"os/exec"

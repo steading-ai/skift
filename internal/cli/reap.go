@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/logging"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 type reapOptions struct {
@@ -45,7 +45,7 @@ func newReapCommand() *cobra.Command {
 		Long: `Release every lease whose TTL has passed, as expired, in every organization.
 Each expiry is an event on the lease's node, and the node is ready again.
 
-This is the service's own timer work, run by dagger-reap.timer, and it
+This is the service's own timer work, run by skift-reap.timer, and it
 reaches the database directly rather than through the service. It is
 idempotent, and two runs at once release each lease exactly once.`,
 		Args: cobra.NoArgs,
@@ -63,11 +63,11 @@ idempotent, and two runs at once release each lease exactly once.`,
 func runReap(cmd *cobra.Command, opts reapOptions) error {
 	var level slog.LevelVar
 	if err := level.UnmarshalText([]byte(opts.logLevel)); err != nil {
-		return fmt.Errorf("dg reap: --log-level: %w", err)
+		return fmt.Errorf("skift reap: --log-level: %w", err)
 	}
 	log := logging.New(cmd.ErrOrStderr(), &level)
 	if opts.databaseURL == "" {
-		return fmt.Errorf("dg reap: a database URL is required; pass --database-url or set %s", databaseURLEnv)
+		return fmt.Errorf("skift reap: a database URL is required; pass --database-url or set %s", databaseURLEnv)
 	}
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
@@ -75,15 +75,15 @@ func runReap(cmd *cobra.Command, opts reapOptions) error {
 
 	bundle, err := policy.LoadDefault(ctx)
 	if err != nil {
-		return fmt.Errorf("dg reap: %w", err)
+		return fmt.Errorf("skift reap: %w", err)
 	}
 	pool, err := pgxpool.New(ctx, opts.databaseURL)
 	if err != nil {
-		return fmt.Errorf("dg reap: database url: %w", err)
+		return fmt.Errorf("skift reap: database url: %w", err)
 	}
 	defer pool.Close()
 
-	log.Debug("dg reap starting", "version", version.String(), "policy_version", bundle.Version())
+	log.Debug("skift reap starting", "version", version.String(), "policy_version", bundle.Version())
 	reaped, err := domain.NewService(pool, bundle).Reap(ctx, opts.pageSize)
 	summary := reapSummary{Organizations: make([]reapOrgSummary, 0, len(reaped))}
 	for _, r := range reaped {
@@ -96,12 +96,12 @@ func runReap(cmd *cobra.Command, opts reapOptions) error {
 		summary.Organizations = append(summary.Organizations, org)
 	}
 	if err != nil {
-		return fmt.Errorf("dg reap: %w", err)
+		return fmt.Errorf("skift reap: %w", err)
 	}
-	log.Info("dg reap done", "expired", summary.Expired, "organizations", len(summary.Organizations))
+	log.Info("skift reap done", "expired", summary.Expired, "organizations", len(summary.Organizations))
 	raw, err := json.Marshal(summary)
 	if err != nil {
-		return fmt.Errorf("dg reap: %w", err)
+		return fmt.Errorf("skift reap: %w", err)
 	}
 	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
 	return err

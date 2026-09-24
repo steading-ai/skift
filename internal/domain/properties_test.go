@@ -14,9 +14,9 @@ import (
 	. "github.com/onsi/gomega"
 	"pgregory.net/rapid"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/store"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // The invariants the system rests on, stated as properties over random

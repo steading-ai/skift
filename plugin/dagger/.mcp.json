@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "dagger": {
-      "command": "dg",
-      "args": ["mcp"]
-    }
-  }
-}

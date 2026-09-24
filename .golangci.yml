@@ -27,7 +27,7 @@ linters:
             - "!**/internal/domain/**"
             - "!**/internal/store/**"
           deny:
-            - pkg: github.com/ivy/dagger/internal/store
+            - pkg: github.com/steading-ai/skift/internal/store
               desc: only the domain layer may import the store
         # Interceptors authenticate and check methods. Resource-level
         # authorization needs the resolved write set, which exists only
@@ -37,7 +37,7 @@ linters:
           files:
             - "**/internal/server/interceptor/**"
           deny:
-            - pkg: github.com/ivy/dagger/internal/policy
+            - pkg: github.com/steading-ai/skift/internal/policy
               desc: interceptors authenticate and check methods; resource authorization is the domain's, inside the transaction
     # Specs are Ginkgo. The testing package appears only in the suite
     # bootstrap file that hands control to Ginkgo.
@@ -72,4 +72,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/ivy/dagger
+        - github.com/steading-ai/skift

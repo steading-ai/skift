@@ -7,7 +7,7 @@ date: 2026-09-04
 
 ## Context and Problem Statement
 
-Dagger is a product that will eventually hold work descriptions in regulated environments, with agents and humans as principals across organizations and projects. Access control in incumbent tools is notoriously rigid. How should authorization be expressed so that it is flexible from the first deployment without being bolted on later?
+Skift is a product that will eventually hold work descriptions in regulated environments, with agents and humans as principals across organizations and projects. Access control in incumbent tools is notoriously rigid. How should authorization be expressed so that it is flexible from the first deployment without being bolted on later?
 
 ## Decision Drivers
 
@@ -42,7 +42,7 @@ Organization scoping is unconditional, static SQL that no policy can relax; OPA 
 
 ### OPA sidecar
 
-- **Good**: Policy updates without redeploying dagger.
+- **Good**: Policy updates without redeploying skift.
 - **Bad**: Another process, another socket, more latency, more to operate.
 
 ### Cedar

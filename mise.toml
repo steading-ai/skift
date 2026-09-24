@@ -1,4 +1,4 @@
-# Tool versions for dagger.
+# Tool versions for skift.
 #
 # The harness that builds this project runs on Python. The project itself is Go.
 # Every tool below installs through mise alone; the only system package the

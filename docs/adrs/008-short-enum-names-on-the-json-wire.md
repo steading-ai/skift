@@ -7,11 +7,11 @@ date: 2026-09-06
 
 ## Context and Problem Statement
 
-Proto enum values carry their enum's name as a prefix, so `Priority` holds `PRIORITY_P2`. protojson puts that spelling on the wire, and every other dagger surface — the `--priority p2` flag, the display, `docs/domain-model.md`, the MCP tool schemas — says `p2`. An agent that read the CLI help and the domain model was taught the short form everywhere it looked, then had to write the long one in the one place it writes JSON by hand (`AGENT_REVIEW.md` §3). The same gap exists for `Status`, `AssigneeKind`, `EdgeKind`, `DropReason`, `ReleaseReason`, and for every enum added later.
+Proto enum values carry their enum's name as a prefix, so `Priority` holds `PRIORITY_P2`. protojson puts that spelling on the wire, and every other skift surface — the `--priority p2` flag, the display, `docs/domain-model.md`, the MCP tool schemas — says `p2`. An agent that read the CLI help and the domain model was taught the short form everywhere it looked, then had to write the long one in the one place it writes JSON by hand (`AGENT_REVIEW.md` §3). The same gap exists for `Status`, `AssigneeKind`, `EdgeKind`, `DropReason`, `ReleaseReason`, and for every enum added later.
 
 ## Decision Drivers
 
-- The one door should say what every other surface says; a client learns dagger from its CLI and its docs
+- The one door should say what every other surface says; a client learns skift from its CLI and its docs
 - A rule that has to be restated per enum will be forgotten by the next enum
 - The proto definitions are right as they are: prefixed values are what generated-code scoping needs
 - Bytes matter at agent scale, but learnability matters more
@@ -34,14 +34,14 @@ The codec walks a JSON document beside the descriptor of the message it encodes:
 
 Fields keep their proto names, which is what the CLI already printed and what the domain model uses.
 
-The proto definitions do not change, and dagger has no other client, so the wire contract could be changed rather than versioned.
+The proto definitions do not change, and skift has no other client, so the wire contract could be changed rather than versioned.
 
 ### Consequences
 
 - **Good**: One JSON vocabulary across the CLI, the MCP tools, the docs and the wire; an enum added to the schema is covered the day it is added.
 - **Good**: A misspelt enum is an error naming the values that would have worked, instead of a silent default.
 - **Good**: Roughly nine bytes saved per enum field, which at patch scale is real but is the smaller win.
-- **Bad**: The JSON on the wire is no longer canonical proto-JSON, so a generic protobuf tool pointed at dagger will not read a response's enums. Existing spellings are still accepted, so only emission differs.
+- **Bad**: The JSON on the wire is no longer canonical proto-JSON, so a generic protobuf tool pointed at skift will not read a response's enums. Existing spellings are still accepted, so only emission differs.
 - **Neutral**: The codec is a JSON round trip on top of protojson. The binary protocol, which is what the CLI actually speaks, is untouched.
 
 ## Rejected Options

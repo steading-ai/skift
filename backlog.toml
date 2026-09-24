@@ -1,4 +1,4 @@
-# Dagger's backlog, expressed in dagger's own domain model.
+# Skift's backlog, expressed in skift's own domain model.
 #
 # Each node is a work order for an agent starting with an empty context window.
 # It states what to build, what "done" means, and the scenarios the test suite
@@ -16,8 +16,8 @@
 #   - every node ends green: `make lint && make test`
 
 [project]
-slug = "dagger"
-title = "Dagger"
+slug = "skift"
+title = "Skift"
 priority = "p1"
 
 # ============================================================== foundations
@@ -41,18 +41,18 @@ stack and why. This node establishes the build so every later node has a
 
 ## Deliverables
 
-- `go.mod` — module `github.com/ivy/dagger`, Go 1.25
+- `go.mod` — module `github.com/steading-ai/skift`, Go 1.25
 - `mise.toml` — pin go, buf, sqlc, goose, golangci-lint, hk
 - `Makefile` — `build`, `test`, `test-unit`, `test-db`, `lint`, `generate`
 - `.gitignore`, `.editorconfig`
-- `cmd/dg/main.go` — cobra root command that prints version and exits 0
+- `cmd/skift/main.go` — cobra root command that prints version and exits 0
 - `internal/version/version.go` — version injected via ldflags
 
 ## Acceptance criteria
 
 - [ ] `mise install` bootstraps every tool with no system packages beyond podman
-- [ ] `make build` produces `./dg`
-- [ ] `./dg --version` prints a semver-shaped string
+- [ ] `make build` produces `./skift`
+- [ ] `./skift --version` prints a semver-shaped string
 - [ ] `make test` passes with zero specs
 - [ ] `make test-unit` and `make test-db` exist and differ by Ginkgo label filter
 
@@ -61,19 +61,19 @@ stack and why. This node establishes the build so every later node has a
 ```gherkin
 Scenario: The binary reports its version
   Given a build produced by "make build"
-  When I run "dg --version"
+  When I run "skift --version"
   Then the output contains a semantic version
   And the exit code is 0
 
 Scenario: The binary is a single entry point
-  When I run "dg --help"
+  When I run "skift --help"
   Then the output lists subcommands
   And no subcommand is implemented yet beyond version
 ```
 
 ## Notes
 
-One binary, three faces: `dg` the CLI, `dg mcp` the stdio MCP server, `dg serve`
+One binary, three faces: `skift` the CLI, `skift mcp` the stdio MCP server, `skift serve`
 the service. See docs/architecture.md. Wire the cobra tree now so later nodes
 attach commands rather than restructuring.
 '''
@@ -87,7 +87,7 @@ title = "PostgreSQL via podman compose"
 body = '''
 ## Context
 
-Dagger stores everything in PostgreSQL. See docs/adrs/001-relational-tables-over-graph-database.md.
+Skift stores everything in PostgreSQL. See docs/adrs/001-relational-tables-over-graph-database.md.
 Development runs against a real database, never a fake, because the interesting
 behaviour is row locking and recursive queries.
 
@@ -224,7 +224,7 @@ proves quicker than re-running them.
 [[nodes]]
 number = 6
 title = "Contract"
-body = "The dagger.v1 proto package. It is the domain model, so everything downstream is generated from it."
+body = "The skift.v1 proto package. It is the domain model, so everything downstream is generated from it."
 
 [[nodes]]
 number = 7
@@ -241,7 +241,7 @@ the authority for every field below.
 
 ## Deliverables
 
-`proto/dagger/v1/dagger.proto` containing at least:
+`proto/skift/v1/skift.proto` containing at least:
 
 - `Project` — id, org_id, slug, title, priority, node_counter is server-only,
   archived_at, created_at
@@ -299,7 +299,7 @@ docs/architecture.md for where each is served.
 
 ## Deliverables
 
-Add to `proto/dagger/v1/`:
+Add to `proto/skift/v1/`:
 
 `GraphService`
 - `ApplyPatch(ApplyPatchRequest) returns (ApplyPatchResponse)`
@@ -364,7 +364,7 @@ toolchain. See docs/adrs/007-core-tech-stack.md.
 ## Deliverables
 
 - `buf.yaml`, `buf.gen.yaml`, `buf.lock`
-- `gen/dagger/v1/...` — messages and Connect handlers and clients
+- `gen/skift/v1/...` — messages and Connect handlers and clients
 - `Makefile` target `generate`, and a `make lint` check that generated code is current
 
 ## Acceptance criteria
@@ -400,7 +400,7 @@ body = '''
 ## Context
 
 See the Project and Principal sections of docs/domain-model.md. Identity is
-separate from principal so one person reaching dagger over a unix socket and
+separate from principal so one person reaching skift over a unix socket and
 over the tailnet is one principal, and adding a transport inserts a row rather
 than migrating.
 
@@ -1073,7 +1073,7 @@ body = '''
 ## Context
 
 See the Artifact section of docs/domain-model.md and
-docs/adrs/003-artifacts-are-content-addressed.md. Dagger is the manifest, not
+docs/adrs/003-artifacts-are-content-addressed.md. Skift is the manifest, not
 the pipe.
 
 ## Deliverables
@@ -1089,7 +1089,7 @@ the pipe.
 - [ ] Upload and attach are atomic: a partial upload never attaches
 - [ ] Identical bytes uploaded twice store once
 - [ ] A `git` reference records the resolved commit, not just the branch
-- [ ] Dagger never fetches a reference URI
+- [ ] Skift never fetches a reference URI
 - [ ] Reference URIs are stored verbatim and returned marked as untrusted input
 
 ## Scenarios
@@ -1113,7 +1113,7 @@ Scenario: An interrupted upload attaches nothing
 
 ## Notes
 
-Treat an agent-supplied URI as untrusted. Dagger does not fetch, so the SSRF
+Treat an agent-supplied URI as untrusted. Skift does not fetch, so the SSRF
 surface belongs to consumers, but do not hand them a URI without saying so.
 '''
 
@@ -1218,8 +1218,8 @@ docs/domain-model.md.
 ## Deliverables
 
 - `internal/policy/` wrapping the Rego Go package, loading a bundle at startup
-- `policy/dagger.rego` implementing the default policy
-- `policy/dagger_test.rego` run by `opa test` in `make test`
+- `policy/skift.rego` implementing the default policy
+- `policy/skift_test.rego` run by `opa test` in `make test`
 - Input shape: principal, action, resource, and proposed post-state
 
 ## Acceptance criteria
@@ -1336,13 +1336,13 @@ body = '''
 ## Context
 
 See docs/adrs/002-connect-rpc-is-the-only-door.md and docs/architecture.md.
-`dg serve` is the third face of the binary.
+`skift serve` is the third face of the binary.
 
 ## Deliverables
 
 - `internal/server/` — Connect handlers mounted on an HTTP server
 - Unix socket listener with configurable path and permissions
-- `dg serve` command, structured logging via `log/slog` to journald
+- `skift serve` command, structured logging via `log/slog` to journald
 - Graceful shutdown draining in-flight requests and waiting claims
 
 ## Acceptance criteria
@@ -1356,7 +1356,7 @@ See docs/adrs/002-connect-rpc-is-the-only-door.md and docs/architecture.md.
 
 ```gherkin
 Scenario: A client on the same host connects
-  Given "dg serve" is running on a unix socket
+  Given "skift serve" is running on a unix socket
   When a client calls GetProject over that socket
   Then a response is returned
 
@@ -1432,7 +1432,7 @@ behind the same principal abstraction.
 - `internal/server/transport/tsnet.go` serving the same handlers over a tailnet
 - A `tailscale` identity resolver using `WhoIs`
 - Configuration for auth key, hostname, and tags
-- `dg` client transport selection: socket path or tailnet address
+- `skift` client transport selection: socket path or tailnet address
 
 ## Acceptance criteria
 
@@ -1565,16 +1565,16 @@ release, and it is a timer rather than a queue.
 
 ## Deliverables
 
-- `contrib/systemd/dagger.service` — socket-activated or simple, journald
+- `contrib/systemd/skift.service` — socket-activated or simple, journald
   logging, sd_notify readiness
-- `contrib/systemd/dagger.socket` if socket activation is used
-- `contrib/systemd/dagger-reap.service` and `.timer`
-- `dg reap` command expiring stale leases
+- `contrib/systemd/skift.socket` if socket activation is used
+- `contrib/systemd/skift-reap.service` and `.timer`
+- `skift reap` command expiring stale leases
 - `make install-units`
 
 ## Acceptance criteria
 
-- [ ] `dg reap` is idempotent and safe to run concurrently with itself
+- [ ] `skift reap` is idempotent and safe to run concurrently with itself
 - [ ] Expiring a lease writes an event and returns the node to the ready set
 - [ ] The service reports readiness only after the database is reachable
 - [ ] Units are user units, matching the zone model where the service runs as
@@ -1607,11 +1607,11 @@ number = 39
 parent = 38
 blocked_by = [35]
 priority = "p0"
-title = "dg CLI"
+title = "skift CLI"
 body = '''
 ## Context
 
-The CLI is how a human and a shell-driven agent reach dagger. See
+The CLI is how a human and a shell-driven agent reach skift. See
 docs/architecture.md: one binary, three faces, and the CLI and MCP server share
 a client.
 
@@ -1627,22 +1627,22 @@ a client.
 ## Acceptance criteria
 
 - [ ] Every command emits machine-readable JSON so an agent can parse it
-- [ ] `dg patch apply -` reads a patch from stdin, which is how an agent writes a graph
+- [ ] `skift patch apply -` reads a patch from stdin, which is how an agent writes a graph
 - [ ] Node references accept `#7`, `slug#7`, and `org/slug#7`
 - [ ] Errors exit non-zero with a structured JSON error on stderr
-- [ ] `dg ready --wait` blocks, implemented over `ClaimNext` semantics
+- [ ] `skift ready --wait` blocks, implemented over `ClaimNext` semantics
 
 ## Scenarios
 
 ```gherkin
 Scenario: An agent decomposes work from a shell
   Given a JSON patch on stdin creating two nodes and linking them
-  When I run "dg patch apply -"
+  When I run "skift patch apply -"
   Then the response lists both created nodes with their numbers
   And the exit code is 0
 
 Scenario: Output is parseable when piped
-  When I run "dg ready" with stdout redirected to a file
+  When I run "skift ready" with stdout redirected to a file
   Then the file contains valid JSON
 
 Scenario: A failed command is machine-readable
@@ -1657,16 +1657,16 @@ number = 40
 parent = 38
 blocked_by = [39]
 priority = "p0"
-title = "dg mcp stdio server"
+title = "skift mcp stdio server"
 body = '''
 ## Context
 
-`dg mcp` is the same Connect client wrapped for a harness, so a Claude Code
-session is a first-class dagger client. See docs/architecture.md.
+`skift mcp` is the same Connect client wrapped for a harness, so a Claude Code
+session is a first-class skift client. See docs/architecture.md.
 
 ## Deliverables
 
-- `dg mcp` speaking MCP over stdio
+- `skift mcp` speaking MCP over stdio
 - Tools covering: search, show node, explain, apply patch, ready, claim,
   heartbeat, release, complete, comment
 - Tool descriptions written for a model: when to use each, and the reference syntax
@@ -1823,7 +1823,7 @@ without a frontend.
 
 ## Deliverables
 
-- `tests/acceptance/` — Ginkgo suite starting `dg serve` against a
+- `tests/acceptance/` — Ginkgo suite starting `skift serve` against a
   testcontainers database and driving it through the CLI and the MCP server
 
 ## Acceptance criteria

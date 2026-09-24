@@ -1,6 +1,6 @@
 # Core Principles
 
-Decision filters for dagger. Each one can be violated, and violating it should feel wrong.
+Decision filters for skift. Each one can be violated, and violating it should feel wrong.
 
 ## 1. The graph is the truth
 
@@ -28,17 +28,17 @@ A graph change is a patch: a list of operations applied in one transaction, cycl
 
 **Says no to**: A create-node call followed by five add-edge calls. Cycle checks that pass per edge and fail for the batch. Any mutation without an idempotency key.
 
-## 5. Dagger stores plans, not work
+## 5. Skift stores plans, not work
 
-Dagger knows what should be done, what is ready, and who holds a lease. It does not know how work is done. The lease is the whole contract with an orchestrator: claim, heartbeat, release, complete. Whoever calls `Claim` owns the lease and keeps it alive.
+Skift knows what should be done, what is ready, and who holds a lease. It does not know how work is done. The lease is the whole contract with an orchestrator: claim, heartbeat, release, complete. Whoever calls `Claim` owns the lease and keeps it alive.
 
-**Says no to**: Dagger spawning, supervising, or messaging an agent. Dagger choosing which agent gets which node. Dagger holding a workflow definition.
+**Says no to**: Skift spawning, supervising, or messaging an agent. Skift choosing which agent gets which node. Skift holding a workflow definition.
 
 ## 6. Ready is dumb
 
 `Ready` returns the set of eligible nodes, open and unblocked and unclaimed and unheld with no open children, filtered by what the caller asks for and sorted by priority and age. It carries the numbers a consumer needs, such as cost and estimate rollups, and makes no decision with them. Budget enforcement, model selection, and scheduling are the consumer's policy.
 
-Eligibility and ordering are different things. Eligibility is a fact about the graph, and every client sees the same answer. Ordering is a hint: priority orders the eligible set and never gates it, and a consumer may take dagger's order or compute its own.
+Eligibility and ordering are different things. Eligibility is a fact about the graph, and every client sees the same answer. Ordering is a hint: priority orders the eligible set and never gates it, and a consumer may take skift's order or compute its own.
 
 **Says no to**: Budget logic inside `Ready`. A scheduler in the store. An order that mixes priority scales from two projects. A default that two reasonable organizations would want to differ on.
 
@@ -64,6 +64,6 @@ Every write records the acting principal and its kind, resolved by the transport
 
 ## 10. Adopt standards where they carry interoperability
 
-Where an established protocol already names a concept dagger needs, dagger uses that shape: A2A's context id, artifact, and part; OCI for blobs that live outside dagger; Rego for policy. The cost of a translation layer is paid once at the boundary, not on every integration.
+Where an established protocol already names a concept skift needs, skift uses that shape: A2A's context id, artifact, and part; OCI for blobs that live outside skift; Rego for policy. The cost of a translation layer is paid once at the boundary, not on every integration.
 
-**Says no to**: A bespoke artifact format. A bespoke policy language. Reinventing a concept a standard already defines because dagger's version would be slightly neater.
+**Says no to**: A bespoke artifact format. A bespoke policy language. Reinventing a concept a standard already defines because skift's version would be slightly neater.

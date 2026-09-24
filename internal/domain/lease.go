@@ -9,11 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
-// A lease is the contract between dagger and whatever executes work: one
+// A lease is the contract between skift and whatever executes work: one
 // attempt on one node, bounded by a TTL and fenced by its id. Claim returns
 // the id, and every later write to the node carries it. The server checks,
 // in the statement that writes, that the lease is the node's current one

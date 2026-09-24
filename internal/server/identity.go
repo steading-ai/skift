@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/server/interceptor"
 )
 
 // IdentityLookup is the [interceptor.Lookup] over principal_identities,

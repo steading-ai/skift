@@ -8,8 +8,8 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/codec"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
 func (a *app) patchCommand() *cobra.Command {
@@ -23,12 +23,12 @@ func (a *app) patchCommand() *cobra.Command {
 
 func (a *app) patchApply() *cobra.Command {
 	var lease, requestID string
-	view := viewFlag{def: daggerv1.View_VIEW_REFS}
+	view := viewFlag{def: skiftv1.View_VIEW_REFS}
 	cmd := &cobra.Command{
 		Use:   "apply <file|->",
 		Short: "Apply a JSON patch from a file, or from stdin with -",
 		Long: `Apply a patch: a list of operations applied in one transaction, cycle-checked
-as a whole. The input is a dagger.v1.ApplyPatchRequest in JSON. Only "ops" is
+as a whole. The input is a skift.v1.ApplyPatchRequest in JSON. Only "ops" is
 required; "project" defaults to the current project and "request_id" to a
 fresh ULID. Operations refer to nodes by reference, or by the alias a
 create_node operation earlier in the same patch declared:
@@ -63,7 +63,7 @@ included.`,
 			if lease != "" {
 				req.LeaseId = lease
 			}
-			if req.GetView() == daggerv1.View_VIEW_UNSPECIFIED || cmd.Flags().Changed("view") {
+			if req.GetView() == skiftv1.View_VIEW_UNSPECIFIED || cmd.Flags().Changed("view") {
 				if req.View, err = view.view(); err != nil {
 					return err
 				}
@@ -78,7 +78,7 @@ included.`,
 }
 
 // readPatch reads and parses the patch at path, or stdin for "-".
-func readPatch(cmd *cobra.Command, path string) (*daggerv1.ApplyPatchRequest, error) {
+func readPatch(cmd *cobra.Command, path string) (*skiftv1.ApplyPatchRequest, error) {
 	var raw []byte
 	var err error
 	if path == "-" {
@@ -89,7 +89,7 @@ func readPatch(cmd *cobra.Command, path string) (*daggerv1.ApplyPatchRequest, er
 	if err != nil {
 		return nil, fmt.Errorf("read patch: %w", err)
 	}
-	req := &daggerv1.ApplyPatchRequest{}
+	req := &skiftv1.ApplyPatchRequest{}
 	if err := codec.Unmarshal(raw, req); err != nil {
 		return nil, decodeUsage(err)
 	}
@@ -98,12 +98,12 @@ func readPatch(cmd *cobra.Command, path string) (*daggerv1.ApplyPatchRequest, er
 
 // apply sends one patch and prints the response. Every command that
 // mutates the graph ends here.
-func (a *app) apply(cmd *cobra.Command, req *daggerv1.ApplyPatchRequest) error {
+func (a *app) apply(cmd *cobra.Command, req *skiftv1.ApplyPatchRequest) error {
 	c, err := a.connect()
 	if err != nil {
 		return err
 	}
-	return send(a, cmd, func() (*daggerv1.ApplyPatchResponse, error) {
+	return send(a, cmd, func() (*skiftv1.ApplyPatchResponse, error) {
 		res, err := c.Graph.ApplyPatch(cmd.Context(), connect.NewRequest(req))
 		return unwrap(res, err)
 	})

@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // Input is one blocking predecessor of a node as a downstream agent reads

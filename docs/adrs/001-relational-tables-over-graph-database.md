@@ -7,7 +7,7 @@ date: 2026-09-04
 
 ## Context and Problem Statement
 
-Dagger's domain is a directed acyclic graph of tasks. Does a graph shaped domain need a graph database, or a graph extension on PostgreSQL, or is a relational schema sufficient at the target scale of a thousand daily active users and hundreds of concurrent agents?
+Skift's domain is a directed acyclic graph of tasks. Does a graph shaped domain need a graph database, or a graph extension on PostgreSQL, or is a relational schema sufficient at the target scale of a thousand daily active users and hundreds of concurrent agents?
 
 ## Decision Drivers
 
@@ -24,7 +24,7 @@ Dagger's domain is a directed acyclic graph of tasks. Does a graph shaped domain
 
 ## Decision Outcome
 
-Chosen option: **plain tables with recursive CTEs**, because every query dagger needs is either a one-hop anti-join or a bounded recursive query over small, shallow components, and claims are the well-known job-queue pattern that PostgreSQL row locking handles directly.
+Chosen option: **plain tables with recursive CTEs**, because every query skift needs is either a one-hop anti-join or a bounded recursive query over small, shallow components, and claims are the well-known job-queue pattern that PostgreSQL row locking handles directly.
 
 ### Consequences
 
@@ -32,7 +32,7 @@ Chosen option: **plain tables with recursive CTEs**, because every query dagger 
 - **Good**: `FOR UPDATE SKIP LOCKED` gives correct, contention-free claims under hundreds of concurrent orchestrators, as used by River, Oban, and graphile-worker.
 - **Good**: Cycle detection and subtree rollups are recursive CTEs bounded by a connected component that is rarely deeper than 20 or wider than a few thousand nodes.
 - **Good**: Transactions make derived views consistent under concurrent mutation, which is harder in most graph stores.
-- **Bad**: Variable-length pattern matching across millions of edges would be slow. Dagger has no such query.
+- **Bad**: Variable-length pattern matching across millions of edges would be slow. Skift has no such query.
 - **Neutral**: Every query must be tenant and project scoped so `Ready` never scans across organizations. That is required regardless of engine.
 - **Neutral**: The event table is time-partitioned from the first migration.
 

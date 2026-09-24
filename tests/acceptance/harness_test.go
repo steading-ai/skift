@@ -25,23 +25,23 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"google.golang.org/protobuf/proto"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/cli"
-	"github.com/ivy/dagger/internal/client"
-	"github.com/ivy/dagger/internal/codec"
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/cli"
+	"github.com/steading-ai/skift/internal/client"
+	"github.com/steading-ai/skift/internal/codec"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // The deployment a scenario runs against mirrors docs/architecture.md:
 //
 //	host                                 laptop
-//	  dg serve  ◄── unix socket ── dg, dg mcp   (agent: this uid)
-//	            ◄── tailnet ────── dg, dg mcp   (user: a tailscale node)
+//	  skift serve  ◄── unix socket ── skift, skift mcp   (agent: this uid)
+//	            ◄── tailnet ────── skift, skift mcp   (user: a tailscale node)
 //
-// dg serve is the built binary on a unix socket, where SO_PEERCRED makes
+// skift serve is the built binary on a unix socket, where SO_PEERCRED makes
 // this process's uid the agent. A person needs a second identity, and the
 // only other transport is the tailnet, so the laptop side is the same
 // handler set served in-process over a loopback listener whose connections
@@ -124,11 +124,11 @@ func (t *loopbackTailnet) address() string {
 	return "http://" + t.listener.Addr().String()
 }
 
-// deployment is one scenario's service: a database of its own, dg serve
+// deployment is one scenario's service: a database of its own, skift serve
 // on a socket, and the tailnet listener beside it.
 type deployment struct {
 	socket string
-	// host is the agent, reaching dg serve over the socket.
+	// host is the agent, reaching skift serve over the socket.
 	host face
 	// laptop is the user, reaching the service over the tailnet.
 	laptop face
@@ -140,9 +140,9 @@ func deploy(ctx context.Context) *deployment {
 	GinkgoHelper()
 	pool := pg.Database(ctx)
 	dir := GinkgoT().TempDir()
-	d := &deployment{socket: filepath.Join(dir, "dg.sock")}
+	d := &deployment{socket: filepath.Join(dir, "skift.sock")}
 
-	By("starting dg serve on a unix socket over the scenario's database")
+	By("starting skift serve on a unix socket over the scenario's database")
 	cmd := exec.Command(binary, "serve",
 		"--socket", d.socket,
 		"--database-url", pool.Config().ConnString(),
@@ -156,7 +156,7 @@ func deploy(ctx context.Context) *deployment {
 	Eventually(func() error {
 		_, err := os.Lstat(d.socket)
 		return err
-	}).Should(Succeed(), "dg serve never bound its socket")
+	}).Should(Succeed(), "skift serve never bound its socket")
 
 	By("serving the same handlers on the tailnet")
 	svc := domain.NewService(pool, pol)
@@ -193,12 +193,12 @@ func deploy(ctx context.Context) *deployment {
 }
 
 // cleanEnv is the environment the binary runs under: the caller's, with
-// every dg setting removed and the config directory pointed at scratch, so
+// every skift setting removed and the config directory pointed at scratch, so
 // nothing configured on this machine reaches a scenario.
 func cleanEnv(dir string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "DG_") || strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
+		if strings.HasPrefix(kv, "SKIFT_") || strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
 			continue
 		}
 		env = append(env, kv)
@@ -212,7 +212,7 @@ type face struct {
 	name  string
 	flags []string
 	env   []string
-	// unix is set on a face that reaches dg serve over its unix socket,
+	// unix is set on a face that reaches skift serve over its unix socket,
 	// where the caller is whoever SO_PEERCRED says it is.
 	unix bool
 }
@@ -236,7 +236,7 @@ func (f face) run(stdin string, args ...string) (stdout, stderr string, code int
 	cmd.Stdin = strings.NewReader(stdin)
 	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
-	Eventually(session, 30*time.Second).Should(gexec.Exit(), "%s: dg %s did not exit", f.name, strings.Join(args, " "))
+	Eventually(session, 30*time.Second).Should(gexec.Exit(), "%s: skift %s did not exit", f.name, strings.Join(args, " "))
 	return string(session.Out.Contents()), string(session.Err.Contents()), session.ExitCode()
 }
 
@@ -251,8 +251,8 @@ func (f face) call(res proto.Message, args ...string) {
 func (f face) callWithInput(res proto.Message, stdin string, args ...string) {
 	GinkgoHelper()
 	stdout, stderr, code := f.run(stdin, args...)
-	Expect(code).To(BeZero(), "%s: dg %s failed: %s", f.name, strings.Join(args, " "), stderr)
-	Expect(codec.Unmarshal([]byte(strings.TrimSpace(stdout)), res)).To(Succeed(), "%s: dg %s wrote %q", f.name, strings.Join(args, " "), stdout)
+	Expect(code).To(BeZero(), "%s: skift %s failed: %s", f.name, strings.Join(args, " "), stderr)
+	Expect(codec.Unmarshal([]byte(strings.TrimSpace(stdout)), res)).To(Succeed(), "%s: skift %s wrote %q", f.name, strings.Join(args, " "), stdout)
 }
 
 // fail runs a command that must fail and returns the error the CLI wrote
@@ -260,24 +260,24 @@ func (f face) callWithInput(res proto.Message, stdin string, args ...string) {
 func (f face) fail(stdin string, args ...string) cli.Error {
 	GinkgoHelper()
 	stdout, stderr, code := f.run(stdin, args...)
-	Expect(code).NotTo(BeZero(), "%s: dg %s succeeded with %s", f.name, strings.Join(args, " "), stdout)
+	Expect(code).NotTo(BeZero(), "%s: skift %s succeeded with %s", f.name, strings.Join(args, " "), stdout)
 	var e cli.Error
-	Expect(json.Unmarshal([]byte(strings.TrimSpace(stderr)), &e)).To(Succeed(), "%s: dg %s wrote %q to stderr", f.name, strings.Join(args, " "), stderr)
+	Expect(json.Unmarshal([]byte(strings.TrimSpace(stderr)), &e)).To(Succeed(), "%s: skift %s wrote %q to stderr", f.name, strings.Join(args, " "), stderr)
 	return e
 }
 
-// patch applies req through "dg patch apply -".
-func (f face) patch(req *daggerv1.ApplyPatchRequest, flags ...string) *daggerv1.ApplyPatchResponse {
+// patch applies req through "skift patch apply -".
+func (f face) patch(req *skiftv1.ApplyPatchRequest, flags ...string) *skiftv1.ApplyPatchResponse {
 	GinkgoHelper()
 	raw, err := codec.Marshal(req)
 	Expect(err).NotTo(HaveOccurred())
-	res := &daggerv1.ApplyPatchResponse{}
+	res := &skiftv1.ApplyPatchResponse{}
 	f.callWithInput(res, string(raw), append([]string{"patch", "apply", "-"}, flags...)...)
 	return res
 }
 
 // failPatch applies req expecting the service to refuse it.
-func (f face) failPatch(req *daggerv1.ApplyPatchRequest, flags ...string) cli.Error {
+func (f face) failPatch(req *skiftv1.ApplyPatchRequest, flags ...string) cli.Error {
 	GinkgoHelper()
 	raw, err := codec.Marshal(req)
 	Expect(err).NotTo(HaveOccurred())
@@ -285,9 +285,9 @@ func (f face) failPatch(req *daggerv1.ApplyPatchRequest, flags ...string) cli.Er
 }
 
 // createProject creates a project and returns it.
-func (f face) createProject(title string) *daggerv1.Project {
+func (f face) createProject(title string) *skiftv1.Project {
 	GinkgoHelper()
-	res := &daggerv1.CreateProjectResponse{}
+	res := &skiftv1.CreateProjectResponse{}
 	f.call(res, "project", "create", title)
 	return res.GetProject()
 }
@@ -297,34 +297,34 @@ func (f face) createProject(title string) *daggerv1.Project {
 const platform = "platform"
 
 // ready lists the ready set of platform with the given filter flags.
-func (f face) ready(flags ...string) []*daggerv1.Node {
+func (f face) ready(flags ...string) []*skiftv1.Node {
 	GinkgoHelper()
-	res := &daggerv1.ReadyResponse{}
+	res := &skiftv1.ReadyResponse{}
 	f.call(res, append([]string{"ready", "--project", platform}, flags...)...)
 	return res.GetNodes()
 }
 
 // claim claims the next ready node of platform, or fails when none is.
-func (f face) claim(flags ...string) *daggerv1.ClaimNextResponse {
+func (f face) claim(flags ...string) *skiftv1.ClaimNextResponse {
 	GinkgoHelper()
-	res := &daggerv1.ClaimNextResponse{}
+	res := &skiftv1.ClaimNextResponse{}
 	f.call(res, append([]string{"claim", "--project", platform, "--harness", "acceptance"}, flags...)...)
 	Expect(res.GetNode()).NotTo(BeNil(), "%s: nothing was ready to claim in %s", f.name, platform)
 	return res
 }
 
 // explain asks why a node of platform is not ready.
-func (f face) explain(ref string) *daggerv1.ExplainResponse {
+func (f face) explain(ref string) *skiftv1.ExplainResponse {
 	GinkgoHelper()
-	res := &daggerv1.ExplainResponse{}
+	res := &skiftv1.ExplainResponse{}
 	f.call(res, "explain", "--project", platform, ref)
 	return res
 }
 
 // show reads one node of platform in full.
-func (f face) show(ref string) *daggerv1.GetNodeResponse {
+func (f face) show(ref string) *skiftv1.GetNodeResponse {
 	GinkgoHelper()
-	res := &daggerv1.GetNodeResponse{}
+	res := &skiftv1.GetNodeResponse{}
 	f.call(res, "node", "show", "--project", platform, ref)
 	return res
 }
@@ -360,13 +360,13 @@ func startPiped(cmd *exec.Cmd, stdin io.Reader) (*gexec.Session, io.Reader) {
 	return session, pr
 }
 
-// eventStream is a running "dg events", one message per line.
+// eventStream is a running "skift events", one message per line.
 type eventStream struct {
 	session *gexec.Session
 	lines   chan string
 }
 
-// events starts "dg events" on project from cursor, narrowed to ops when
+// events starts "skift events" on project from cursor, narrowed to ops when
 // any are given.
 func (f face) events(project, cursor string, ops ...string) *eventStream {
 	GinkgoHelper()
@@ -396,17 +396,17 @@ func (f face) events(project, cursor string, ops ...string) *eventStream {
 }
 
 // next waits for the next message.
-func (s *eventStream) next() *daggerv1.WatchEventsResponse {
+func (s *eventStream) next() *skiftv1.WatchEventsResponse {
 	GinkgoHelper()
 	var line string
 	Eventually(s.lines, 15*time.Second).Should(Receive(&line), "no event arrived")
-	res := &daggerv1.WatchEventsResponse{}
-	Expect(codec.Unmarshal([]byte(line), res)).To(Succeed(), "dg events wrote %q", line)
+	res := &skiftv1.WatchEventsResponse{}
+	Expect(codec.Unmarshal([]byte(line), res)).To(Succeed(), "skift events wrote %q", line)
 	return res
 }
 
 // nextEvent waits for the next message that carries an event.
-func (s *eventStream) nextEvent() *daggerv1.WatchEventsResponse {
+func (s *eventStream) nextEvent() *skiftv1.WatchEventsResponse {
 	GinkgoHelper()
 	for {
 		if res := s.next(); res.GetEvent() != nil {
@@ -430,7 +430,7 @@ func (s *eventStream) stop() {
 	Eventually(s.session, 10*time.Second).Should(gexec.Exit())
 }
 
-// mcpSession drives one "dg mcp" process over its stdio, as a harness
+// mcpSession drives one "skift mcp" process over its stdio, as a harness
 // does: JSON-RPC requests in, responses matched by id out.
 type mcpSession struct {
 	name    string
@@ -545,11 +545,11 @@ func (m *mcpSession) close() {
 		return
 	}
 	_ = m.stdin.Close()
-	Eventually(m.session, 15*time.Second).Should(gexec.Exit(0), "%s: dg mcp did not exit cleanly", m.name)
+	Eventually(m.session, 15*time.Second).Should(gexec.Exit(0), "%s: skift mcp did not exit cleanly", m.name)
 }
 
 // patchArgs renders req as the arguments of the apply_patch tool.
-func patchArgs(req *daggerv1.ApplyPatchRequest) map[string]any {
+func patchArgs(req *skiftv1.ApplyPatchRequest) map[string]any {
 	GinkgoHelper()
 	raw, err := codec.Marshal(req)
 	Expect(err).NotTo(HaveOccurred())
@@ -560,59 +560,59 @@ func patchArgs(req *daggerv1.ApplyPatchRequest) map[string]any {
 
 // Operation builders, for patches written in Go rather than by hand.
 
-func createOp(alias, title string) *daggerv1.PatchOp {
-	return createOpWith(&daggerv1.CreateNodeOp{Alias: alias, Title: title})
+func createOp(alias, title string) *skiftv1.PatchOp {
+	return createOpWith(&skiftv1.CreateNodeOp{Alias: alias, Title: title})
 }
 
-func createOpWith(c *daggerv1.CreateNodeOp) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_CreateNode{CreateNode: c}}
+func createOpWith(c *skiftv1.CreateNodeOp) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_CreateNode{CreateNode: c}}
 }
 
-func edgeOp(from, to string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_AddEdge{AddEdge: &daggerv1.AddEdgeOp{From: from, To: to}}}
+func edgeOp(from, to string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_AddEdge{AddEdge: &skiftv1.AddEdgeOp{From: from, To: to}}}
 }
 
-func removeEdgeOp(from, to string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_RemoveEdge{RemoveEdge: &daggerv1.RemoveEdgeOp{From: from, To: to}}}
+func removeEdgeOp(from, to string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_RemoveEdge{RemoveEdge: &skiftv1.RemoveEdgeOp{From: from, To: to}}}
 }
 
-func completeOp(node, body string, artifacts ...*daggerv1.Artifact) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_CompleteNode{CompleteNode: &daggerv1.CompleteNodeOp{
-		Node: node, Result: &daggerv1.Result{Body: body, Artifacts: artifacts},
+func completeOp(node, body string, artifacts ...*skiftv1.Artifact) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_CompleteNode{CompleteNode: &skiftv1.CompleteNodeOp{
+		Node: node, Result: &skiftv1.Result{Body: body, Artifacts: artifacts},
 	}}}
 }
 
-func dropOp(node string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_DropNode{DropNode: &daggerv1.DropNodeOp{
-		Node: node, Reason: daggerv1.DropReason_DROP_REASON_NO_LONGER_RELEVANT, Detail: "never mind",
+func dropOp(node string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_DropNode{DropNode: &skiftv1.DropNodeOp{
+		Node: node, Reason: skiftv1.DropReason_DROP_REASON_NO_LONGER_RELEVANT, Detail: "never mind",
 	}}}
 }
 
-func updateOp(u *daggerv1.UpdateNodeOp) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_UpdateNode{UpdateNode: u}}
+func updateOp(u *skiftv1.UpdateNodeOp) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_UpdateNode{UpdateNode: u}}
 }
 
-func commentOp(node, body string) *daggerv1.PatchOp {
-	return &daggerv1.PatchOp{Op: &daggerv1.PatchOp_AddComment{AddComment: &daggerv1.AddCommentOp{Node: node, Body: body}}}
+func commentOp(node, body string) *skiftv1.PatchOp {
+	return &skiftv1.PatchOp{Op: &skiftv1.PatchOp_AddComment{AddComment: &skiftv1.AddCommentOp{Node: node, Body: body}}}
 }
 
-func textArtifact(name, text string) *daggerv1.Artifact {
-	return &daggerv1.Artifact{Name: name, Parts: []*daggerv1.Part{{Content: &daggerv1.Part_Text{Text: &daggerv1.TextPart{Text: text}}}}}
+func textArtifact(name, text string) *skiftv1.Artifact {
+	return &skiftv1.Artifact{Name: name, Parts: []*skiftv1.Part{{Content: &skiftv1.Part_Text{Text: &skiftv1.TextPart{Text: text}}}}}
 }
 
 // request is a patch against project with a fresh request id, asking for
 // the full view: the scenarios read the nodes and events it returns.
-func request(project string, ops ...*daggerv1.PatchOp) *daggerv1.ApplyPatchRequest {
-	return &daggerv1.ApplyPatchRequest{RequestId: client.NewRequestID(), Project: project, Ops: ops, View: daggerv1.View_VIEW_FULL}
+func request(project string, ops ...*skiftv1.PatchOp) *skiftv1.ApplyPatchRequest {
+	return &skiftv1.ApplyPatchRequest{RequestId: client.NewRequestID(), Project: project, Ops: ops, View: skiftv1.View_VIEW_FULL}
 }
 
 // ref renders a node as the bare reference the CLI takes.
-func ref(n *daggerv1.Node) string {
+func ref(n *skiftv1.Node) string {
 	return "#" + strconv.FormatInt(n.GetNumber(), 10)
 }
 
 // numbers renders nodes as their numbers.
-func numbers(nodes []*daggerv1.Node) []int64 {
+func numbers(nodes []*skiftv1.Node) []int64 {
 	out := make([]int64, 0, len(nodes))
 	for _, n := range nodes {
 		out = append(out, n.GetNumber())
@@ -620,7 +620,7 @@ func numbers(nodes []*daggerv1.Node) []int64 {
 	return out
 }
 
-// health reports what dg serve says about itself, for a scenario that
+// health reports what skift serve says about itself, for a scenario that
 // wants to be sure the service, not a stale socket, is answering.
 func (d *deployment) health(ctx context.Context) server.Health {
 	GinkgoHelper()
@@ -630,7 +630,7 @@ func (d *deployment) health(ctx context.Context) server.Health {
 			return dialer.DialContext(ctx, "unix", d.socket)
 		},
 	}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://dagger"+server.HealthPath, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://skift"+server.HealthPath, nil)
 	Expect(err).NotTo(HaveOccurred())
 	res, err := httpClient.Do(req)
 	Expect(err).NotTo(HaveOccurred())

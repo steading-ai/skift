@@ -8,11 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
-// The reaper is the expiry timer: `dg reap`, run by dagger-reap.timer,
+// The reaper is the expiry timer: `skift reap`, run by skift-reap.timer,
 // releasing every lease across the deployment whose TTL has passed. It is
 // the one write not made on a client's behalf, so it acts as a service
 // principal of its own in each organization, and creates that principal

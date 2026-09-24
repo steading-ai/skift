@@ -10,7 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 )
 
 // Transport names how a client reaches the service.
@@ -26,13 +26,13 @@ const (
 // socketBaseURL is the URL the generated clients are given when every
 // connection goes through a unix socket. Its host is a placeholder that is
 // never resolved.
-const socketBaseURL = "http://dagger"
+const socketBaseURL = "http://skift"
 
-// Client is the three dagger.v1 service clients over one transport.
+// Client is the three skift.v1 service clients over one transport.
 type Client struct {
-	Graph  daggerv1connect.GraphServiceClient
-	Work   daggerv1connect.WorkServiceClient
-	Events daggerv1connect.EventServiceClient
+	Graph  skiftv1connect.GraphServiceClient
+	Work   skiftv1connect.WorkServiceClient
+	Events skiftv1connect.EventServiceClient
 
 	transport Transport
 	target    string
@@ -51,9 +51,9 @@ func New(cfg Config, opts ...connect.ClientOption) (*Client, error) {
 		base = target
 	}
 	return &Client{
-		Graph:     daggerv1connect.NewGraphServiceClient(httpClient, base, opts...),
-		Work:      daggerv1connect.NewWorkServiceClient(httpClient, base, opts...),
-		Events:    daggerv1connect.NewEventServiceClient(httpClient, base, opts...),
+		Graph:     skiftv1connect.NewGraphServiceClient(httpClient, base, opts...),
+		Work:      skiftv1connect.NewWorkServiceClient(httpClient, base, opts...),
+		Events:    skiftv1connect.NewEventServiceClient(httpClient, base, opts...),
 		transport: transport,
 		target:    target,
 	}, nil
@@ -88,7 +88,7 @@ func newHTTPClient(cfg Config) (*http.Client, Transport, string, error) {
 		var d net.Dialer
 		conn, err := d.DialContext(ctx, "unix", socket)
 		if err != nil {
-			return nil, fmt.Errorf("dagger is not reachable at %s (is dg serve running?): %w", socket, errors.Unwrap(err))
+			return nil, fmt.Errorf("skift is not reachable at %s (is skift serve running?): %w", socket, errors.Unwrap(err))
 		}
 		return conn, nil
 	}

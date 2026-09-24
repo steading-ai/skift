@@ -9,8 +9,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/codec"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
 // Output formats. JSON is what an agent parses and the default whenever
@@ -56,23 +56,23 @@ func (p printer) emit(msg proto.Message) error {
 func (p printer) text(msg proto.Message) error {
 	var b strings.Builder
 	switch m := msg.(type) {
-	case *daggerv1.ReadyResponse:
+	case *skiftv1.ReadyResponse:
 		writeNodes(&b, m.GetNodes())
 		if len(m.GetNodes()) == 0 && m.GetHeldCount() > 0 {
 			fmt.Fprintf(&b, "nothing ready; %d open nodes are held\n", m.GetHeldCount())
 		}
 		writePageToken(&b, m.GetNextPageToken())
-	case *daggerv1.ListNodesResponse:
+	case *skiftv1.ListNodesResponse:
 		writeNodes(&b, m.GetNodes())
 		writePageToken(&b, m.GetNextPageToken())
-	case *daggerv1.ApplyPatchResponse:
+	case *skiftv1.ApplyPatchResponse:
 		writeNodes(&b, m.GetNodes())
 		for alias, ref := range m.GetAliases() {
 			fmt.Fprintf(&b, "alias %s = %s\n", alias, ref)
 		}
 		fmt.Fprintf(&b, "%d events, request %s\n", m.GetEventCount(), m.GetRequestId())
-	case *daggerv1.GetNodeResponse:
-		writeNodes(&b, []*daggerv1.Node{m.GetNode()})
+	case *skiftv1.GetNodeResponse:
+		writeNodes(&b, []*skiftv1.Node{m.GetNode()})
 		if body := m.GetNode().GetBody(); body != "" {
 			fmt.Fprintf(&b, "\n%s\n", body)
 		}
@@ -83,63 +83,63 @@ func (p printer) text(msg proto.Message) error {
 			writeLease(&b, l)
 		}
 		writeUsage(&b, m.GetEstimate(), m.GetUsage())
-	case *daggerv1.ReportUsageResponse:
+	case *skiftv1.ReportUsageResponse:
 		writeUsageRecord(&b, "reported", m.GetUsage())
-	case *daggerv1.GetInputsResponse:
+	case *skiftv1.GetInputsResponse:
 		if len(m.GetInputs()) == 0 {
 			b.WriteString("no inputs\n")
 		}
 		for _, in := range m.GetInputs() {
-			writeNodes(&b, []*daggerv1.Node{in.GetNode()})
+			writeNodes(&b, []*skiftv1.Node{in.GetNode()})
 			fmt.Fprintf(&b, "    %d bytes\n", in.GetBytes())
 			if body := in.GetResult().GetBody(); body != "" {
 				fmt.Fprintf(&b, "\n%s\n\n", body)
 			}
 		}
-	case *daggerv1.ExplainResponse:
-		writeNodes(&b, []*daggerv1.Node{m.GetNode()})
+	case *skiftv1.ExplainResponse:
+		writeNodes(&b, []*skiftv1.Node{m.GetNode()})
 		if len(m.GetReasons()) == 0 {
 			b.WriteString("ready\n")
 		}
 		for _, r := range m.GetReasons() {
 			writeReason(&b, r)
 		}
-	case *daggerv1.ClaimNextResponse:
+	case *skiftv1.ClaimNextResponse:
 		if m.GetNode() == nil {
 			b.WriteString("nothing to claim\n")
 			break
 		}
-		writeNodes(&b, []*daggerv1.Node{m.GetNode()})
+		writeNodes(&b, []*skiftv1.Node{m.GetNode()})
 		writeLease(&b, m.GetLease())
-	case *daggerv1.HeartbeatResponse:
+	case *skiftv1.HeartbeatResponse:
 		writeLease(&b, m.GetLease())
-	case *daggerv1.ReleaseResponse:
+	case *skiftv1.ReleaseResponse:
 		writeLease(&b, m.GetLease())
-	case *daggerv1.ListProjectsResponse:
+	case *skiftv1.ListProjectsResponse:
 		for _, p := range m.GetProjects() {
 			writeProject(&b, p)
 		}
 		writePageToken(&b, m.GetNextPageToken())
-	case *daggerv1.CreateProjectResponse:
+	case *skiftv1.CreateProjectResponse:
 		writeProject(&b, m.GetProject())
-	case *daggerv1.GetProjectResponse:
+	case *skiftv1.GetProjectResponse:
 		writeProject(&b, m.GetProject())
-	case *daggerv1.UpdateProjectResponse:
+	case *skiftv1.UpdateProjectResponse:
 		writeProject(&b, m.GetProject())
-	case *daggerv1.ArchiveProjectResponse:
+	case *skiftv1.ArchiveProjectResponse:
 		writeProject(&b, m.GetProject())
-	case *daggerv1.HoldProjectResponse:
+	case *skiftv1.HoldProjectResponse:
 		writeProject(&b, m.GetProject())
 		fmt.Fprintf(&b, "%d open nodes left the ready set\n", m.GetHeldCount())
-	case *daggerv1.UnholdProjectResponse:
+	case *skiftv1.UnholdProjectResponse:
 		writeProject(&b, m.GetProject())
-	case *daggerv1.FocusResponse:
+	case *skiftv1.FocusResponse:
 		fmt.Fprintf(&b, "focus %s: %d held, %d released\n", m.GetGroup(), m.GetHeldCount(), m.GetReleasedCount())
-	case *daggerv1.ClearFocusResponse:
+	case *skiftv1.ClearFocusResponse:
 		fmt.Fprintf(&b, "focus cleared: %d released\n", m.GetReleasedCount())
-	case *daggerv1.SearchResponse:
+	case *skiftv1.SearchResponse:
 		for _, h := range m.GetHits() {
-			writeNodes(&b, []*daggerv1.Node{h.GetNode()})
+			writeNodes(&b, []*skiftv1.Node{h.GetNode()})
 			if s := h.GetSnippet(); s != "" {
 				fmt.Fprintf(&b, "    %s\n", s)
 			}
@@ -159,7 +159,7 @@ func (p printer) text(msg proto.Message) error {
 
 // writeNodes renders one line per node. A node in the refs view has no
 // title to show, so its line is its number, state, and reference.
-func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
+func writeNodes(b *strings.Builder, nodes []*skiftv1.Node) {
 	for _, n := range nodes {
 		state := codec.EnumName(n.GetStatus())
 		switch {
@@ -184,7 +184,7 @@ func writeNodes(b *strings.Builder, nodes []*daggerv1.Node) {
 	}
 }
 
-func writeProject(b *strings.Builder, p *daggerv1.Project) {
+func writeProject(b *strings.Builder, p *skiftv1.Project) {
 	fmt.Fprintf(b, "%-24s %s", p.GetSlug(), p.GetTitle())
 	if url := p.GetVcsUrl(); url != "" {
 		fmt.Fprintf(b, "  %s", url)
@@ -198,9 +198,9 @@ func writeProject(b *strings.Builder, p *daggerv1.Project) {
 	b.WriteByte('\n')
 }
 
-func writeLease(b *strings.Builder, l *daggerv1.Lease) {
+func writeLease(b *strings.Builder, l *skiftv1.Lease) {
 	fmt.Fprintf(b, "lease %s", l.GetId())
-	if l.GetReleaseReason() != daggerv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
+	if l.GetReleaseReason() != skiftv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
 		fmt.Fprintf(b, " released: %s\n", codec.EnumName(l.GetReleaseReason()))
 		return
 	}
@@ -209,7 +209,7 @@ func writeLease(b *strings.Builder, l *daggerv1.Lease) {
 
 // writeUsage renders what a node is expected to cost and what it and its
 // descendants have cost, one line per model. Counts, never currency.
-func writeUsage(b *strings.Builder, estimate *daggerv1.Usage, rollup *daggerv1.Rollup) {
+func writeUsage(b *strings.Builder, estimate *skiftv1.Usage, rollup *skiftv1.Rollup) {
 	if estimate != nil {
 		writeUsageRecord(b, "estimate", estimate)
 	}
@@ -222,7 +222,7 @@ func writeUsage(b *strings.Builder, estimate *daggerv1.Usage, rollup *daggerv1.R
 }
 
 // writeUsageRecord renders one usage record under a label.
-func writeUsageRecord(b *strings.Builder, label string, u *daggerv1.Usage) {
+func writeUsageRecord(b *strings.Builder, label string, u *skiftv1.Usage) {
 	fmt.Fprintf(b, "%-8s %s", label, tokens(u.GetModel(), u.GetInputTokens(), u.GetOutputTokens(), u.GetCacheReadTokens(), u.GetCacheWriteTokens()))
 	if basis := u.GetBasis(); basis != "" {
 		fmt.Fprintf(b, "  basis: %s", basis)
@@ -239,25 +239,25 @@ func tokens(model string, input, output, cacheRead, cacheWrite int64) string {
 	return fmt.Sprintf("%-20s %d in, %d out, %d cache read, %d cache write", model, input, output, cacheRead, cacheWrite)
 }
 
-func writeReason(b *strings.Builder, r *daggerv1.Reason) {
+func writeReason(b *strings.Builder, r *skiftv1.Reason) {
 	switch x := r.GetReason().(type) {
-	case *daggerv1.Reason_NotOpen:
+	case *skiftv1.Reason_NotOpen:
 		fmt.Fprintf(b, "not open: %s\n", codec.EnumName(x.NotOpen.GetStatus()))
-	case *daggerv1.Reason_Blocked:
+	case *skiftv1.Reason_Blocked:
 		gate := ""
 		if x.Blocked.GetGate() {
 			gate = " (gate)"
 		}
 		fmt.Fprintf(b, "blocked by #%d %s%s\n", x.Blocked.GetBlocker().GetNumber(), x.Blocked.GetBlocker().GetTitle(), gate)
-	case *daggerv1.Reason_Leased:
+	case *skiftv1.Reason_Leased:
 		fmt.Fprintf(b, "leased by %s until %s\n", x.Leased.GetLease().GetHolder(), x.Leased.GetLease().GetExpiresAt().AsTime().Format(time.RFC3339))
-	case *daggerv1.Reason_OpenChild:
+	case *skiftv1.Reason_OpenChild:
 		fmt.Fprintf(b, "open child #%d %s\n", x.OpenChild.GetChild().GetNumber(), x.OpenChild.GetChild().GetTitle())
-	case *daggerv1.Reason_Archived:
+	case *skiftv1.Reason_Archived:
 		fmt.Fprintf(b, "project %s is archived\n", x.Archived.GetProject().GetSlug())
-	case *daggerv1.Reason_ProjectHeld:
+	case *skiftv1.Reason_ProjectHeld:
 		fmt.Fprintf(b, "project %s is held: %s\n", x.ProjectHeld.GetProject().GetSlug(), x.ProjectHeld.GetProject().GetHold().GetReason())
-	case *daggerv1.Reason_Held:
+	case *skiftv1.Reason_Held:
 		where := fmt.Sprintf("held by #%d %s", x.Held.GetNumber(), x.Held.GetTitle())
 		if x.Held.GetSelf() {
 			where = "held"

@@ -11,11 +11,11 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/ivy/dagger/internal/codec"
+	"github.com/steading-ai/skift/internal/codec"
 )
 
 // Every failure leaves the binary as a JSON object on stderr and a non-zero
-// exit code, so an agent driving dg from a shell branches on the code
+// exit code, so an agent driving skift from a shell branches on the code
 // rather than parsing prose. The codes are Connect's, spelled as Connect
 // spells them (failed_precondition, not_found, ...), because most failures
 // are the service's answer passed through; a failure the client detects
@@ -112,7 +112,7 @@ func writeError(w io.Writer, err error) {
 
 // decodeUsage reports a decode failure as a usage error. The codec's
 // message already carries the path and the legal values, so nothing is
-// prefixed to it: dg's stderr object and the MCP tool error say the same
+// prefixed to it: skift's stderr object and the MCP tool error say the same
 // sentence about the same patch.
 func decodeUsage(err error) error { return &usageError{err: err} }
 

@@ -7,19 +7,19 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // receive is the next message of stream, failing when it ends first.
-func receive(stream *connect.ServerStreamForClient[daggerv1.WatchEventsResponse]) *daggerv1.WatchEventsResponse {
+func receive(stream *connect.ServerStreamForClient[skiftv1.WatchEventsResponse]) *skiftv1.WatchEventsResponse {
 	GinkgoHelper()
 	Expect(stream.Receive()).To(BeTrue(), "stream ended: %v", stream.Err())
 	return stream.Msg()
 }
 
 // receiveEvent is the next message carrying an event.
-func receiveEvent(stream *connect.ServerStreamForClient[daggerv1.WatchEventsResponse]) *daggerv1.WatchEventsResponse {
+func receiveEvent(stream *connect.ServerStreamForClient[skiftv1.WatchEventsResponse]) *skiftv1.WatchEventsResponse {
 	GinkgoHelper()
 	for {
 		if msg := receive(stream); msg.GetEvent() != nil {
@@ -34,7 +34,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		f.project(ctx, "Platform")
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		stream, err := f.events().WatchEvents(sctx, connect.NewRequest(&daggerv1.WatchEventsRequest{Ops: []string{"create_node"}}))
+		stream, err := f.events().WatchEvents(sctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Ops: []string{"create_node"}}))
 		Expect(err).NotTo(HaveOccurred())
 
 		By("a stream from now opens with a position and no event")
@@ -43,7 +43,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		Expect(opening.GetCursor()).NotTo(BeEmpty())
 
 		By("each event arrives with the cursor to resume after it")
-		res, err := f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: "platform", View: daggerv1.View_VIEW_FULL, Ops: []*daggerv1.PatchOp{createOp("a", "A"), createOp("b", "B")}})
+		res, err := f.applyWith(ctx, &skiftv1.ApplyPatchRequest{RequestId: newID(), Project: "platform", View: skiftv1.View_VIEW_FULL, Ops: []*skiftv1.PatchOp{createOp("a", "A"), createOp("b", "B")}})
 		Expect(err).NotTo(HaveOccurred())
 		first := receiveEvent(stream)
 		Expect(first.GetEvent().GetId()).To(Equal(res.GetEvents()[0].GetId()))
@@ -55,7 +55,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		cancel()
 
 		By("resuming after the first event yields the second and nothing earlier")
-		resumed, err := f.events().WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{Cursor: first.GetCursor()}))
+		resumed, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Cursor: first.GetCursor()}))
 		Expect(err).NotTo(HaveOccurred())
 		defer resumed.Close() //nolint:errcheck // ends with the spec
 		Expect(receiveEvent(resumed).GetEvent().GetId()).To(Equal(second.GetEvent().GetId()))
@@ -65,20 +65,20 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		f := newFixture(ctx)
 		f.project(ctx, "Platform")
 		other := f.project(ctx, "Other")
-		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{Project: other.GetSlug()}))
+		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Project: other.GetSlug()}))
 		Expect(err).NotTo(HaveOccurred())
 		defer stream.Close() //nolint:errcheck // ends with the spec
 		Expect(receive(stream).GetEvent()).To(BeNil())
 
 		f.mustApply(ctx, createOp("a", "In platform"))
-		res, err := f.applyWith(ctx, &daggerv1.ApplyPatchRequest{RequestId: newID(), Project: other.GetSlug(), View: daggerv1.View_VIEW_FULL, Ops: []*daggerv1.PatchOp{createOp("b", "In other")}})
+		res, err := f.applyWith(ctx, &skiftv1.ApplyPatchRequest{RequestId: newID(), Project: other.GetSlug(), View: skiftv1.View_VIEW_FULL, Ops: []*skiftv1.PatchOp{createOp("b", "In other")}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(receiveEvent(stream).GetEvent().GetId()).To(Equal(res.GetEvents()[0].GetId()))
 	})
 
 	It("refuses a malformed cursor as an invalid argument", func(ctx SpecContext) {
 		f := newFixture(ctx)
-		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{Cursor: "01J0000000000000000000000"}))
+		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Cursor: "01J0000000000000000000000"}))
 		Expect(err).NotTo(HaveOccurred())
 		defer stream.Close() //nolint:errcheck // ends with the spec
 		Expect(stream.Receive()).To(BeFalse())
@@ -87,7 +87,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 
 	It("ends the stream cleanly when the server drains", func(ctx SpecContext) {
 		f := newFixture(ctx)
-		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&daggerv1.WatchEventsRequest{}))
+		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer stream.Close() //nolint:errcheck // ends with the spec
 		Expect(receive(stream).GetEvent()).To(BeNil())

@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // Projects are free to create: no provisioning, no adjudication of names.
@@ -130,7 +130,7 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 	})
 }
 
-// validVCSURL admits an absolute URL with a host, or nothing. Dagger never
+// validVCSURL admits an absolute URL with a host, or nothing. Skift never
 // reads the URL, so the shape is all it checks: the orchestrator that
 // clones it is the one that finds out whether it answers.
 func validVCSURL(raw string) error {
@@ -305,7 +305,7 @@ func projectEvent(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID st
 
 // projectsLockNamespace keys the advisory lock slug allocation takes, apart
 // from the graph lock so a project creation never waits on a patch.
-const projectsLockNamespace = "dagger:projects"
+const projectsLockNamespace = "skift:projects"
 
 // lockProjects serializes slug allocation within the organization for the
 // rest of the transaction, so two creations with one title cannot both find

@@ -8,9 +8,9 @@ import (
 	"github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store/migrations"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store/migrations"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // The graph rules are exercised against a real PostgreSQL, but the suite

@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // A comment is content attached to a node, and its own entity rather than

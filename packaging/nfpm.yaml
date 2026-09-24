@@ -1,9 +1,9 @@
-# The rpm. `make package` builds dg for each architecture and runs nfpm
+# The rpm. `make package` builds skift for each architecture and runs nfpm
 # once per GOARCH with VERSION set; see the Makefile for both values.
 #
 # The package installs and does not start: the units are enabled by hand
-# once /etc/dagger/env names a database.
-name: dagger
+# once /etc/skift/env names a database.
+name: skift
 arch: ${GOARCH}
 platform: linux
 version: ${VERSION}
@@ -12,37 +12,37 @@ priority: optional
 maintainer: Ivy Evans <ivy@ivyevans.net>
 description: |
   Agent-first project management on a DAG.
-  dg is one binary with three faces: the dagger service, an MCP server, and
+  skift is one binary with three faces: the skift service, an MCP server, and
   the CLI that talks to either.
 vendor: Ivy Evans
-homepage: https://github.com/ivy/dagger
+homepage: https://github.com/steading-ai/skift
 depends:
   - systemd
 contents:
-  - src: dist/dg-linux-${GOARCH}
-    dst: /usr/bin/dg
+  - src: dist/skift-linux-${GOARCH}
+    dst: /usr/bin/skift
     expand: true
     file_info:
       mode: 0755
-  - src: contrib/systemd/dagger.service
-    dst: /usr/lib/systemd/system/dagger.service
-  - src: contrib/systemd/dagger-reap.service
-    dst: /usr/lib/systemd/system/dagger-reap.service
-  - src: contrib/systemd/dagger-reap.timer
-    dst: /usr/lib/systemd/system/dagger-reap.timer
-  - src: packaging/sysusers.d/dagger.conf
-    dst: /usr/lib/sysusers.d/dagger.conf
-  - src: packaging/tmpfiles.d/dagger.conf
-    dst: /usr/lib/tmpfiles.d/dagger.conf
+  - src: contrib/systemd/skift.service
+    dst: /usr/lib/systemd/system/skift.service
+  - src: contrib/systemd/skift-reap.service
+    dst: /usr/lib/systemd/system/skift-reap.service
+  - src: contrib/systemd/skift-reap.timer
+    dst: /usr/lib/systemd/system/skift-reap.timer
+  - src: packaging/sysusers.d/skift.conf
+    dst: /usr/lib/sysusers.d/skift.conf
+  - src: packaging/tmpfiles.d/skift.conf
+    dst: /usr/lib/tmpfiles.d/skift.conf
   # The environment template, kept across upgrades once edited. Group
   # readable only: the database URL carries a password.
   - src: packaging/env
-    dst: /etc/dagger/env
+    dst: /etc/skift/env
     type: config|noreplace
     file_info:
       mode: 0640
       owner: root
-      group: dagger
+      group: skift
 scripts:
   preinstall: packaging/scripts/preinstall.sh
   postinstall: packaging/scripts/postinstall.sh

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/store"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // The change stream: events of an organization after a cursor, in the

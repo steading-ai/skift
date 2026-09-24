@@ -7,13 +7,13 @@ Two voices. Ivy's is the product owner's; Claude's is the agent that did the des
 
 ## What was built
 
-Design: vision, principles, domain model, architecture, roadmap, seven ADRs, and a summary of the METR report that shaped the trust model. A 45-node backlog in dagger's own domain model, each node a self-contained work order with acceptance criteria and Gherkin scenarios. A two-agent harness that drove it.
+Design: vision, principles, domain model, architecture, roadmap, seven ADRs, and a summary of the METR report that shaped the trust model. A 45-node backlog in skift's own domain model, each node a self-contained work order with acceptance criteria and Gherkin scenarios. A two-agent harness that drove it.
 
 Result: 43 nodes in roughly 8.5 hours at concurrency one, zero review failures, $221.53 at list prices, 93M tokens of which 92% were cache reads. Verified by hand afterward: file a subtree in one patch, ready set, claim, complete under a fenced lease, dependents unblock, stale lease refused, parent ready when children close, search, event log, MCP. One design gap found by that hand test and fixed the same hour.
 
 ## Ivy's side
 
-- Scoping dagger to *finding ready work* found the seams of the software-factory architecture. Human-in-the-loop as a first-class mechanism, trust and provenance and principals nailed down, and the critical adjacent pieces (orchestrator, retrieval) carved out by deciding to broadcast to them rather than build one monolith.
+- Scoping skift to *finding ready work* found the seams of the software-factory architecture. Human-in-the-loop as a first-class mechanism, trust and provenance and principals nailed down, and the critical adjacent pieces (orchestrator, retrieval) carved out by deciding to broadcast to them rather than build one monolith.
 - Reuse of hive and kb came from luck plus a lot of prior thought and experiments in this space.
 - A bad assumption cost about nine months: "every beginner's project is a project management system," so this space was not worth exploring, even though it is a critical piece of the puzzle. The wait had one upside: beads, beans, Multica, and others all arrived at the same theory. DAGs.
 - The bet is unproven. It stands until production says otherwise.
@@ -30,9 +30,9 @@ Result: 43 nodes in roughly 8.5 hours at concurrency one, zero review failures, 
 
 - **The thesis held, for a specific reason.** Frontloaded design let agents work autonomously, but the mechanism was narrower than "good docs." Each work order gave the reviewer a mechanical contract: criteria to walk and scenarios that had to exist as named specs with matching assertions. Twenty-nine reviews were rigorous because the question was checkable, not because the reviewer was clever. Without that shape, reviewer judgment would have drifted by node ten.
 - **Gherkin earned its place as the reviewer's contract first and as readable documentation second.** The readability was real, and it was the side effect. The cut that mattered was scenario-as-spec-name with no step-definition layer, which is the part of Cucumber agents would have fought.
-- **The paper test found the cheapest bug of the session.** Writing dagger's backlog in dagger's model, before any schema, surfaced that a grouping node with children was "ready" under the rules as written. One rule added to readiness, zero code changed.
+- **The paper test found the cheapest bug of the session.** Writing skift's backlog in skift's model, before any schema, surfaced that a grouping node with children was "ready" under the rules as written. One rule added to readiness, zero code changed.
 - **The domain model was the authority and the agents treated it as one.** Every migration header cites the section it implements. That is the document doing its job.
-- **Broadcast, don't build.** ADR-006's responsibility table made "no" easy. Retrieval, notification, moderation, and supervision are consumers of the change stream, and dagger works without any of them.
+- **Broadcast, don't build.** ADR-006's responsibility table made "no" easy. Retrieval, notification, moderation, and supervision are consumers of the change stream, and skift works without any of them.
 - **Outside review, taken by standing.** Twice, an external reviewer with no context was asked to look: once at the design, once at the skill. Both times the fact findings were excellent (write skew in cycle detection, lease fencing, a flag that did not exist) and the scope advice was a year-long plan. Take the facts, surface the intent, decide yourself. It worked both times.
 - **Fresh-context agents are honest about the docs.** When node 3's work order named a deliverable inside a protected path, the implementer said the backlog was wrong and moved on. That is the escape hatch in the prompt doing what it was written for.
 
@@ -48,7 +48,7 @@ Result: 43 nodes in roughly 8.5 hours at concurrency one, zero review failures, 
 
 ### Open bets
 
-- **The model fits real work.** Dagger's own backlog is still a TOML file. M1 is when dagger holds it, and that is the first real evidence either way.
+- **The model fits real work.** Skift's own backlog is still a TOML file. M1 is when skift holds it, and that is the first real evidence either way.
 - **Provenance beats prohibition.** The trust model says a sanctioned, attributed, legible coordination channel is safer than pretending agents will not coordinate. The wikis incident is a third data point for the premise and no evidence yet for the conclusion.
 - **Gherkin at scale.** It carried forty-five nodes. Whether it carries four hundred, across projects and principals, is unknown.
 
@@ -59,4 +59,4 @@ Result: 43 nodes in roughly 8.5 hours at concurrency one, zero review failures, 
 3. Hold low-priority work until the last day of the plan window.
 4. Worktree per node, concurrency above one.
 5. `make schema` producing a committed end-state.
-6. Move the backlog into dagger. Retire the TOML file.
+6. Move the backlog into skift. Retire the TOML file.

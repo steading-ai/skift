@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
+	"github.com/steading-ai/skift/internal/domain"
 )
 
 var _ = Describe("Project slugs", Label("unit"), func() {

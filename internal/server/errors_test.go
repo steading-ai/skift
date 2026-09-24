@@ -9,9 +9,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/policy"
-	"github.com/ivy/dagger/internal/server"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/policy"
+	"github.com/steading-ai/skift/internal/server"
 )
 
 var _ = Describe("Connect codes for domain errors", Label("unit"), func() {

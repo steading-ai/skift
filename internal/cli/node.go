@@ -4,8 +4,8 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/client"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/client"
 )
 
 func (a *app) nodeCommand() *cobra.Command {
@@ -18,7 +18,7 @@ func (a *app) nodeCommand() *cobra.Command {
 }
 
 func (a *app) nodeShow() *cobra.Command {
-	view := viewFlag{def: daggerv1.View_VIEW_FULL}
+	view := viewFlag{def: skiftv1.View_VIEW_FULL}
 	cmd := &cobra.Command{
 		Use:   "show <ref>",
 		Short: "Show a node with its edges, result, lease, artifacts, and comments",
@@ -36,8 +36,8 @@ func (a *app) nodeShow() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.GetNodeResponse, error) {
-				res, err := c.Graph.GetNode(cmd.Context(), connect.NewRequest(&daggerv1.GetNodeRequest{Project: project, Node: ref, View: v}))
+			return send(a, cmd, func() (*skiftv1.GetNodeResponse, error) {
+				res, err := c.Graph.GetNode(cmd.Context(), connect.NewRequest(&skiftv1.GetNodeRequest{Project: project, Node: ref, View: v}))
 				return unwrap(res, err)
 			})
 		},
@@ -47,21 +47,21 @@ func (a *app) nodeShow() *cobra.Command {
 }
 
 func (a *app) inputsCommand() *cobra.Command {
-	view := viewFlag{def: daggerv1.View_VIEW_FULL}
+	view := viewFlag{def: skiftv1.View_VIEW_FULL}
 	cmd := &cobra.Command{
 		Use:   "inputs <ref>",
 		Short: "Show the results of the predecessors a node depends on",
 		Long: `Show what a node depends on: one entry per predecessor that satisfies it,
 with the result it completed with and the artifacts it attached. This is
-what a downstream agent assembles its context from, and "dg node show"
+what a downstream agent assembles its context from, and "skift node show"
 never returns it: a node's own result is not its predecessors'.
 
-A predecessor still open satisfies nothing and is not an input; "dg
+A predecessor still open satisfies nothing and is not an input; "skift
 explain" says what a node is waiting on. A dropped one is listed with no
 result. Inputs are not transitive.
 
 With --view summary each entry is its reference, title and the size of its
-result, so a large handoff can be read one predecessor at a time with "dg
+result, so a large handoff can be read one predecessor at a time with "skift
 node show".`,
 		Args: exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -77,8 +77,8 @@ node show".`,
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.GetInputsResponse, error) {
-				res, err := c.Graph.GetInputs(cmd.Context(), connect.NewRequest(&daggerv1.GetInputsRequest{Project: project, Node: ref, View: v}))
+			return send(a, cmd, func() (*skiftv1.GetInputsResponse, error) {
+				res, err := c.Graph.GetInputs(cmd.Context(), connect.NewRequest(&skiftv1.GetInputsRequest{Project: project, Node: ref, View: v}))
 				return unwrap(res, err)
 			})
 		},
@@ -92,7 +92,7 @@ func (a *app) nodeList() *cobra.Command {
 	var status, parent string
 	var held bool
 	var page pageFlags
-	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
+	view := viewFlag{def: skiftv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List nodes, filtered",
@@ -109,7 +109,7 @@ otherwise.`,
 			if err != nil {
 				return err
 			}
-			st, err := enumFlag[daggerv1.Status]("status", status)
+			st, err := enumFlag[skiftv1.Status]("status", status)
 			if err != nil {
 				return err
 			}
@@ -121,14 +121,14 @@ otherwise.`,
 			if err != nil {
 				return err
 			}
-			filter := &daggerv1.NodeFilter{
+			filter := &skiftv1.NodeFilter{
 				Projects: projects, Status: st, AssigneeKind: kind, Labels: f.labels, Parent: parent, Held: held,
 			}
 			if f.kind != "" {
 				filter.Kinds = []string{f.kind}
 			}
-			return send(a, cmd, func() (*daggerv1.ListNodesResponse, error) {
-				res, err := c.Graph.ListNodes(cmd.Context(), connect.NewRequest(&daggerv1.ListNodesRequest{
+			return send(a, cmd, func() (*skiftv1.ListNodesResponse, error) {
+				res, err := c.Graph.ListNodes(cmd.Context(), connect.NewRequest(&skiftv1.ListNodesRequest{
 					Filter: filter, PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
@@ -175,6 +175,6 @@ func (f *nodeFilters) bind(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVarP(&f.labels, "label", "l", nil, "only nodes carrying this label; repeatable")
 }
 
-func (f *nodeFilters) assigneeKind() (daggerv1.AssigneeKind, error) {
-	return enumFlag[daggerv1.AssigneeKind]("assignee-kind", f.assigneeKind_)
+func (f *nodeFilters) assigneeKind() (skiftv1.AssigneeKind, error) {
+	return enumFlag[skiftv1.AssigneeKind]("assignee-kind", f.assigneeKind_)
 }

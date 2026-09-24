@@ -12,12 +12,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // loopbackTailnet stands in for the tsnet transport: a TCP listener on the
@@ -57,8 +57,8 @@ func (t *loopbackTailnet) WhoIs(context.Context, string) (string, error) {
 
 // graph is a client reaching the handlers over the tailnet rather than the
 // socket.
-func (t *loopbackTailnet) graph() daggerv1connect.GraphServiceClient {
-	return daggerv1connect.NewGraphServiceClient(&http.Client{}, "http://"+t.listener.Addr().String())
+func (t *loopbackTailnet) graph() skiftv1connect.GraphServiceClient {
+	return skiftv1connect.NewGraphServiceClient(&http.Client{}, "http://"+t.listener.Addr().String())
 }
 
 // failingTransport cannot bind.
@@ -79,9 +79,9 @@ var _ = Describe("Connect server over the tailnet", func() {
 			r := start(server.Config{Transports: []server.Transport{tn}}, server.Services{Graph: graphStub{}}, pinger{})
 
 			By("when the same call is made over each")
-			viaSocket, err := r.graph().GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+			viaSocket, err := r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 			Expect(err).NotTo(HaveOccurred())
-			viaTailnet, err := tn.graph().GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+			viaTailnet, err := tn.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 			Expect(err).NotTo(HaveOccurred())
 
 			By("then the one handler answers both")
@@ -89,8 +89,8 @@ var _ = Describe("Connect server over the tailnet", func() {
 			Expect(viaTailnet.Msg.GetProject().GetTitle()).To(Equal("Stub project"))
 
 			By("and the unmounted services answer Unimplemented over the tailnet too, not 404")
-			_, err = daggerv1connect.NewWorkServiceClient(&http.Client{}, "http://"+tn.listener.Addr().String()).
-				Ready(ctx, connect.NewRequest(&daggerv1.ReadyRequest{}))
+			_, err = skiftv1connect.NewWorkServiceClient(&http.Client{}, "http://"+tn.listener.Addr().String()).
+				Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnimplemented))
 
 			By("and the transport is closed when the server stops")
@@ -107,14 +107,14 @@ var _ = Describe("Connect server over the tailnet", func() {
 					interceptor.StaticLookup{}, interceptor.UnixResolver{}, interceptor.TailscaleResolver{WhoIs: tn},
 				)},
 			}, server.Services{Graph: graphStub{}}, pinger{})
-			_, err := tn.graph().GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
+			_, err := tn.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
 
 			By("then the call fails as unauthenticated")
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 		})
 
 		It("unwinds the socket when a transport cannot bind", func() {
-			socket := GinkgoT().TempDir() + "/dg.sock"
+			socket := GinkgoT().TempDir() + "/skift.sock"
 			srv := server.New(server.Config{
 				SocketPath: socket,
 				Logger:     specLogger(),
@@ -155,14 +155,14 @@ var _ = Describe("Connect server over the tailnet", func() {
 			}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, pool)
 
 			By("when it calls over the socket and then over the tailnet")
-			_, err = r.graph().CreateProject(ctx, connect.NewRequest(&daggerv1.CreateProjectRequest{RequestId: newID(), Title: "Platform"}))
+			_, err = r.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Platform"}))
 			Expect(err).NotTo(HaveOccurred())
-			viaSocket, err := r.graph().ApplyPatch(ctx, connect.NewRequest(&daggerv1.ApplyPatchRequest{
-				RequestId: newID(), Project: "platform", Ops: []*daggerv1.PatchOp{createOp("a", "From the host")}, View: daggerv1.View_VIEW_FULL,
+			viaSocket, err := r.graph().ApplyPatch(ctx, connect.NewRequest(&skiftv1.ApplyPatchRequest{
+				RequestId: newID(), Project: "platform", Ops: []*skiftv1.PatchOp{createOp("a", "From the host")}, View: skiftv1.View_VIEW_FULL,
 			}))
 			Expect(err).NotTo(HaveOccurred())
-			viaTailnet, err := tn.graph().ApplyPatch(ctx, connect.NewRequest(&daggerv1.ApplyPatchRequest{
-				RequestId: newID(), Project: "platform", Ops: []*daggerv1.PatchOp{createOp("b", "From the laptop")}, View: daggerv1.View_VIEW_FULL,
+			viaTailnet, err := tn.graph().ApplyPatch(ctx, connect.NewRequest(&skiftv1.ApplyPatchRequest{
+				RequestId: newID(), Project: "platform", Ops: []*skiftv1.PatchOp{createOp("b", "From the laptop")}, View: skiftv1.View_VIEW_FULL,
 			}))
 			Expect(err).NotTo(HaveOccurred())
 

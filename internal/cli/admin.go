@@ -12,21 +12,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/ivy/dagger/internal/domain"
-	"github.com/ivy/dagger/internal/logging"
-	"github.com/ivy/dagger/internal/version"
+	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/version"
 )
 
 // newAdminCommand groups the operations on a deployment that no caller of
 // the service can perform, because they are what makes there be a caller
-// at all. Each reaches the database directly, as dg reap does.
+// at all. Each reaches the database directly, as skift reap does.
 func newAdminCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "admin",
 		Short: "Administer a deployment directly against its database",
 		Long: `Operations on a deployment that go around the service: the writes that
 have to happen before the service has anyone to serve. Each takes the
-database URL that "dg serve" takes.`,
+database URL that "skift serve" takes.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -54,17 +54,17 @@ The command is idempotent. An organization already carrying the name is
 adopted rather than duplicated, and so is a principal already holding the
 uid, so an installer can run it on every provision without knowing whether
 it has run before. The database must be at the current schema: run
-"dg migrate" first.
+"skift migrate" first.
 
-The uid is the one "dg" will run as: for the invoking user, "$(id -u)".`,
+The uid is the one "skift" will run as: for the invoking user, "$(id -u)".`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			uid, err := strconv.ParseUint(args[0], 10, 32)
 			if err != nil {
-				return usage("dg admin bootstrap: uid %q is not a numeric user id", args[0])
+				return usage("skift admin bootstrap: uid %q is not a numeric user id", args[0])
 			}
 			if args[1] == "" {
-				return usage("dg admin bootstrap: the organization name must not be empty")
+				return usage("skift admin bootstrap: the organization name must not be empty")
 			}
 			return runBootstrap(cmd, opts, domain.BootstrapParams{UID: uint32(uid), OrgName: args[1]})
 		},
@@ -78,11 +78,11 @@ The uid is the one "dg" will run as: for the invoking user, "$(id -u)".`,
 func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.BootstrapParams) error {
 	var level slog.LevelVar
 	if err := level.UnmarshalText([]byte(opts.logLevel)); err != nil {
-		return fmt.Errorf("dg admin bootstrap: --log-level: %w", err)
+		return fmt.Errorf("skift admin bootstrap: --log-level: %w", err)
 	}
 	log := logging.New(cmd.ErrOrStderr(), &level)
 	if opts.databaseURL == "" {
-		return fmt.Errorf("dg admin bootstrap: a database URL is required; pass --database-url or set %s", databaseURLEnv)
+		return fmt.Errorf("skift admin bootstrap: a database URL is required; pass --database-url or set %s", databaseURLEnv)
 	}
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
@@ -90,21 +90,21 @@ func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.Boots
 
 	pool, err := pgxpool.New(ctx, opts.databaseURL)
 	if err != nil {
-		return fmt.Errorf("dg admin bootstrap: database url: %w", err)
+		return fmt.Errorf("skift admin bootstrap: database url: %w", err)
 	}
 	defer pool.Close()
 
-	log.Debug("dg admin bootstrap starting", "version", version.String())
+	log.Debug("skift admin bootstrap starting", "version", version.String())
 	out, err := domain.Bootstrap(ctx, pool, params)
 	if err != nil {
-		return fmt.Errorf("dg admin bootstrap: %w", err)
+		return fmt.Errorf("skift admin bootstrap: %w", err)
 	}
 	log.Info("organization "+createdOrFound(out.Organization.Created), "org_id", out.Organization.ID, "name", out.Organization.Name)
 	log.Info("principal "+createdOrFound(out.Principal.Created), "org_id", out.Organization.ID, "principal_id", out.Principal.ID,
 		"kind", out.Principal.Kind, "identity", out.Principal.Identity.Scheme+":"+out.Principal.Identity.Value)
 	raw, err := json.Marshal(out)
 	if err != nil {
-		return fmt.Errorf("dg admin bootstrap: %w", err)
+		return fmt.Errorf("skift admin bootstrap: %w", err)
 	}
 	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
 	return err

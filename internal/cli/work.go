@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/client"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/client"
 )
 
 // waitForever is what a bare --wait means: block until work is claimed or
@@ -45,7 +45,7 @@ func (f *claimFlags) bindWait(cmd *cobra.Command) {
 // longer claims. Parsing it is what lets the command answer with the verb
 // that does instead of with an unknown flag.
 func (f *claimFlags) bindRetiredWait(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.wait, "wait", "", `retired: use "dg claim --wait"`)
+	cmd.Flags().StringVar(&f.wait, "wait", "", `retired: use "skift claim --wait"`)
 	fl := cmd.Flags().Lookup("wait")
 	fl.NoOptDefVal = waitForever
 	fl.Hidden = true
@@ -53,14 +53,14 @@ func (f *claimFlags) bindRetiredWait(cmd *cobra.Command) {
 
 // errRetiredWait answers any use of --wait on ready. Claiming is claim's.
 func errRetiredWait() error {
-	return usage(`ready never claims: use "dg claim --wait" to block until work can be claimed`)
+	return usage(`ready never claims: use "skift claim --wait" to block until work can be claimed`)
 }
 
 func (f *claimFlags) bindClaim(cmd *cobra.Command) {
 	hostname, _ := os.Hostname()
 	fl := cmd.Flags()
 	fl.DurationVar(&f.ttl, "ttl", 0, "requested lease TTL (default: the server's)")
-	fl.StringVar(&f.harness, "harness", "dg", "name of the executing harness, recorded on the lease")
+	fl.StringVar(&f.harness, "harness", "skift", "name of the executing harness, recorded on the lease")
 	fl.StringVar(&f.agentRef, "agent-ref", hostname, "where the attempt runs, recorded for placement affinity")
 	fl.StringVar(&f.sessionRef, "session-ref", "", "harness session identifier, for a session that works several nodes")
 	requestIDFlag(cmd, &f.requestID)
@@ -89,7 +89,7 @@ func (f *claimFlags) waitDuration() (d time.Duration, ok bool, err error) {
 func (a *app) readyCommand() *cobra.Command {
 	var f claimFlags
 	var page pageFlags
-	view := viewFlag{def: daggerv1.View_VIEW_SUMMARY}
+	view := viewFlag{def: skiftv1.View_VIEW_SUMMARY}
 	cmd := &cobra.Command{
 		Use:   "ready",
 		Short: "List the ready set of the current project",
@@ -97,8 +97,8 @@ func (a *app) readyCommand() *cobra.Command {
 urgent and then oldest first. Nothing is claimed and nothing is leased, so
 this is a read of the graph.
 
-To take work, use "dg claim", which returns a node under a lease, and
-"dg claim --wait" to block until one matches.`,
+To take work, use "skift claim", which returns a node under a lease, and
+"skift claim --wait" to block until one matches.`,
 		// A bare --wait takes no value, so "--wait 30s" leaves the
 		// duration as an argument; both are the same mistake, and both
 		// are caught before the command runs.
@@ -117,7 +117,7 @@ To take work, use "dg claim", which returns a node under a lease, and
 			if err != nil {
 				return err
 			}
-			prio, err := enumFlag[daggerv1.Priority]("min-priority", f.minPriority)
+			prio, err := enumFlag[skiftv1.Priority]("min-priority", f.minPriority)
 			if err != nil {
 				return err
 			}
@@ -129,12 +129,12 @@ To take work, use "dg claim", which returns a node under a lease, and
 			if err != nil {
 				return err
 			}
-			filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: f.labels, MinPriority: prio}
+			filter := &skiftv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: f.labels, MinPriority: prio}
 			if f.kind != "" {
 				filter.Kinds = []string{f.kind}
 			}
-			return send(a, cmd, func() (*daggerv1.ReadyResponse, error) {
-				res, err := c.Work.Ready(cmd.Context(), connect.NewRequest(&daggerv1.ReadyRequest{
+			return send(a, cmd, func() (*skiftv1.ReadyResponse, error) {
+				res, err := c.Work.Ready(cmd.Context(), connect.NewRequest(&skiftv1.ReadyRequest{
 					Filter: filter, PageSize: page.size, PageToken: page.token, View: v,
 				}))
 				return unwrap(res, err)
@@ -184,7 +184,7 @@ func (a *app) claim(cmd *cobra.Command, f *claimFlags, wait time.Duration) error
 	if err != nil {
 		return err
 	}
-	prio, err := enumFlag[daggerv1.Priority]("min-priority", f.minPriority)
+	prio, err := enumFlag[skiftv1.Priority]("min-priority", f.minPriority)
 	if err != nil {
 		return err
 	}
@@ -192,18 +192,18 @@ func (a *app) claim(cmd *cobra.Command, f *claimFlags, wait time.Duration) error
 	if err != nil {
 		return err
 	}
-	filter := &daggerv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: f.labels, MinPriority: prio}
+	filter := &skiftv1.NodeFilter{Projects: projects, AssigneeKind: kind, Labels: f.labels, MinPriority: prio}
 	if f.kind != "" {
 		filter.Kinds = []string{f.kind}
 	}
-	req := &daggerv1.ClaimNextRequest{
+	req := &skiftv1.ClaimNextRequest{
 		RequestId: orMint(f.requestID), Filter: filter,
 		Harness: f.harness, AgentRef: f.agentRef, SessionRef: f.sessionRef,
 	}
 	if f.ttl > 0 {
 		req.Ttl = durationpb.New(f.ttl)
 	}
-	return send(a, cmd, func() (*daggerv1.ClaimNextResponse, error) {
+	return send(a, cmd, func() (*skiftv1.ClaimNextResponse, error) {
 		return claimNext(cmd.Context(), c, req, wait)
 	})
 }
@@ -212,7 +212,7 @@ func (a *app) claim(cmd *cobra.Command, f *claimFlags, wait time.Duration) error
 // iterations: an empty answer writes nothing, so the key is unused until a
 // claim lands, and a retry after a dropped connection then returns the
 // same node rather than a second one.
-func claimNext(ctx context.Context, c *client.Client, req *daggerv1.ClaimNextRequest, wait time.Duration) (*daggerv1.ClaimNextResponse, error) {
+func claimNext(ctx context.Context, c *client.Client, req *skiftv1.ClaimNextRequest, wait time.Duration) (*skiftv1.ClaimNextResponse, error) {
 	var deadline time.Time
 	if wait >= 0 {
 		deadline = time.Now().Add(wait)
@@ -248,11 +248,11 @@ func (a *app) heartbeatCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			req := &daggerv1.HeartbeatRequest{RequestId: orMint(requestID), LeaseId: args[0]}
+			req := &skiftv1.HeartbeatRequest{RequestId: orMint(requestID), LeaseId: args[0]}
 			if ttl > 0 {
 				req.Ttl = durationpb.New(ttl)
 			}
-			return send(a, cmd, func() (*daggerv1.HeartbeatResponse, error) {
+			return send(a, cmd, func() (*skiftv1.HeartbeatResponse, error) {
 				res, err := c.Work.Heartbeat(cmd.Context(), connect.NewRequest(req))
 				return unwrap(res, err)
 			})
@@ -270,19 +270,19 @@ func (a *app) releaseCommand() *cobra.Command {
 		Short: "End a lease with a reason, returning the node to the ready set",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := enumFlag[daggerv1.ReleaseReason]("reason", reason)
+			r, err := enumFlag[skiftv1.ReleaseReason]("reason", reason)
 			if err != nil {
 				return err
 			}
-			if r == daggerv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
+			if r == skiftv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
 				return usage("--reason is required: gate, crash, budget, expired, or preempted")
 			}
 			c, err := a.connect()
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.ReleaseResponse, error) {
-				res, err := c.Work.Release(cmd.Context(), connect.NewRequest(&daggerv1.ReleaseRequest{
+			return send(a, cmd, func() (*skiftv1.ReleaseResponse, error) {
+				res, err := c.Work.Release(cmd.Context(), connect.NewRequest(&skiftv1.ReleaseRequest{
 					RequestId: orMint(requestID), LeaseId: args[0], Reason: r, Detail: detail,
 				}))
 				return unwrap(res, err)

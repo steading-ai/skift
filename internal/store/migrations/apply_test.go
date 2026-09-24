@@ -4,8 +4,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/store/migrations"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/store/migrations"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 var _ = Describe("Applying migrations from nothing", Label(testsupport.DBLabel), func() {
@@ -42,9 +42,9 @@ var _ = Describe("Applying migrations from nothing", Label(testsupport.DBLabel),
 	})
 
 	It("tells a database that does not answer apart from one that refuses", func(ctx SpecContext) {
-		_, err := migrations.Apply(ctx, "postgres://dagger:dagger@127.0.0.1:1/dagger?sslmode=disable&connect_timeout=1")
+		_, err := migrations.Apply(ctx, "postgres://skift:skift@127.0.0.1:1/skift?sslmode=disable&connect_timeout=1")
 		Expect(err).To(MatchError(migrations.ErrUnreachable))
-		_, err = migrations.Inspect(ctx, "postgres://dagger:dagger@127.0.0.1:1/dagger?sslmode=disable&connect_timeout=1")
+		_, err = migrations.Inspect(ctx, "postgres://skift:skift@127.0.0.1:1/skift?sslmode=disable&connect_timeout=1")
 		Expect(err).To(MatchError(migrations.ErrUnreachable))
 	})
 })

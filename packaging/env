@@ -1,6 +1,6 @@
-# Environment for dagger.service and dagger-reap.service, one KEY=value per
-# line. Readable by the dagger group only: the URL carries a password.
+# Environment for skift.service and skift-reap.service, one KEY=value per
+# line. Readable by the skift group only: the URL carries a password.
 #
 # The service does not create its database; that must exist before it can
 # become active. It brings the schema up to date itself at start.
-#DATABASE_URL=postgres://dagger:password@127.0.0.1:5432/dagger
+#DATABASE_URL=postgres://skift:password@127.0.0.1:5432/skift

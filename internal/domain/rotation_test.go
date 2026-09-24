@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/domain"
+	"github.com/steading-ai/skift/internal/domain"
 )
 
 // NextProject is the cursor arithmetic behind the round-robin turn across

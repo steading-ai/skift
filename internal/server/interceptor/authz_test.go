@@ -5,11 +5,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/server"
-	"github.com/ivy/dagger/internal/server/interceptor"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/server"
+	"github.com/steading-ai/skift/internal/server/interceptor"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 var _ = Describe("Authorization at the interceptor", Label("unit"), func() {
@@ -21,8 +21,8 @@ var _ = Describe("Authorization at the interceptor", Label("unit"), func() {
 		client := serve(lookup, server.Services{Graph: graph}, interceptor.UnixResolver{})
 
 		By("when an agent calls a method naming a project the default policy gives it no rights over")
-		_, err := daggerv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "finance"}))
+		_, err := skiftv1connect.NewGraphServiceClient(client, baseURL).
+			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "finance"}))
 
 		By("then the interceptor admits the call, attributed, and leaves the resource decision to the domain")
 		Expect(err).NotTo(HaveOccurred())

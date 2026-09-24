@@ -1,4 +1,4 @@
-package dagger_test
+package skift_test
 
 import (
 	"os"
@@ -48,7 +48,7 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 		By(`given a file under "internal/server" importing "internal/store"`)
 		dir := checkout()
 		writeFile(dir, "internal/server/handler.go",
-			"package server\n\nimport \"github.com/ivy/dagger/internal/store\"\n\n// Handle reaches the store directly.\nfunc Handle() { _ = store.Open }\n")
+			"package server\n\nimport \"github.com/steading-ai/skift/internal/store\"\n\n// Handle reaches the store directly.\nfunc Handle() { _ = store.Open }\n")
 
 		By(`when I run "make lint"`)
 		session := makeLint(dir)
@@ -65,7 +65,7 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 		By(`given an interceptor importing "internal/policy"`)
 		dir := checkout()
 		writeFile(dir, "internal/server/interceptor/authz.go",
-			"package interceptor\n\nimport \"github.com/ivy/dagger/internal/policy\"\n\n// Authorize decides on resources before the domain has resolved them.\nfunc Authorize() { _ = policy.LoadDefault }\n")
+			"package interceptor\n\nimport \"github.com/steading-ai/skift/internal/policy\"\n\n// Authorize decides on resources before the domain has resolved them.\nfunc Authorize() { _ = policy.LoadDefault }\n")
 
 		By(`when I run "make lint"`)
 		session := makeLint(dir)
@@ -81,7 +81,7 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 	It("Generated code is current", func() {
 		By("given a modified proto file")
 		dir := checkout()
-		appendToFile(dir, "proto/dagger/v1/dagger.proto", `
+		appendToFile(dir, "proto/skift/v1/skift.proto", `
 // Stale exists only to make gen/ lag the proto in this spec.
 message Stale {
   // value carries nothing.

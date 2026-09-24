@@ -7,15 +7,15 @@ date: 2026-09-08
 
 ## Context and Problem Statement
 
-Dagger has no way to park work. `status` is only `open`, `done`, `dropped`; `ArchiveProject` is a one-way read-only door; priority is advisory ordering that dagger derives nothing from. So "not this week" can only be said by inflating a priority, and "not this project" can only be said outside dagger.
+Skift has no way to park work. `status` is only `open`, `done`, `dropped`; `ArchiveProject` is a one-way read-only door; priority is advisory ordering that skift derives nothing from. So "not this week" can only be said by inflating a priority, and "not this project" can only be said outside skift.
 
-The orchestrator is the obvious place to say it, and [the domain model](../domain-model.md) invited that: *"Ordering across projects is the orchestrator's business, because only the orchestrator knows which projects matter this week."* But an orchestrator holding the roster of what matters puts a human decision — sweep everything aside except A, B and C — outside the project management system, where `dg ready`, a laptop session, and a second orchestrator all disagree with it.
+The orchestrator is the obvious place to say it, and [the domain model](../domain-model.md) invited that: *"Ordering across projects is the orchestrator's business, because only the orchestrator knows which projects matter this week."* But an orchestrator holding the roster of what matters puts a human decision — sweep everything aside except A, B and C — outside the project management system, where `skift ready`, a laptop session, and a second orchestrator all disagree with it.
 
 Where does the decision that work is parked belong, and what shape does it take?
 
 ## Decision Drivers
 
-- Intent is the human's job and dagger is the store for it ([vision](../vision.md)); a roster of what matters this week is intent
+- Intent is the human's job and skift is the store for it ([vision](../vision.md)); a roster of what matters this week is intent
 - The failure the vision opens by naming is the true board state living somewhere other than the board
 - Stored state is only what cannot be derived ([principle 1](../core-principles.md))
 - `Ready` must make no scheduling decision ([principle 6](../core-principles.md)), and must not acquire a stage machine ([vision](../vision.md), "not a workflow engine")
@@ -37,7 +37,7 @@ The line the decision rests on:
 
 > Priority orders the eligible set. Hold decides what is eligible. Ordering is the orchestrator's; eligibility is the graph's.
 
-The original sentence conflated the two. What an orchestrator genuinely owns is arithmetic — how a `p0` in a three-day spike interleaves with a `p2` in the platform project, given budget, capacity, and which models are free. Combining two project-scoped priority scales needs a rule dagger has no basis to choose. Deciding that a project is not this week's bet is a different question, and it is not arithmetic.
+The original sentence conflated the two. What an orchestrator genuinely owns is arithmetic — how a `p0` in a three-day spike interleaves with a `p2` in the platform project, given budget, capacity, and which models are free. Combining two project-scoped priority scales needs a rule skift has no basis to choose. Deciding that a project is not this week's bet is a different question, and it is not arithmetic.
 
 Eligibility was already multi-axis. A leased node leaves the ready set without its status changing, and so does a blocked one. Hold is a third axis of the same kind, which is why it is not a status: a held node is plainly still `open`, and nothing about it has moved through a stage.
 
@@ -57,11 +57,11 @@ A sweep holds only what is not already held, and marks what it holds with a `hol
 
 ### Consequences
 
-- **Good**: What is live is in dagger. Every client — `dg ready`, an interactive session, one orchestrator or three — gets the same answer, and the reason, the principal, and the time are on the record.
+- **Good**: What is live is in skift. Every client — `skift ready`, an interactive session, one orchestrator or three — gets the same answer, and the reason, the principal, and the time are on the record.
 - **Good**: Priority goes back to meaning one thing. Without a hold, `p4` has to mean both "low value" and "not now", and the second meaning is what drives the inflation the priority section already anticipates.
 - **Good**: An orchestrator keeps everything that is genuinely its own — interleaving, budget, model choice, concurrency — and holds no facts about the projects it runs.
 - **Bad**: Holding a node parks its downstream cone, and the cone is not itself held. Holding one node can silently stall a large amount of work. `Hold` therefore reports the count it parks, and `Explain` on a stalled dependent traces to the hold rather than stopping at the blocker.
-- **Bad**: A hold is stored state that nothing expires, so a stale hold makes dagger quietly wrong about what is live. The reason is required, holds are events, and parked work is listable — but nothing collects them. An expiry is deliberately deferred until stale holds are observed rather than imagined.
+- **Bad**: A hold is stored state that nothing expires, so a stale hold makes skift quietly wrong about what is live. The reason is required, holds are events, and parked work is listable — but nothing collects them. An expiry is deliberately deferred until stale holds are observed rather than imagined.
 - **Bad**: Readiness gains a recursive ancestor walk, where every other condition is a flat anti-join. It is bounded by the acyclicity guarantee the parent relation already carries and backstopped by the statement timeout the limits table already names.
 - **Neutral**: Archive becomes the terminal point of this axis rather than a separate concept: a permanent hold that also makes the project read-only. That archiving has no inverse in the API is a pre-existing hole, unchanged by this decision.
 - **Neutral**: A held gate stops notifying, because notifiers subscribe to *ready* user-assigned nodes. Parking an ask silences it, which is what parking means.
@@ -72,8 +72,8 @@ A sweep holds only what is not already held, and marks what it holds with a `hol
 
 The work is kept out of the orchestrator's reach by a list of projects and per-project priority floors in its own config.
 
-- **Good**: No dagger change at all. Ships with the orchestrator, and every filter it needs (`min_priority`, `labels`) already exists on `Ready`.
-- **Bad**: The decision lives where no human or other client will look for it, and there is no record of who made it or why. Two orchestrators, or an orchestrator and a person, disagree about what is live. This is the incumbent failure the vision exists to fix, reproduced inside dagger's own consumer.
+- **Good**: No skift change at all. Ships with the orchestrator, and every filter it needs (`min_priority`, `labels`) already exists on `Ready`.
+- **Bad**: The decision lives where no human or other client will look for it, and there is no record of who made it or why. Two orchestrators, or an orchestrator and a person, disagree about what is live. This is the incumbent failure the vision exists to fix, reproduced inside skift's own consumer.
 
 ### A hold node with `blocks` edges
 

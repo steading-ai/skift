@@ -7,8 +7,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/store/migrations"
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/store/migrations"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 func TestMigrations(t *testing.T) {

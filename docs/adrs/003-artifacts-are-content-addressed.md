@@ -7,7 +7,7 @@ date: 2026-09-04
 
 ## Context and Problem Statement
 
-Work produces outputs beyond text: pull requests, patch sets, zips of design assets, bundles of markdown. Downstream agents consume them as inputs. Every project management system supports attachments, but dagger runs in a distributed setting where agents on different machines produce and consume. How are artifacts stored and delivered without turning dagger into a distributed filesystem, and without pushing storage onto every orchestrator?
+Work produces outputs beyond text: pull requests, patch sets, zips of design assets, bundles of markdown. Downstream agents consume them as inputs. Every project management system supports attachments, but skift runs in a distributed setting where agents on different machines produce and consume. How are artifacts stored and delivered without turning skift into a distributed filesystem, and without pushing storage onto every orchestrator?
 
 ## Decision Drivers
 
@@ -18,13 +18,13 @@ Work produces outputs beyond text: pull requests, patch sets, zips of design ass
 
 ## Considered Options
 
-1. References only: dagger stores URIs and digests, never bytes
-2. Managed blob store only: everything uploaded to dagger
+1. References only: skift stores URIs and digests, never bytes
+2. Managed blob store only: everything uploaded to skift
 3. Both: a managed, size-capped, content-addressed blob store behind a storage interface, plus first-class external references
 
 ## Decision Outcome
 
-Chosen option: **both**, because attachments are commonplace and centralizing them prevents sprawl, while a size cap and content addressing keep dagger from becoming a data transport. Coding agents already produce git refs and design agents can push to an OCI registry; those stay where they are and dagger records a digest.
+Chosen option: **both**, because attachments are commonplace and centralizing them prevents sprawl, while a size cap and content addressing keep skift from becoming a data transport. Coding agents already produce git refs and design agents can push to an OCI registry; those stay where they are and skift records a digest.
 
 The artifact shape follows A2A: name, description, parts, metadata. A part is inline text under a cap, a managed blob, or a reference. Every blob and reference carries a digest.
 
@@ -34,10 +34,10 @@ The artifact shape follows A2A: name, description, parts, metadata. A part is in
 ### Consequences
 
 - **Good**: Downstream agents verify what they pulled by digest regardless of transport.
-- **Good**: Orchestrators need no storage configuration. Small outputs go to dagger, large ones to the registry.
+- **Good**: Orchestrators need no storage configuration. Small outputs go to skift, large ones to the registry.
 - **Good**: OCI artifacts are deduplicated, signable with cosign, and already operated in the platform zone.
 - **Bad**: Two artifact paths to document and test.
-- **Bad**: A reference can point somewhere a given client cannot reach. Mitigated by scheme conventions, not by dagger proxying.
+- **Bad**: A reference can point somewhere a given client cannot reach. Mitigated by scheme conventions, not by skift proxying.
 - **Neutral**: Attachments and comments are a surface a swarm can abuse as a message board. Size caps and policy are the controls, and this is tracked as an open discussion.
 
 ## Rejected Options
@@ -50,7 +50,7 @@ The artifact shape follows A2A: name, description, parts, metadata. A part is in
 ### Managed blobs only
 
 - **Good**: One path.
-- **Bad**: Dagger becomes the transport for large data and the git and OCI content that already has a home gets copied.
+- **Bad**: Skift becomes the transport for large data and the git and OCI content that already has a home gets copied.
 
 ## More Information
 

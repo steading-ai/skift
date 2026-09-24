@@ -5,7 +5,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/server"
+	"github.com/steading-ai/skift/internal/server"
 )
 
 var _ = Describe("Wire mapping", Label("unit"), func() {

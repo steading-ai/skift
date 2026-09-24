@@ -11,12 +11,12 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/codec"
-	"github.com/ivy/dagger/internal/testsupport"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/codec"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
-// The handlers are mounted with dagger's JSON codec, so a client that
+// The handlers are mounted with skift's JSON codec, so a client that
 // speaks JSON is what these scenarios use: raw documents posted to the
 // procedure, the way an agent writing JSON by hand reaches the one door.
 
@@ -49,7 +49,7 @@ func createPatch(priority, assigneeKind string) string {
 
 var _ = Describe("Enums on the JSON wire", Label(testsupport.DBLabel), func() {
 	var f *fixture
-	const applyPatch = "/dagger.v1.GraphService/ApplyPatch"
+	const applyPatch = "/skift.v1.GraphService/ApplyPatch"
 
 	BeforeEach(func(ctx SpecContext) {
 		f = newFixture(ctx)
@@ -66,8 +66,8 @@ var _ = Describe("Enums on the JSON wire", Label(testsupport.DBLabel), func() {
 
 		By("then the node is created with priority P1 and assignee kind user")
 		node := f.getNode(ctx, "platform", "#1").GetNode()
-		Expect(node.GetPriority()).To(Equal(daggerv1.Priority_PRIORITY_P1))
-		Expect(node.GetAssigneeKind()).To(Equal(daggerv1.AssigneeKind_ASSIGNEE_KIND_USER))
+		Expect(node.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P1))
+		Expect(node.GetAssigneeKind()).To(Equal(skiftv1.AssigneeKind_ASSIGNEE_KIND_USER))
 	})
 
 	It("The canonical form is still accepted", func(ctx SpecContext) {
@@ -93,7 +93,7 @@ var _ = Describe("Enums on the JSON wire", Label(testsupport.DBLabel), func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("when it is read through any surface as JSON")
-		overTheWire, err := f.postJSON(ctx, "/dagger.v1.GraphService/GetNode",
+		overTheWire, err := f.postJSON(ctx, "/skift.v1.GraphService/GetNode",
 			`{"project": "platform", "node": "#1", "view": "full"}`)
 		Expect(err).NotTo(HaveOccurred())
 		res := f.getNode(ctx, "platform", "#1")
@@ -118,9 +118,9 @@ var _ = Describe("Enums on the JSON wire", Label(testsupport.DBLabel), func() {
 
 // anonymize renders a node without what makes it that node, so that two
 // nodes built by the same patch differing only in spelling compare equal.
-func anonymize(node *daggerv1.Node) string {
+func anonymize(node *skiftv1.Node) string {
 	GinkgoHelper()
-	bare, ok := proto.Clone(node).(*daggerv1.Node)
+	bare, ok := proto.Clone(node).(*skiftv1.Node)
 	Expect(ok).To(BeTrue())
 	bare.Id = ""
 	bare.Number = 0

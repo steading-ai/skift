@@ -1,19 +1,16 @@
-# Dagger
+# Skift
 
 Agent-first project management built on directed acyclic graphs.
 
-> [!NOTE]
-> Working title. The name collides with [dagger.io](https://dagger.io) and will change before the project is public.
+A software project is a graph of tasks. When every dependency of a task is satisfied, the task is ready, and a ready task is something an agent can start on. Skift is the durable store for that graph: agents and humans build and mutate a backlog through one API, and orchestrators consume the set of ready work to dispatch agents in parallel.
 
-A software project is a graph of tasks. When every dependency of a task is satisfied, the task is ready, and a ready task is something an agent can start on. Dagger is the durable store for that graph: agents and humans build and mutate a backlog through one API, and orchestrators consume the set of ready work to dispatch agents in parallel.
-
-Dagger holds the plan. It does not run agents, schedule work, or define workflows. See [docs/vision.md](docs/vision.md) for why, [docs/core-principles.md](docs/core-principles.md) for the decision filters, and [docs/domain-model.md](docs/domain-model.md) for the model itself.
+Skift holds the plan. It does not run agents, schedule work, or define workflows. See [docs/vision.md](docs/vision.md) for why, [docs/core-principles.md](docs/core-principles.md) for the decision filters, and [docs/domain-model.md](docs/domain-model.md) for the model itself.
 
 ## Status
 
 Working service, CLI, and MCP server, built from the backlog below by an autonomous agent loop. Architecture decisions are recorded in [docs/adrs/](docs/adrs/); milestones in [docs/roadmap.md](docs/roadmap.md).
 
-Dagger is built from its own backlog, in [backlog.toml](backlog.toml), expressed in dagger's domain model. Each node is a self-contained work order with acceptance criteria and the scenarios its specs must cover.
+Skift is built from its own backlog, in [backlog.toml](backlog.toml), expressed in skift's domain model. Each node is a self-contained work order with acceptance criteria and the scenarios its specs must cover.
 
 ```
 scripts/ready.py            what can be worked now
@@ -35,49 +32,49 @@ gate with your recommendation already in its inputs.
 
 ## Deploying
 
-A deployment is the `dg` binary, a PostgreSQL database it may create tables
+A deployment is the `skift` binary, a PostgreSQL database it may create tables
 in, and the systemd units that run it. The binary carries its schema and
 can seed its own first caller, so a fresh install needs no checkout, no
 migration tool, and no SQL client. Install, migrate, bootstrap, start:
 
 ```sh
-sudo dnf install dagger
-DATABASE_URL=postgres://dagger:...@db.example/dagger dg migrate
-DATABASE_URL=postgres://dagger:...@db.example/dagger dg admin bootstrap "$(id -u)" homestead
-sudo systemctl enable --now dagger.service dagger-reap.timer
+sudo dnf install skift
+DATABASE_URL=postgres://skift:...@db.example/skift skift migrate
+DATABASE_URL=postgres://skift:...@db.example/skift skift admin bootstrap "$(id -u)" homestead
+sudo systemctl enable --now skift.service skift-reap.timer
 ```
 
-- **The package** installs `dg`, the system units, and the `dagger` user
+- **The package** installs `skift`, the system units, and the `skift` user
   and group the service runs as, and starts nothing: the service needs a
   database, which is not the package's to create. See "Install it from the
   rpm" below for building it.
-- **`dg migrate`** applies every migration the binary carries that the
+- **`skift migrate`** applies every migration the binary carries that the
   database has not seen, and prints the versions it applied. A database
   already at the current schema applies nothing, so it is safe on every
-  deploy. `dg serve` does the same at start, so this step is for running
+  deploy. `skift serve` does the same at start, so this step is for running
   the migrations ahead of the service; pass `--no-migrate` to the service
   to make it refuse a database that is behind instead.
-- **`dg admin bootstrap <uid> <organization>`** creates the organization
+- **`skift admin bootstrap <uid> <organization>`** creates the organization
   and, in it, a `user` principal that a caller on the unix socket with that
   uid resolves to. It prints both. It is idempotent: an organization
   already carrying the name and a principal already holding the uid are
   adopted, so provisioning can run it every time without knowing whether
-  it has run before. The uid is the one `dg` will run as; `$(id -u)` is
+  it has run before. The uid is the one `skift` will run as; `$(id -u)` is
   the invoking user's. Every caller that will reach the socket needs a
   principal; run it once per uid.
-- **`dagger.service`** reads `DATABASE_URL` from `/etc/dagger/env`, one
+- **`skift.service`** reads `DATABASE_URL` from `/etc/skift/env`, one
   `KEY=value` per line, so put the same URL there; the package ships the
   template. It is `Type=notify` and becomes active only once the socket is
   bound, the database has answered, and the schema is current.
-  `dagger-reap.timer` runs `dg reap` every minute.
+  `skift-reap.timer` runs `skift reap` every minute.
 
-`dg ready` then answers as the bootstrapped user, with an empty ready set
+`skift ready` then answers as the bootstrapped user, with an empty ready set
 once a project exists to ask about. The caller reaches the socket through
-the `dagger` group; see the rpm section for how the socket admits it.
+the `skift` group; see the rpm section for how the socket admits it.
 
 ## Developing
 
-Dagger stores everything in PostgreSQL, and the behaviour worth testing (row
+Skift stores everything in PostgreSQL, and the behaviour worth testing (row
 locking, recursive queries) only exists in a real server. Development runs
 against one in a container; nothing is faked.
 
@@ -107,7 +104,7 @@ digest in `compose.yaml` deliberately.
 Connect with the bundled client:
 
 ```sh
-podman compose exec postgres psql -U dagger
+podman compose exec postgres psql -U skift
 ```
 
 or from the host with anything that reads `DATABASE_URL` from `.env`.
@@ -142,7 +139,7 @@ podman compose down -v
 make db-down
 ```
 
-Data stays in the `dagger_pgdata` volume for the next `make db-up`.
+Data stays in the `skift_pgdata` volume for the next `make db-up`.
 
 ### Run the suite
 
@@ -160,7 +157,7 @@ Specs labelled `db` need podman. Store specs start their own PostgreSQL
 through testcontainers rather than using the compose stack, so they never
 touch your development data. The compose specs at the repository root
 exercise `make db-up` and `make db-reset` under a separate compose project
-name (`dagger-spec`) on a random port, and remove it when they finish.
+name (`skift-spec`) on a random port, and remove it when they finish.
 
 Suites run their specs in parallel processes. A suite that needs the
 database starts one container in its first process through
@@ -191,31 +188,31 @@ to point it somewhere else.
 
 ### Install it from the rpm
 
-`make package` cross-compiles `dg` and builds an rpm for `x86_64` and
+`make package` cross-compiles `skift` and builds an rpm for `x86_64` and
 `aarch64` into `dist/`. The package carries the binary, the system units in
 `contrib/systemd/`, and the fragments under `packaging/` that create the
-`dagger` system user and group and the socket directory:
+`skift` system user and group and the socket directory:
 
 ```sh
 make package
-sudo dnf install ./dist/dagger-*.$(uname -m).rpm
-sudo editor /etc/dagger/env            # DATABASE_URL=...
-sudo systemctl enable --now dagger.service dagger-reap.timer
+sudo dnf install ./dist/skift-*.$(uname -m).rpm
+sudo editor /etc/skift/env            # DATABASE_URL=...
+sudo systemctl enable --now skift.service skift-reap.timer
 ```
 
 The package installs but does not start anything: the service needs a
-database, which is not the package's to create. `dagger.service` runs as
-the `dagger` user and is `Type=notify`, active only once the socket is bound
-and the database has answered. `dagger-reap.timer` runs `dg reap` every
+database, which is not the package's to create. `skift.service` runs as
+the `skift` user and is `Type=notify`, active only once the socket is bound
+and the database has answered. `skift-reap.timer` runs `skift reap` every
 minute, releasing leases whose TTL has passed; the command is idempotent
 and safe to run by hand alongside the timer.
 
 The service identifies a caller by the uid on its end of
-`/run/dagger/dg.sock`. The directory is group `dagger` and setgid, so the
+`/run/skift/skift.sock`. The directory is group `skift` and setgid, so the
 socket is born in that group, and its `0660` mode admits the group; add an
-account to the `dagger` group and give it a fresh session to let it call.
+account to the `skift` group and give it a fresh session to let it call.
 
-`make version` prints what `dg version` will report: the tag on a clean
+`make version` prints what `skift version` will report: the tag on a clean
 tagged checkout, and otherwise the nearest tag carrying a development
 marker such as `+dev.3.g1a2b3c4.dirty`.
 

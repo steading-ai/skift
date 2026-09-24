@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "skift": {
+      "command": "skift",
+      "args": ["mcp"]
+    }
+  }
+}

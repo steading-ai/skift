@@ -1,4 +1,4 @@
-// Package client is the Connect client behind dg and dg mcp: one set of
+// Package client is the Connect client behind skift and skift mcp: one set of
 // generated service clients over a transport chosen by configuration. Which
 // transport a call uses is a setting, never a code path, so the CLI and the
 // MCP server reach the service through identical code. See "One binary,
@@ -17,13 +17,13 @@ import (
 // and is overridden by an explicit flag.
 const (
 	// EnvConfig is the path of the config file, replacing [DefaultConfigPath].
-	EnvConfig = "DG_CONFIG"
+	EnvConfig = "SKIFT_CONFIG"
 	// EnvSocket is the path of the service's unix socket.
-	EnvSocket = "DG_SOCKET"
+	EnvSocket = "SKIFT_SOCKET"
 	// EnvAddress is the URL of the service over the tailnet or HTTPS.
-	EnvAddress = "DG_ADDRESS"
+	EnvAddress = "SKIFT_ADDRESS"
 	// EnvProject is the project a bare "#7" reference resolves in.
-	EnvProject = "DG_PROJECT"
+	EnvProject = "SKIFT_PROJECT"
 )
 
 // Config is where the client connects and what it assumes when a command
@@ -35,24 +35,24 @@ type Config struct {
 	// is empty. Empty means [DefaultSocketPath].
 	Socket string `json:"socket,omitempty"`
 	// Address is the base URL of the service reached over the network: a
-	// tailnet name such as "http://dagger.tail1234.ts.net" or an HTTPS
+	// tailnet name such as "http://skift.tail1234.ts.net" or an HTTPS
 	// origin.
 	Address string `json:"address,omitempty"`
 	// Project is the default project for commands that take one.
 	Project string `json:"project,omitempty"`
 }
 
-// DefaultSocketPath is the socket "dg serve" listens on by default: under
+// DefaultSocketPath is the socket "skift serve" listens on by default: under
 // the invoking user's runtime directory when there is one, and the system
 // runtime directory otherwise, where a systemd RuntimeDirectory= puts it.
 func DefaultSocketPath() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "dagger", "dg.sock")
+		return filepath.Join(dir, "skift", "skift.sock")
 	}
-	return "/run/dagger/dg.sock"
+	return "/run/skift/skift.sock"
 }
 
-// DefaultConfigPath is $XDG_CONFIG_HOME/dagger/config.json, with the XDG
+// DefaultConfigPath is $XDG_CONFIG_HOME/skift/config.json, with the XDG
 // fallback of ~/.config when the variable is unset. Empty when there is no
 // home directory to fall back to.
 func DefaultConfigPath() string {
@@ -64,11 +64,11 @@ func DefaultConfigPath() string {
 		}
 		dir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dir, "dagger", "config.json")
+	return filepath.Join(dir, "skift", "config.json")
 }
 
 // LoadConfig reads the config file at path, then lays the environment over
-// it. An empty path means [DefaultConfigPath], or the path in $DG_CONFIG,
+// it. An empty path means [DefaultConfigPath], or the path in $SKIFT_CONFIG,
 // and is allowed to be absent; a path given explicitly must exist. Values
 // the caller has from flags go on top with [Config.Override].
 func LoadConfig(path string) (Config, error) {

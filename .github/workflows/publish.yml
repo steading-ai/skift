@@ -1,4 +1,4 @@
-# Publishes the built dg as a container image on every push to main, so
+# Publishes the built skift as a container image on every push to main, so
 # another repository's workflow can pull it with nothing but its own
 # GITHUB_TOKEN. See docs/ci.md.
 #
@@ -30,11 +30,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Cross-compile dg
+      - name: Cross-compile skift
         run: |
           VERSION="$(make version)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          make dist/dg-linux-amd64 dist/dg-linux-arm64 VERSION="$VERSION"
+          make dist/skift-linux-amd64 dist/skift-linux-arm64 VERSION="$VERSION"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -53,5 +53,5 @@ jobs:
           build-args: |
             REVISION=${{ github.sha }}
           tags: |
-            ghcr.io/steading-ai/dagger:${{ github.sha }}
-            ghcr.io/steading-ai/dagger:main
+            ghcr.io/steading-ai/skift:${{ github.sha }}
+            ghcr.io/steading-ai/skift:main

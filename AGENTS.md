@@ -2,20 +2,20 @@
 
 ## What this repo is
 
-Dagger is an agent-first project management system built on directed acyclic graphs. A project is a graph of work; when a node's dependencies are satisfied it is ready, and ready work can be claimed and run in parallel. Dagger stores the plan. It does not orchestrate, sandbox, or supervise.
+Skift is an agent-first project management system built on directed acyclic graphs. A project is a graph of work; when a node's dependencies are satisfied it is ready, and ready work can be claimed and run in parallel. Skift stores the plan. It does not orchestrate, sandbox, or supervise.
 
 - **Design is frontloaded and authoritative.** `docs/` settles the decisions; code follows it, not the other way round.
-- **The repo builds itself.** Its own backlog lives in a running dagger service, and `harness/loop.py` dispatches agents against it.
+- **The repo builds itself.** Its own backlog lives in a running skift service, and `harness/loop.py` dispatches agents against it.
 - **Success** is an orchestrator completing a dependency chain end to end, with every step in the event log.
 
 ## If you were dispatched to work a node
 
-This is the common case, and your work order arrived with you: the node's body plus the result of every done node that blocks it. Read more of the graph with `dg` when you need it:
+This is the common case, and your work order arrived with you: the node's body plus the result of every done node that blocks it. Read more of the graph with `skift` when you need it:
 
 ```bash
-dg node show '#18'   # the node in full
-dg inputs '#18'      # what its finished predecessors handed over
-dg explain '#18'     # why something is not ready
+skift node show '#18'   # the node in full
+skift inputs '#18'      # what its finished predecessors handed over
+skift explain '#18'     # why something is not ready
 ```
 
 The work order names the documents that govern it. Read them before writing code; they are the authority when they disagree with existing code.
@@ -27,18 +27,18 @@ Your contract is the node's **Acceptance criteria** and **Scenarios**. Every cri
 ## Repo map
 
 ```
-cmd/dg/          binary entrypoint; one binary, three faces (CLI, MCP server, service)
+cmd/skift/          binary entrypoint; one binary, three faces (CLI, MCP server, service)
 internal/        application code; only internal/domain may import internal/store
 proto/, gen/     the wire contract and its generated Go. The proto is the domain model
 policy/          the default authorization bundle, in Rego, with its own spec suite
 docs/            the design. Authoritative
   adrs/          decisions and their rationale
   plans/         the current sprint, in prose
-plugin/          the dagger Claude Code plugin: the skill agents read, and the MCP server
+plugin/          the skift Claude Code plugin: the skill agents read, and the MCP server
 tests/acceptance end-to-end scenarios against the built binary and a real database
-harness/         the agent loop that works one epic of dagger's own backlog
+harness/         the agent loop that works one epic of skift's own backlog
 scripts/ready.py a paper test of the readiness rules, from before there was a schema
-backlog.toml     dagger's first backlog, kept as a record. Nothing reads it
+backlog.toml     skift's first backlog, kept as a record. Nothing reads it
 compose.yaml     PostgreSQL for local development
 ```
 
@@ -48,7 +48,7 @@ Canonical commands live in `Makefile`; tool versions in `mise.toml`. Only podman
 
 ```bash
 mise install            # bootstrap every tool
-make build              # ./dg
+make build              # ./skift
 make test               # all specs
 make test-unit          # specs needing no database
 make test-db            # specs needing PostgreSQL, via testcontainers
@@ -77,7 +77,7 @@ Specs are Ginkgo and Gomega. Two lint rules carry design decisions rather than s
 
 ## Where to look first
 
-- **What dagger is and is not** — `docs/vision.md`, then `docs/core-principles.md`. The principles have teeth; violating one should feel wrong.
+- **What skift is and is not** — `docs/vision.md`, then `docs/core-principles.md`. The principles have teeth; violating one should feel wrong.
 - **The model you are implementing** — `docs/domain-model.md`. Nodes, edges, readiness, holds, leases, patches, events. This is the single most useful file in the repo.
 - **How the pieces fit** — `docs/architecture.md` for the request path, transports, and trust boundaries.
 - **Why something is the way it is** — `docs/adrs/`. Check here before changing a decision.

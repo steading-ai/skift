@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/store/blob"
+	"github.com/steading-ai/skift/internal/store/blob"
 )
 
 // put uploads and finalizes bytes in one go.

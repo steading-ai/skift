@@ -4,7 +4,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 )
 
 func (a *app) focusCommand() *cobra.Command {
@@ -48,8 +48,8 @@ contains it, since parking a parent would park the node.`,
 				if len(args) > 0 {
 					return usage("--clear takes no keep-set: it releases the sweep, it does not narrow one")
 				}
-				return send(a, cmd, func() (*daggerv1.ClearFocusResponse, error) {
-					res, err := c.Graph.ClearFocus(cmd.Context(), connect.NewRequest(&daggerv1.ClearFocusRequest{
+				return send(a, cmd, func() (*skiftv1.ClearFocusResponse, error) {
+					res, err := c.Graph.ClearFocus(cmd.Context(), connect.NewRequest(&skiftv1.ClearFocusRequest{
 						RequestId: orMint(requestID), Project: project, Group: group, Reason: reason,
 					}))
 					return unwrap(res, err)
@@ -58,8 +58,8 @@ contains it, since parking a parent would park the node.`,
 			if len(args) == 0 {
 				return usage("name what stays live, or pass --clear to release the sweep")
 			}
-			return send(a, cmd, func() (*daggerv1.FocusResponse, error) {
-				res, err := c.Graph.Focus(cmd.Context(), connect.NewRequest(&daggerv1.FocusRequest{
+			return send(a, cmd, func() (*skiftv1.FocusResponse, error) {
+				res, err := c.Graph.Focus(cmd.Context(), connect.NewRequest(&skiftv1.FocusRequest{
 					RequestId: orMint(requestID), Project: project, Keep: args, Reason: reason,
 				}))
 				return unwrap(res, err)

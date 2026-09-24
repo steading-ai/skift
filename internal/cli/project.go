@@ -4,8 +4,8 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	daggerv1 "github.com/ivy/dagger/gen/dagger/v1"
-	"github.com/ivy/dagger/internal/client"
+	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/client"
 )
 
 func (a *app) projectCommand() *cobra.Command {
@@ -25,7 +25,7 @@ func (a *app) projectCreate() *cobra.Command {
 		Short: "Create a project; the slug is derived from the title unless given",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			prio, err := enumFlag[daggerv1.Priority]("priority", priority)
+			prio, err := enumFlag[skiftv1.Priority]("priority", priority)
 			if err != nil {
 				return err
 			}
@@ -33,8 +33,8 @@ func (a *app) projectCreate() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.CreateProjectResponse, error) {
-				res, err := c.Graph.CreateProject(cmd.Context(), connect.NewRequest(&daggerv1.CreateProjectRequest{
+			return send(a, cmd, func() (*skiftv1.CreateProjectResponse, error) {
+				res, err := c.Graph.CreateProject(cmd.Context(), connect.NewRequest(&skiftv1.CreateProjectRequest{
 					RequestId: orMint(requestID), Title: args[0], Slug: slug, Priority: prio, VcsUrl: vcsURL,
 				}))
 				return unwrap(res, err)
@@ -59,7 +59,7 @@ func (a *app) projectUpdate() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			req := &daggerv1.UpdateProjectRequest{RequestId: orMint(requestID), Project: project}
+			req := &skiftv1.UpdateProjectRequest{RequestId: orMint(requestID), Project: project}
 			// A flag left alone leaves the field alone; `--vcs-url ''` is
 			// the way to clear it, which is why presence and not the value
 			// decides.
@@ -70,7 +70,7 @@ func (a *app) projectUpdate() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.UpdateProjectResponse, error) {
+			return send(a, cmd, func() (*skiftv1.UpdateProjectResponse, error) {
 				res, err := c.Graph.UpdateProject(cmd.Context(), connect.NewRequest(req))
 				return unwrap(res, err)
 			})
@@ -93,8 +93,8 @@ func (a *app) projectList() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.ListProjectsResponse, error) {
-				res, err := c.Graph.ListProjects(cmd.Context(), connect.NewRequest(&daggerv1.ListProjectsRequest{
+			return send(a, cmd, func() (*skiftv1.ListProjectsResponse, error) {
+				res, err := c.Graph.ListProjects(cmd.Context(), connect.NewRequest(&skiftv1.ListProjectsRequest{
 					IncludeArchived: includeArchived, PageSize: page.size, PageToken: page.token,
 				}))
 				return unwrap(res, err)
@@ -120,8 +120,8 @@ func (a *app) projectShow() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.GetProjectResponse, error) {
-				res, err := c.Graph.GetProject(cmd.Context(), connect.NewRequest(&daggerv1.GetProjectRequest{Project: project}))
+			return send(a, cmd, func() (*skiftv1.GetProjectResponse, error) {
+				res, err := c.Graph.GetProject(cmd.Context(), connect.NewRequest(&skiftv1.GetProjectRequest{Project: project}))
 				return unwrap(res, err)
 			})
 		},
@@ -143,8 +143,8 @@ func (a *app) projectArchive() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return send(a, cmd, func() (*daggerv1.ArchiveProjectResponse, error) {
-				res, err := c.Graph.ArchiveProject(cmd.Context(), connect.NewRequest(&daggerv1.ArchiveProjectRequest{
+			return send(a, cmd, func() (*skiftv1.ArchiveProjectResponse, error) {
+				res, err := c.Graph.ArchiveProject(cmd.Context(), connect.NewRequest(&skiftv1.ArchiveProjectRequest{
 					RequestId: orMint(requestID), Project: project,
 				}))
 				return unwrap(res, err)
@@ -225,8 +225,8 @@ still be planned, decomposed, and commented on.
 
 The response says how many open nodes left the ready set.`,
 		"why the work is parked; required", reasonRequired,
-		func(cmd *cobra.Command, c *client.Client, req *daggerv1.HoldProjectRequest) error {
-			return send(a, cmd, func() (*daggerv1.HoldProjectResponse, error) {
+		func(cmd *cobra.Command, c *client.Client, req *skiftv1.HoldProjectRequest) error {
+			return send(a, cmd, func() (*skiftv1.HoldProjectResponse, error) {
 				return unwrap(c.Graph.HoldProject(cmd.Context(), connect.NewRequest(req)))
 			})
 		})
@@ -237,9 +237,9 @@ func (a *app) projectUnhold() *cobra.Command {
 	return a.projectHoldCommand("unhold", "Release a project's hold, with a reason (default: the current project)",
 		"", "why the work is coming back; required",
 		"--reason is required: the event log keeps why the work came back",
-		func(cmd *cobra.Command, c *client.Client, req *daggerv1.HoldProjectRequest) error {
-			return send(a, cmd, func() (*daggerv1.UnholdProjectResponse, error) {
-				return unwrap(c.Graph.UnholdProject(cmd.Context(), connect.NewRequest(&daggerv1.UnholdProjectRequest{
+		func(cmd *cobra.Command, c *client.Client, req *skiftv1.HoldProjectRequest) error {
+			return send(a, cmd, func() (*skiftv1.UnholdProjectResponse, error) {
+				return unwrap(c.Graph.UnholdProject(cmd.Context(), connect.NewRequest(&skiftv1.UnholdProjectRequest{
 					RequestId: req.GetRequestId(), Project: req.GetProject(), Reason: req.GetReason(),
 				})))
 			})
@@ -249,7 +249,7 @@ func (a *app) projectUnhold() *cobra.Command {
 // projectHoldCommand builds one project-level hold command over the call
 // that distinguishes it.
 func (a *app) projectHoldCommand(use, short, long, reasonHelp, missingReason string,
-	call func(*cobra.Command, *client.Client, *daggerv1.HoldProjectRequest) error,
+	call func(*cobra.Command, *client.Client, *skiftv1.HoldProjectRequest) error,
 ) *cobra.Command {
 	var reason, requestID string
 	cmd := &cobra.Command{
@@ -269,7 +269,7 @@ func (a *app) projectHoldCommand(use, short, long, reasonHelp, missingReason str
 			if err != nil {
 				return err
 			}
-			return call(cmd, c, &daggerv1.HoldProjectRequest{
+			return call(cmd, c, &skiftv1.HoldProjectRequest{
 				RequestId: orMint(requestID), Project: project, Reason: reason,
 			})
 		},

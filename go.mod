@@ -1,4 +1,4 @@
-module github.com/ivy/dagger
+module github.com/steading-ai/skift
 
 go 1.25.7
 

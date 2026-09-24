@@ -7,7 +7,7 @@
 # Credentials and the host port come from .env, seeded from .env.example by
 # `make db-up`. Every variable is required so a missing .env fails loudly
 # instead of starting a database with an empty password.
-name: dagger
+name: skift
 
 services:
   postgres:

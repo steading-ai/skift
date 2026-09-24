@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ivy/dagger/internal/testsupport"
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 var _ = Describe("PostgreSQL harness", Label(testsupport.DBLabel), func() {

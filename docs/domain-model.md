@@ -1,6 +1,6 @@
 # Domain Model
 
-The model behind the `dagger.v1` API. This document is the input to the proto contract; the proto is authoritative once it exists.
+The model behind the `skift.v1` API. This document is the input to the proto contract; the proto is authoritative once it exists.
 
 ## Node
 
@@ -12,7 +12,7 @@ A unit of work. The only entity a human or agent thinks about directly.
 | `number` | Sequential within its project, starting at 1. Displayed as `#7`, or `oauth-spike#7` across projects. See [Keys](#keys) |
 | `org_id`, `project_id` | Tenancy scope, present on every entity |
 | `parent_id` | Optional. Single parent. Answers "what is this part of" |
-| `kind` | Single-valued label. Dagger never interprets it. See [Node kinds](#node-kinds) |
+| `kind` | Single-valued label. Skift never interprets it. See [Node kinds](#node-kinds) |
 | `title`, `body` | Body is markdown and is the prompt an agent receives |
 | `status` | `open`, `done`, `dropped`. Nothing else is stored |
 | `priority` | `p0` to `p4`, default `p2`. Advisory, and comparable only within a project. See [Priority](#priority) |
@@ -22,27 +22,27 @@ A unit of work. The only entity a human or agent thinks about directly.
 | `held_at`, `held_by`, `held_reason` | Set while the node is parked. See [Hold](#hold) |
 | `hold_group` | The focus sweep that placed the hold, if a sweep did. Unset for a hold placed by hand |
 | `created_at` | Explicit, not inferred from the ULID. Identifier layout is not a business contract |
-| `context_id` | Opaque UUID minted by dagger at creation. Travels unchanged to the orchestrator and the agent as the A2A context id or harness session id |
+| `context_id` | Opaque UUID minted by skift at creation. Travels unchanged to the orchestrator and the agent as the A2A context id or harness session id |
 
 Derived, never stored: `blocked` (has an unfinished blocking predecessor), `held` (it, an ancestor, or its project carries a hold), `ready` (open, not blocked, not held, no live lease, no open children), `claimed` (has a live lease).
 
 ### Node kinds
 
-Dagger never interprets `kind`. It exists because a single indexed value is what a board groups by and what a frontend renders an icon for, which multi-valued labels cannot give you.
+Skift never interprets `kind`. It exists because a single indexed value is what a board groups by and what a frontend renders an icon for, which multi-valued labels cannot give you.
 
 A default vocabulary ships so that consumers render the same thing without coordinating: `task` (the default), `bug`, `spike`, `chore`. Two kinds that look tempting are deliberately absent. An epic is a node with children, derivable rather than declared. A gate is `assignee_kind: human`, which is the mechanism that actually enforces it.
 
-Consumers may use any other value. Dagger validates nothing and behaves identically regardless.
+Consumers may use any other value. Skift validates nothing and behaves identically regardless.
 
 ### Priority
 
-`p0` through `p4`, defaulting to `p2`. The scale is chosen because models are steeped in it and will use it without instruction, not because dagger derives anything from it.
+`p0` through `p4`, defaulting to `p2`. The scale is chosen because models are steeped in it and will use it without instruction, not because skift derives anything from it.
 
-Priority is comparable only within a project. A `p0` in a two-day spike and a `p2` in the platform project say nothing about each other, and with projects this cheap and numerous a global priority sort would be actively misleading. Combining two project-scoped scales into one ranking needs a rule dagger has no basis to choose, so dagger doesn't try: a caller reading or claiming across projects gets a round-robin turn across every project with ready work instead, priority-then-age within each project's turn. Which projects matter this week is a different question: that is intent, it is recorded here as a [hold](#hold), and every client sees the same answer.
+Priority is comparable only within a project. A `p0` in a two-day spike and a `p2` in the platform project say nothing about each other, and with projects this cheap and numerous a global priority sort would be actively misleading. Combining two project-scoped scales into one ranking needs a rule skift has no basis to choose, so skift doesn't try: a caller reading or claiming across projects gets a round-robin turn across every project with ready work instead, priority-then-age within each project's turn. Which projects matter this week is a different question: that is intent, it is recorded here as a [hold](#hold), and every client sees the same answer.
 
-Dagger uses it as the first sort key in `Ready` within a project and derives nothing else from it. Expect inflation, and note that the counter-pressure is not a rule in the store: a consumer that stops trusting the field can sort however it likes.
+Skift uses it as the first sort key in `Ready` within a project and derives nothing else from it. Expect inflation, and note that the counter-pressure is not a rule in the store: a consumer that stops trusting the field can sort however it likes.
 
-Projects carry a priority of their own, and dagger never sorts by it. Storing it is worth doing because people want to record which project matters. Sorting by it would require dagger to decide how a project's priority combines with a node's, and a `p0` node in a `p3` project against a `p2` node in a `p0` project is exactly the question two reasonable organizations answer differently. That combination is the orchestrator's.
+Projects carry a priority of their own, and skift never sorts by it. Storing it is worth doing because people want to record which project matters. Sorting by it would require skift to decide how a project's priority combines with a node's, and a `p0` node in a `p3` project against a `p2` node in a `p0` project is exactly the question two reasonable organizations answer differently. That combination is the orchestrator's.
 
 Hold is what keeps this field honest. Without it, `p4` has to mean both "low value" and "not now", and the second meaning is what drives the inflation. With somewhere to record "not now", a priority can go back to meaning one thing.
 
@@ -62,7 +62,7 @@ A node whose children have all closed becomes ready and is claimable. That is de
 
 ## Project
 
-Cheap to create and expected to be numerous and often short-lived. A project is exactly four things: an authorization scope, a namespace for node numbers, a rollup unit for cost, and a lifecycle unit. Keeping it to those four is what keeps it free. It also carries one annotation that is none of the four: the URL of the repository the project delivers to, stored for the orchestrators that work the graph so that two of them and a person agree on where the code lives. Dagger never reads it — it neither clones nor checks that the host answers — and validates nothing beyond "an absolute URL, or empty".
+Cheap to create and expected to be numerous and often short-lived. A project is exactly four things: an authorization scope, a namespace for node numbers, a rollup unit for cost, and a lifecycle unit. Keeping it to those four is what keeps it free. It also carries one annotation that is none of the four: the URL of the repository the project delivers to, stored for the orchestrators that work the graph so that two of them and a person agree on where the code lives. Skift never reads it — it neither clones nor checks that the host answers — and validates nothing beyond "an absolute URL, or empty".
 
 A project is an authorization *scope*, not a unit that requires a grant. It inherits its policy from the organization, and diverges only when someone deliberately restricts it. If admission were required per project, the ritual removed from creation would reappear at the door.
 
@@ -75,8 +75,8 @@ A project is an authorization *scope*, not a unit that requires a grant. It inhe
 | `node_counter` | Next node number. A column, not a sequence |
 | `archived_at` | Archiving is a deliberate act, not a timer. Keys stay valid forever |
 | `held_at`, `held_by`, `held_reason`, `hold_group` | Set while the project is parked. See [Hold](#hold) |
-| `priority` | Advisory. Dagger never sorts by it |
-| `vcs_url` | Clone URL of the repository the project delivers to, or empty. An annotation for orchestrators; dagger never reads it. Set at creation or by `UpdateProject` |
+| `priority` | Advisory. Skift never sorts by it |
+| `vcs_url` | Clone URL of the repository the project delivers to, or empty. An annotation for orchestrators; skift never reads it. Set at creation or by `UpdateProject` |
 
 Creating a project requires no provisioning, no DDL, and no name adjudication.
 
@@ -173,7 +173,7 @@ A project created after a sweep is live, not held. It was created because someon
 
 ## Lease
 
-The contract between dagger and whatever executes work.
+The contract between skift and whatever executes work.
 
 | Field | Notes |
 |---|---|
@@ -199,9 +199,9 @@ Any write to the node by the holder renews the lease. `Heartbeat` renews explici
 
 ### Placement and resume
 
-Session state lives in neither dagger nor the orchestrator. It lives where the work ran: an A2A agent keeps history per context, a Claude Code transcript sits on one host under one user, a worktree is a directory on one machine. A context id is therefore only resumable by the agent that owns it.
+Session state lives in neither skift nor the orchestrator. It lives where the work ran: an A2A agent keeps history per context, a Claude Code transcript sits on one host under one user, a worktree is a directory on one machine. A context id is therefore only resumable by the agent that owns it.
 
-Dagger records placement and never routes. `agent_ref` on each lease says where the last attempt ran, and lease history is queryable, so any orchestrator can look before dispatching. Routing is then an affinity preference rather than a requirement:
+Skift records placement and never routes. `agent_ref` on each lease says where the last attempt ran, and lease history is queryable, so any orchestrator can look before dispatching. Routing is then an affinity preference rather than a requirement:
 
 | Resume | Requires | Fidelity |
 |---|---|---|
@@ -214,7 +214,7 @@ Graph resume is what keeps orchestrators interchangeable, and it is why results 
 
 `on_behalf_of` records that a trusted holder acted for another principal, which is what a sandboxed agent returning a patch through its orchestrator needs.
 
-It is **not in v1**. A field the client asserts is not client-assertable provenance by definition, so honoring it requires a server-known grant naming who may delegate, for whom, and within what scope. With one organization reaching dagger over a unix socket, the orchestrator is the principal and the field has no use yet. It is defined here so the event and lease shapes do not change when it arrives.
+It is **not in v1**. A field the client asserts is not client-assertable provenance by definition, so honoring it requires a server-known grant naming who may delegate, for whom, and within what scope. With one organization reaching skift over a unix socket, the orchestrator is the principal and the field has no use yet. It is defined here so the event and lease shapes do not change when it arrives.
 
 `release_reason` exists so an orchestrator can tell a gate from a crash from a budget stop, and decide whether waiting for the previous agent is worth it. For coding agents, naming the worktree by context id makes the workspace follow the same affinity rule with no extra bookkeeping.
 
@@ -278,14 +278,14 @@ A drop is reversible: `reopen_node` takes a dropped node back to open, and edges
 Shaped after A2A: name, description, parts, metadata. A part is one of:
 
 - **text**: inline, under the size cap
-- **blob**: a dagger-managed, immutable, content-addressed object with a digest, media type, and size, stored by a configurable backend (filesystem, then object storage)
+- **blob**: a skift-managed, immutable, content-addressed object with a digest, media type, and size, stored by a configurable backend (filesystem, then object storage)
 - **reference**: a URI with a digest to something that lives elsewhere. First-class schemes are `git` (branch, commit, pull request) and `oci` (arbitrary blobs in a registry)
 
-Dagger never stores raw bytes inside a node. Size limits are configurable per organization.
+Skift never stores raw bytes inside a node. Size limits are configurable per organization.
 
 Digests are SHA-256, and a reference to something mutable records the resolved immutable identity: a git branch is stored with the commit it pointed at.
 
-A digest proves byte integrity. It proves nothing about provenance or safety. Reference URIs are agent-supplied and therefore untrusted, so whatever fetches one is responsible for scheme and host restrictions and for refusing link-local and cloud metadata destinations. That responsibility sits with the consumer, since dagger never fetches.
+A digest proves byte integrity. It proves nothing about provenance or safety. Reference URIs are agent-supplied and therefore untrusted, so whatever fetches one is responsible for scheme and host restrictions and for refusing link-local and cloud metadata destinations. That responsibility sits with the consumer, since skift never fetches.
 
 ## Gates
 
@@ -328,7 +328,7 @@ Append-only records of what work cost.
 
 Estimates live here rather than on the node because they have an author and a history. A node re-estimated after a spike keeps both records, so "what did we think this would cost, and when did we change our minds" is answerable. A node's current estimate is the most recent one, derived rather than stored.
 
-Currency is a rate table applied at query time. Subtree rollups of actual and estimate are queries. Budgets are attributes on a project or parent node; enforcing them is the consumer's policy, with the exception of a hard cap a human sets on a node, which dagger checks at `Claim`.
+Currency is a rate table applied at query time. Subtree rollups of actual and estimate are queries. Budgets are attributes on a project or parent node; enforcing them is the consumer's policy, with the exception of a hard cap a human sets on a node, which skift checks at `Claim`.
 
 ## Principal
 
@@ -347,7 +347,7 @@ Identity is separate from the principal, in a table keyed by scheme and value:
 | `oidc` | An issuer and subject |
 | `token` | A bearer credential |
 
-One principal may hold several identities, so the same person reaching dagger over a unix socket and over the tailnet is one principal, and adding a transport is inserting a row rather than migrating. The identity used is recorded on each event, which answers "acted via which transport."
+One principal may hold several identities, so the same person reaching skift over a unix socket and over the tailnet is one principal, and adding a transport is inserting a row rather than migrating. The identity used is recorded on each event, which answers "acted via which transport."
 
 The internal id is deliberately not a URN. A URN bakes the scheme into the identity, which is the migration problem it would appear to solve. A URN is a reasonable display and interop form over the stable id.
 
@@ -393,7 +393,7 @@ A reply is its own comment and is resolved on its own: resolving the comment it 
 
 ## Change stream
 
-Consumers of dagger react to change: the notifier watches for gates, the retrieval service indexes new content, moderation inspects what enters the backlog, an auditor archives. They all want the same thing, so there is one stream.
+Consumers of skift react to change: the notifier watches for gates, the retrieval service indexes new content, moderation inspects what enters the backlog, an auditor archives. They all want the same thing, so there is one stream.
 
 `WatchEvents` takes a cursor and returns events after it, filtered by project and operation, scoped to the caller's organization, and policy-filtered so a consumer sees only what its principal may read. A consumer that dies resumes where it stopped.
 
@@ -411,9 +411,9 @@ Orchestrators therefore do not watch a stream. They call `ClaimNext` with a wait
 
 ## Search
 
-Lexical search over node titles, bodies, results, and comments, scoped to an organization and filtered by policy. PostgreSQL full-text with a GIN index. It belongs in dagger because policy filtering has to happen where the rows are, and because free projects trade a curation problem for a discovery problem: with hundreds of short-lived slugs, search is how anything is found again.
+Lexical search over node titles, bodies, results, and comments, scoped to an organization and filtered by policy. PostgreSQL full-text with a GIN index. It belongs in skift because policy filtering has to happen where the rows are, and because free projects trade a curation problem for a discovery problem: with hundreds of short-lived slugs, search is how anything is found again.
 
-Semantic retrieval, hybrid ranking, and synthesized answers are not dagger's. They need embeddings, chunking, a model, and a queue, and they belong to a retrieval service consuming dagger's event stream, in the same way as the notifier and moderation. The [kb](https://github.com/ivy/kb) service already has that machinery and its principle "KB indexes, repos own" carries over unchanged.
+Semantic retrieval, hybrid ranking, and synthesized answers are not skift's. They need embeddings, chunking, a model, and a queue, and they belong to a retrieval service consuming skift's event stream, in the same way as the notifier and moderation. The [kb](https://github.com/ivy/kb) service already has that machinery and its principle "KB indexes, repos own" carries over unchanged.
 
 ## Default policy
 
@@ -439,7 +439,7 @@ Fixed structural ceilings, distinct from adaptive rate limiting. These need no p
 | Operations per patch | One transaction should not hold a lock unboundedly |
 | Nodes and edges created per patch | Same, and it bounds cycle-check work |
 | Body, result, and comment size | Storage, and the abuse ceiling from [ADR-006](adrs/006-provenance-not-authority.md) |
-| Inline part size, managed blob size | Dagger is not a data transport |
+| Inline part size, managed blob size | Skift is not a data transport |
 | Statement timeout | A pathological recursive query cannot stall the service |
 | Lease TTL ceiling | An unbounded TTL defeats expiry |
 | Page size | Unbounded reads are a denial of service with extra steps |
@@ -451,7 +451,7 @@ Per-principal rate limiting is **not** here. Realistic limits cannot be chosen b
 
 Node bodies, comments, results, and artifacts are written by agents. A downstream agent assembling context from its predecessors is concatenating agent-authored text into a prompt, which is the threat [ADR-006](adrs/006-provenance-not-authority.md) describes arriving through the front door rather than through a covert channel.
 
-Dagger stores and attributes this content and never interprets it. The obligation on a consumer is to render it as attributed, delimited data rather than folding it into instructions, and to treat a predecessor's result as a claim by that principal rather than as a fact. Provenance is what makes that possible, which is the practical reason every write carries an actor.
+Skift stores and attributes this content and never interprets it. The obligation on a consumer is to render it as attributed, delimited data rather than folding it into instructions, and to treat a predecessor's result as a claim by that principal rather than as a fact. Provenance is what makes that possible, which is the practical reason every write carries an actor.
 
 See [ADR-006](adrs/006-provenance-not-authority.md).
 

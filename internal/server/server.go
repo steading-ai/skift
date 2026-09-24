@@ -1,4 +1,4 @@
-// Package server is the service face of the binary: the dagger.v1 Connect
+// Package server is the service face of the binary: the skift.v1 Connect
 // handlers mounted on an HTTP server that listens on a unix socket and on
 // any further [Transport] it is given.
 //
@@ -22,9 +22,9 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
-	"github.com/ivy/dagger/internal/codec"
-	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/codec"
+	"github.com/steading-ai/skift/internal/server/interceptor"
 )
 
 // Defaults for the fields of Config that may be left zero.
@@ -84,9 +84,9 @@ type Transport interface {
 
 // Services are the implementations mounted on the server.
 type Services struct {
-	Graph  daggerv1connect.GraphServiceHandler
-	Work   daggerv1connect.WorkServiceHandler
-	Events daggerv1connect.EventServiceHandler
+	Graph  skiftv1connect.GraphServiceHandler
+	Work   skiftv1connect.WorkServiceHandler
+	Events skiftv1connect.EventServiceHandler
 }
 
 // Pinger answers whether the database is reachable. A pgxpool.Pool is one.
@@ -125,13 +125,13 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 		cfg.Logger = slog.Default()
 	}
 	if svc.Graph == nil {
-		svc.Graph = daggerv1connect.UnimplementedGraphServiceHandler{}
+		svc.Graph = skiftv1connect.UnimplementedGraphServiceHandler{}
 	}
 	if svc.Work == nil {
-		svc.Work = daggerv1connect.UnimplementedWorkServiceHandler{}
+		svc.Work = skiftv1connect.UnimplementedWorkServiceHandler{}
 	}
 	if svc.Events == nil {
-		svc.Events = daggerv1connect.UnimplementedEventServiceHandler{}
+		svc.Events = skiftv1connect.UnimplementedEventServiceHandler{}
 	}
 
 	s := &Server{
@@ -141,12 +141,12 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 		mux:      http.NewServeMux(),
 		draining: make(chan struct{}),
 	}
-	// Every handler speaks dagger's JSON, not protojson's: the one door
+	// Every handler speaks skift's JSON, not protojson's: the one door
 	// says what every other surface says. See internal/codec.
 	opts := append([]connect.HandlerOption{connect.WithInterceptors(cfg.Interceptors...)}, codec.HandlerOptions()...)
-	s.mux.Handle(daggerv1connect.NewGraphServiceHandler(svc.Graph, opts...))
-	s.mux.Handle(daggerv1connect.NewWorkServiceHandler(svc.Work, opts...))
-	s.mux.Handle(daggerv1connect.NewEventServiceHandler(svc.Events, opts...))
+	s.mux.Handle(skiftv1connect.NewGraphServiceHandler(svc.Graph, opts...))
+	s.mux.Handle(skiftv1connect.NewWorkServiceHandler(svc.Work, opts...))
+	s.mux.Handle(skiftv1connect.NewEventServiceHandler(svc.Events, opts...))
 	s.mux.HandleFunc("GET "+HealthPath, s.health)
 
 	// Every connection over the socket carries its peer's unix
