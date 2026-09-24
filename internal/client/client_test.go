@@ -70,6 +70,15 @@ var _ = Describe("Client", Label("unit"), func() {
 			Expect(cfg).To(Equal(client.Config{}))
 		})
 
+		It("defaults the config path under XDG_CONFIG_HOME, then ~/.config, then nowhere", func() {
+			Expect(client.DefaultConfigPath()).To(Equal(filepath.Join(dir, "skift", "config.json")))
+			GinkgoT().Setenv("XDG_CONFIG_HOME", "")
+			GinkgoT().Setenv("HOME", dir)
+			Expect(client.DefaultConfigPath()).To(Equal(filepath.Join(dir, ".config", "skift", "config.json")))
+			GinkgoT().Setenv("HOME", "")
+			Expect(client.DefaultConfigPath()).To(BeEmpty())
+		})
+
 		It("reads the config file at the default path", func() {
 			path := filepath.Join(dir, "skift", "config.json")
 			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())

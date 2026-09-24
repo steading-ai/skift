@@ -28,9 +28,12 @@ var _ = Describe("root command", Label("unit"), func() {
 		Expect(stdout.String()).To(ContainSubstring("Available Commands:"))
 	})
 
-	It("reports the linked version through --version", func() {
+	It("reports the linked version through --version and the version command", func() {
 		Expect(execute("--version")).To(Succeed())
 		Expect(stdout.String()).To(ContainSubstring(version.String()))
+		Expect(execute("version")).To(Succeed())
+		Expect(stdout.String()).To(Equal("skift version " + version.String() + "\n"))
+		Expect(execute("version", "now")).To(HaveOccurred(), "it takes no arguments")
 	})
 
 	It("wires the three faces of the binary and every CLI command", func() {

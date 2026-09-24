@@ -12,3 +12,8 @@
 
 # Helpers for specs, not shipped code.
 ^github\.com/steading-ai/skift/internal/testsupport/
+
+# The tailnet transport listens through tsnet, which needs a tailnet and a
+# node key to do anything; the specs cover the interceptor it feeds through
+# a loopback stand-in instead.
+^github\.com/steading-ai/skift/internal/server/transport/tsnet\.go:

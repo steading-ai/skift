@@ -84,6 +84,26 @@ var _ = Describe("skift mcp heartbeat, hold, and focus", Label("unit"), func() {
 			Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
 		})
 
+		It("stops renewing, and forgets, a lease the server says is no longer live", func() {
+			m := startMCP("--socket", socket, "--project", "platform")
+			m.initialize()
+			claimed := m.call("claim", map[string]any{"ttl": "900ms"})
+			Expect(claimed.isError).To(BeFalse(), claimed.text)
+			leaseID := claimed.decode()["lease"].(map[string]any)["id"].(string)
+
+			By("when the lease ends on the server between renewals")
+			s.mu.Lock()
+			s.leases[leaseID].reason = skiftv1.ReleaseReason_RELEASE_REASON_EXPIRED
+			s.mu.Unlock()
+
+			By("then the next renewal fails, the session drops the lease, and says so")
+			Eventually(func() string {
+				return m.call("heartbeat", map[string]any{}).text
+			}, 10*time.Second, 200*time.Millisecond).Should(ContainSubstring("holds no lease"))
+			Expect(m.stderr.String()).To(ContainSubstring("no longer live"))
+			Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
+		})
+
 		It("refuses when the session holds no lease and none is named", func() {
 			m := startMCP("--socket", socket, "--project", "platform")
 			m.initialize()
