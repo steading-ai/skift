@@ -8,7 +8,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 
@@ -17,10 +16,6 @@ import (
 	"github.com/steading-ai/skift/internal/client"
 	"github.com/steading-ai/skift/internal/version"
 )
-
-// ErrNotImplemented is returned by a face of the binary that is wired into the
-// command tree but has no behaviour yet.
-var ErrNotImplemented = errors.New("not implemented")
 
 // Run executes the binary with args and returns its exit status. Failures
 // are written to stderr as JSON; nothing else reaches stderr from the CLI

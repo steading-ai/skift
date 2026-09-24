@@ -72,11 +72,8 @@ func ToError(err error) *Error {
 		return e
 	}
 	var usage *usageError
-	switch {
-	case errors.As(err, &usage):
+	if errors.As(err, &usage) {
 		return &Error{Code: connect.CodeInvalidArgument.String(), Message: err.Error()}
-	case errors.Is(err, ErrNotImplemented):
-		return &Error{Code: connect.CodeUnimplemented.String(), Message: err.Error()}
 	}
 	return &Error{Code: connect.CodeUnknown.String(), Message: err.Error()}
 }

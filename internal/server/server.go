@@ -173,11 +173,6 @@ func (s *Server) newHTTPServer(connContext func(context.Context, net.Conn) conte
 	}
 }
 
-// Handler is the mounted mux, for serving over some other transport.
-func (s *Server) Handler() http.Handler {
-	return s.mux
-}
-
 // Listen binds the socket and applies its permissions, then binds each
 // transport. It returns once every listener accepts connections, so a
 // caller that needs to know the server is up waits on this rather than
@@ -276,14 +271,6 @@ func (s *Server) closeAll() error {
 		err = errors.Join(err, srv.Close())
 	}
 	return err
-}
-
-// ListenAndServe is [Server.Listen] followed by [Server.Serve].
-func (s *Server) ListenAndServe(ctx context.Context) error {
-	if err := s.Listen(); err != nil {
-		return err
-	}
-	return s.Serve(ctx)
 }
 
 type drainingKey struct{}

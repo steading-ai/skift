@@ -41,9 +41,6 @@ func NewFilesystem(root string) (*Filesystem, error) {
 	return &Filesystem{root: root}, nil
 }
 
-// Root is the directory the backend holds its files under.
-func (f *Filesystem) Root() string { return f.root }
-
 // Name implements [Backend].
 func (f *Filesystem) Name() string { return FilesystemName }
 
