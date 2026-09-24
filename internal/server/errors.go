@@ -117,6 +117,7 @@ func codeOf(err error) connect.Code {
 		errors.Is(err, domain.ErrCommentBodyRequired),
 		errors.Is(err, domain.ErrDigestMismatch),
 		errors.Is(err, domain.ErrGitCommitRequired),
+		errors.Is(err, domain.ErrArtifactInvalid),
 		errors.Is(err, domain.ErrNegativeTokens),
 		errors.Is(err, domain.ErrNoTokens),
 		errors.Is(err, domain.ErrBasisRequired),

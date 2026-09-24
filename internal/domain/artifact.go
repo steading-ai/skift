@@ -48,6 +48,10 @@ var (
 	// ErrArtifactNameTaken: the node already carries an artifact by that
 	// name.
 	ErrArtifactNameTaken = errors.New("the node already carries an artifact by that name")
+	// ErrArtifactInvalid: an artifact or a part of one that cannot be
+	// stored as written, which is the request's mistake. The error
+	// wrapping it says what is wrong.
+	ErrArtifactInvalid = errors.New("artifact is malformed")
 )
 
 // OpAttachArtifact is the operation name, as written to events.op.
@@ -147,10 +151,10 @@ func (op *AttachArtifact) validate(l Limits) error {
 // exactly one kind or over its ceiling.
 func (a *Artifact) validate(l Limits) error {
 	if a.Name == "" {
-		return errors.New("a name is required")
+		return fmt.Errorf("%w: a name is required", ErrArtifactInvalid)
 	}
 	if len(a.Parts) == 0 {
-		return errors.New("at least one part is required")
+		return fmt.Errorf("%w: at least one part is required", ErrArtifactInvalid)
 	}
 	for j := range a.Parts {
 		if err := a.Parts[j].validate(l); err != nil {
@@ -168,7 +172,7 @@ func (p *Part) validate(l Limits) error {
 		}
 	}
 	if set != 1 {
-		return errors.New("exactly one of text, blob, or reference is set")
+		return fmt.Errorf("%w: exactly one of text, blob, or reference is set", ErrArtifactInvalid)
 	}
 	switch {
 	case p.Text != nil:
@@ -177,7 +181,7 @@ func (p *Part) validate(l Limits) error {
 		}
 	case p.Blob != nil:
 		if !digestShape.MatchString(p.Blob.Digest) {
-			return fmt.Errorf("blob digest %q is not sha256:<hex>", p.Blob.Digest)
+			return fmt.Errorf("%w: blob digest %q is not sha256:<hex>", ErrArtifactInvalid, p.Blob.Digest)
 		}
 	case p.Reference != nil:
 		return p.Reference.validate()
@@ -191,18 +195,18 @@ func (p *Part) validate(l Limits) error {
 // resolves it.
 func (r *ReferencePart) validate() error {
 	if r.URI == "" {
-		return errors.New("a reference needs a uri")
+		return fmt.Errorf("%w: a reference needs a uri", ErrArtifactInvalid)
 	}
 	if !digestShape.MatchString(r.Digest) {
-		return fmt.Errorf("reference digest %q is not sha256:<hex>", r.Digest)
+		return fmt.Errorf("%w: reference digest %q is not sha256:<hex>", ErrArtifactInvalid, r.Digest)
 	}
 	if r.Size < 0 {
-		return errors.New("reference size is negative")
+		return fmt.Errorf("%w: reference size is negative", ErrArtifactInvalid)
 	}
 	if isGitURI(r.URI) {
 		u, err := url.Parse(r.URI)
 		if err != nil {
-			return fmt.Errorf("git reference %q: %w", r.URI, err)
+			return fmt.Errorf("%w: git reference %q: %w", ErrArtifactInvalid, r.URI, err)
 		}
 		if !gitCommitShape.MatchString(u.Query().Get("rev")) {
 			return fmt.Errorf("git reference %q: %w", r.URI, ErrGitCommitRequired)
@@ -388,7 +392,7 @@ func (a *applier) partParams(ctx context.Context, p *Part) (store.CreateArtifact
 		}
 		return params, nil
 	}
-	return store.CreateArtifactPartParams{}, errors.New("no part content set")
+	return store.CreateArtifactPartParams{}, fmt.Errorf("%w: no part content set", ErrArtifactInvalid)
 }
 
 // BlobUpload is what [UploadBlob] takes.
