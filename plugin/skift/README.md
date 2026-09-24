@@ -25,9 +25,10 @@ Check before installing:
 skift version && skift project list
 ```
 
-`skift` finds the service through `--socket` / `$SKIFT_SOCKET` (default
-`/run/skift/skift.sock`), or `--address` / `$SKIFT_ADDRESS` for a service on another
-machine over a tailnet or HTTPS. A caller whose identity maps to no principal is
+`skift` finds the service through `--socket` / `$SKIFT_SOCKET` (default: your
+own `skift serve` under `$XDG_RUNTIME_DIR` when it is running, otherwise the
+system service's `/run/skift/skift.sock`), or `--address` / `$SKIFT_ADDRESS`
+for a service on another machine over a tailnet or HTTPS. A caller whose identity maps to no principal is
 rejected as unauthenticated; that is an administrative fix on the service, not a
 client one.
 

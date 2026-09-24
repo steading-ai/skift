@@ -246,7 +246,7 @@ file. A bare `#7` with no current project is an error, so qualify it.
 
 | Setting | Resolution order |
 |---|---|
-| socket | `--socket`, `$SKIFT_SOCKET`, then `/run/skift/skift.sock` |
+| socket | `--socket`, `$SKIFT_SOCKET`, then `$XDG_RUNTIME_DIR/skift/skift.sock` when it exists, then `/run/skift/skift.sock` |
 | remote service | `--address`, `$SKIFT_ADDRESS` — wins over the socket |
 | config file | `--config`, `$SKIFT_CONFIG`, then `$XDG_CONFIG_HOME/skift/config.json` |
 

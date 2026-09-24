@@ -42,14 +42,23 @@ type Config struct {
 	Project string `json:"project,omitempty"`
 }
 
-// DefaultSocketPath is the socket "skift serve" listens on by default: under
-// the invoking user's runtime directory when there is one, and the system
-// runtime directory otherwise, where a systemd RuntimeDirectory= puts it.
+// SystemSocketPath is the system service's socket, where a systemd
+// RuntimeDirectory= puts it.
+const SystemSocketPath = "/run/skift/skift.sock"
+
+// DefaultSocketPath is the socket the client dials when nothing names one:
+// the invoking user's own "skift serve", under XDG_RUNTIME_DIR, when that
+// socket exists, and the system service's otherwise. A login session on a
+// host running the system service reaches it without configuration, and a
+// user's own instance takes precedence when there is one.
 func DefaultSocketPath() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "skift", "skift.sock")
+		own := filepath.Join(dir, "skift", "skift.sock")
+		if _, err := os.Stat(own); err == nil {
+			return own
+		}
 	}
-	return "/run/skift/skift.sock"
+	return SystemSocketPath
 }
 
 // DefaultConfigPath is $XDG_CONFIG_HOME/skift/config.json, with the XDG

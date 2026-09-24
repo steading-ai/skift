@@ -106,6 +106,30 @@ var _ = Describe("Client", Label("unit"), func() {
 		})
 	})
 
+	Describe("the default socket", func() {
+		It("is the user's own when one exists under XDG_RUNTIME_DIR", func() {
+			dir := GinkgoT().TempDir()
+			GinkgoT().Setenv("XDG_RUNTIME_DIR", dir)
+			own := filepath.Join(dir, "skift", "skift.sock")
+			Expect(os.MkdirAll(filepath.Dir(own), 0o700)).To(Succeed())
+			l, err := net.Listen("unix", own)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(l.Close)
+
+			Expect(client.DefaultSocketPath()).To(Equal(own))
+		})
+
+		It("is the system service's when the user has none", func() {
+			GinkgoT().Setenv("XDG_RUNTIME_DIR", GinkgoT().TempDir())
+			Expect(client.DefaultSocketPath()).To(Equal(client.SystemSocketPath))
+		})
+
+		It("is the system service's without a runtime directory at all", func() {
+			GinkgoT().Setenv("XDG_RUNTIME_DIR", "")
+			Expect(client.DefaultSocketPath()).To(Equal(client.SystemSocketPath))
+		})
+	})
+
 	Describe("transport selection", func() {
 		It("dials the unix socket when no address is configured", func(ctx SpecContext) {
 			socket := serveUnix()
