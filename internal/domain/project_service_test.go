@@ -235,10 +235,13 @@ var _ = Describe("Project service", Label(testsupport.DBLabel), func() {
 			_, err = g.readySet(ctx, domain.ReadyQuery{Projects: []string{g.project}, Parent: "#9"})
 			Expect(err).To(MatchError(domain.ErrNodeNotFound))
 
-			By("and pages the ready set by limit and offset")
+			By("and pages the ready set by limit and offset, in the order it lists")
+			all, err := g.readySet(ctx, domain.ReadyQuery{Projects: []string{g.project}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(numbers(all)).To(ConsistOf(int64(2), int64(3), int64(4)))
 			page, err := g.readySet(ctx, domain.ReadyQuery{Projects: []string{g.project}, Limit: 2, Offset: 1})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(numbers(page)).To(ConsistOf(int64(3), int64(4)), "the ready set is 2, 3, 4; the page skips one")
+			Expect(numbers(page)).To(Equal(numbers(all)[1:3]), "the page skips the first of the three")
 
 			Expect(g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 				_, err := domain.Ready(ctx, tx, g.org, domain.ReadyQuery{})
