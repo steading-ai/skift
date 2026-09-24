@@ -48,7 +48,7 @@ var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 		By(`given a file under "internal/server" importing "internal/store"`)
 		dir := checkout()
 		writeFile(dir, "internal/server/handler.go",
-			"package server\n\nimport \"github.com/steading-ai/skift/internal/store\"\n\n// Handle reaches the store directly.\nfunc Handle() { _ = store.Open }\n")
+			"package server\n\nimport \"github.com/steading-ai/skift/internal/store\"\n\n// Handle reaches the store directly.\nfunc Handle() { _ = store.FromPool }\n")
 
 		By(`when I run "make lint"`)
 		session := makeLint(dir)

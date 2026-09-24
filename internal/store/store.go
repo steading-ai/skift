@@ -31,22 +31,7 @@ type Store struct {
 	statementTimeout time.Duration
 }
 
-// Open connects to databaseURL and verifies the server answers. Close the
-// store when done.
-func Open(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("open database pool: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("connect to database: %w", err)
-	}
-	return &Store{pool: pool, statementTimeout: DefaultStatementTimeout}, nil
-}
-
-// FromPool wraps a pool the caller already owns. Closing the store closes
-// the pool.
+// FromPool wraps a pool the caller owns, and closes.
 func FromPool(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, statementTimeout: DefaultStatementTimeout}
 }
@@ -61,11 +46,6 @@ func (s *Store) SetStatementTimeout(d time.Duration) {
 // StatementTimeout is the timeout every transaction runs under.
 func (s *Store) StatementTimeout() time.Duration {
 	return s.statementTimeout
-}
-
-// Close releases every connection.
-func (s *Store) Close() {
-	s.pool.Close()
 }
 
 // Pool exposes the underlying pool for work that must run outside a
