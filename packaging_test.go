@@ -8,22 +8,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cavaliergopher/rpm"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 )
 
 // runIn executes a command in dir and returns what it wrote to stdout once
-// it has exited successfully. Git's own variables are dropped from the
-// environment: under a pre-commit hook they point every git command, and
-// the Makefile's git describe, at the repository being committed to rather
-// than the copy.
+// it has exited successfully. Git's and make's own variables are dropped
+// from the environment. Under a pre-commit hook the git ones point every
+// git command, and the Makefile's git describe, at the repository being
+// committed to rather than the copy. Under make test-unit the make ones
+// mark the copy's make as a sub-make, and a sub-make announces directory
+// changes on stdout, in front of the value the spec reads.
 func runIn(dir string, timeout time.Duration, name string, args ...string) string {
 	GinkgoHelper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GIT_") {
+		if inherited(kv) {
 			cmd.Env = append(cmd.Env, kv)
 		}
 	}
@@ -31,6 +34,17 @@ func runIn(dir string, timeout time.Duration, name string, args ...string) strin
 	Expect(err).NotTo(HaveOccurred())
 	Expect(session.Wait(timeout)).To(gexec.Exit(0))
 	return strings.TrimSpace(string(session.Out.Contents()))
+}
+
+// inherited reports whether an environment entry passes through to a
+// command run in a copied checkout.
+func inherited(kv string) bool {
+	for _, prefix := range []string{"GIT_", "MAKE", "MFLAGS=", "GNUMAKEFLAGS="} {
+		if strings.HasPrefix(kv, prefix) {
+			return false
+		}
+	}
+	return true
 }
 
 // git runs a git command in a copied checkout with a fixed identity, so a
@@ -55,11 +69,17 @@ func makeVersion(dir string) string {
 	return runIn(dir, time.Minute, "make", "version")
 }
 
-// rpmPaths lists the paths a package would install, through libarchive's
-// reading of the rpm payload.
-func rpmPaths(rpm string) []string {
+// rpmPaths lists the paths a package would install, as its header records
+// them.
+func rpmPaths(path string) []string {
 	GinkgoHelper()
-	return strings.Split(runIn(filepath.Dir(rpm), time.Minute, "bsdtar", "-tf", rpm), "\n")
+	pkg, err := rpm.Open(path)
+	Expect(err).NotTo(HaveOccurred())
+	paths := make([]string, 0, len(pkg.Files()))
+	for _, f := range pkg.Files() {
+		paths = append(paths, f.Name())
+	}
+	return paths
 }
 
 var _ = Describe("Packaging", Label("unit", "slow"), func() {
