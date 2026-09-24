@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -31,8 +32,15 @@ import (
 // recomputation in Go from the raw rows.
 
 // propertyChecks is how many histories each property runs, unless
-// -rapid.checks was given on the command line.
-const propertyChecks = "1000"
+// -rapid.checks was given on the command line or EnvPropertyChecks is
+// set. The histories are most of the suite's serial run, which is what
+// a mutation run pays for every mutant, so make mutate sets 100: a
+// mutant that survives that many random histories and every example
+// spec is still one worth reading.
+const (
+	propertyChecks    = "1000"
+	EnvPropertyChecks = "SKIFT_PROPERTY_CHECKS"
+)
 
 // history is one random run. It tracks what the generator needs to draw
 // the next step and keeps a readable log of every step, which is what a
@@ -777,11 +785,16 @@ var _ = Describe("Graph properties", Label(testsupport.DBLabel), func() {
 		s = store.FromPool(pg.Database(ctx))
 
 		// The scenarios ask for 1000 histories; rapid defaults to 100. A
-		// value given on the command line wins.
+		// value given on the command line wins, then one in the
+		// environment.
 		f := flag.Lookup("rapid.checks")
 		Expect(f).NotTo(BeNil())
 		if f.Value.String() == f.DefValue {
-			Expect(flag.Set(f.Name, propertyChecks)).To(Succeed())
+			checks := propertyChecks
+			if v := os.Getenv(EnvPropertyChecks); v != "" {
+				checks = v
+			}
+			Expect(flag.Set(f.Name, checks)).To(Succeed())
 			DeferCleanup(func() { Expect(flag.Set(f.Name, f.DefValue)).To(Succeed()) })
 		}
 	})

@@ -110,9 +110,18 @@ cover: test-policy
 # once race on podman's networks, and a teardown that loses the race fails
 # the run, which gremlins would count as a kill. Each suite still works in
 # a template database of its own and drops it when it ends.
+#
+# The property specs' thousand histories are most of a serial run, and a
+# mutant pays for a full run; PROPERTY_CHECKS=100 keeps the invariants in
+# play at a third of the cost, and 1000 is the suite's own strength.
+# DIFF=<branch or commit> mutates only the lines that diff touches, which
+# is the everyday case.
+PROPERTY_CHECKS ?= 100
+MUTATE_FLAGS := $(if $(DIFF),--diff $(DIFF),)
 mutate: db-up
 	set -a && . ./.env && set +a && \
-	  SKIFT_TEST_POSTGRES_URL="$$DATABASE_URL" GOFLAGS=-count=1 gremlins unleash ./internal/domain
+	  SKIFT_TEST_POSTGRES_URL="$$DATABASE_URL" SKIFT_PROPERTY_CHECKS=$(PROPERTY_CHECKS) GOFLAGS=-count=1 \
+	  gremlins unleash $(MUTATE_FLAGS) ./internal/domain
 
 lint:
 	go vet ./...
