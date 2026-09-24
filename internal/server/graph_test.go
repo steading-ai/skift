@@ -997,6 +997,13 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 		})
 	})
 
+	It("reports an identity no principal carries as unmapped", func(ctx SpecContext) {
+		lookup := server.NewIdentityLookup(domain.NewService(f.pool, pol))
+		_, err := lookup.LookupIdentity(ctx, interceptor.Identity{Scheme: interceptor.SchemeUnix, Value: "424242"})
+		Expect(err).To(BeAssignableToTypeOf(&interceptor.UnmappedIdentityError{}))
+		Expect(err.Error()).To(ContainSubstring("424242"))
+	})
+
 	It("refuses a call the transport did not attribute", func(ctx SpecContext) {
 		bare := start(server.Config{}, server.Services{Graph: server.NewGraphService(domain.NewService(f.pool, pol))}, f.pool)
 		_, err := bare.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))

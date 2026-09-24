@@ -2,12 +2,15 @@ package cli_test
 
 import (
 	"bytes"
+	"errors"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/steading-ai/skift/internal/cli"
+	"github.com/steading-ai/skift/internal/client"
 	"github.com/steading-ai/skift/internal/version"
 )
 
@@ -91,6 +94,21 @@ var _ = Describe("root command", Label("unit"), func() {
 			Expect(err).To(MatchError(ContainSubstring("skift reap:")))
 			Expect(stdout.String()).To(BeEmpty())
 		})
+	})
+
+	It("renders an error it already shaped as itself, and a bare reference without a project as usage", func() {
+		shaped := &cli.Error{Code: "failed_precondition", Message: "the lease is gone"}
+		Expect(shaped.Error()).To(Equal("the lease is gone"))
+		Expect(cli.ToError(shaped)).To(BeIdenticalTo(shaped))
+		Expect(cli.ToError(errors.New("plain")).Code).To(Equal("unknown"))
+
+		GinkgoT().Setenv(client.EnvProject, "")
+		GinkgoT().Setenv(client.EnvConfig, "")
+		GinkgoT().Setenv("XDG_CONFIG_HOME", GinkgoT().TempDir())
+		stdout, stderr = &bytes.Buffer{}, &bytes.Buffer{}
+		code := cli.Run([]string{"--socket", filepath.Join(GinkgoT().TempDir(), "none.sock"), "node", "show", "#1"}, strings.NewReader(""), stdout, stderr)
+		Expect(code).To(Equal(cli.ExitUsage))
+		Expect(stderr.String()).To(ContainSubstring("a bare #number reference needs a project"))
 	})
 
 	It("rejects unknown subcommands", func() {

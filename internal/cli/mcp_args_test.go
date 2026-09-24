@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"io"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -162,6 +163,53 @@ var _ = Describe("skift mcp argument diagnostics", Label("unit"), func() {
 		Expect(res.text).To(HavePrefix("project_create failed (permission_denied): no rule permits"))
 		Expect(res.text).To(ContainSubstring("a person must grant access"))
 		Expect(res.text).To(ContainSubstring(`detail: {"slug":"policy"`))
+		Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
+	})
+
+	It("answers a line it cannot parse or a request that is not JSON-RPC 2.0, and arguments that are not an object", func() {
+		m := startMCP("--socket", socket, "--project", "platform")
+		m.initialize()
+
+		// sendRaw writes one line as given and waits for the reply to id.
+		sendRaw := func(id int64, line string) map[string]any {
+			GinkgoHelper()
+			ch := make(chan map[string]any, 1)
+			m.mu.Lock()
+			m.pending[id] = ch
+			m.mu.Unlock()
+			_, err := m.stdin.Write([]byte(line + "\n"))
+			Expect(err).NotTo(HaveOccurred())
+			var res map[string]any
+			Eventually(ch, 10*time.Second).Should(Receive(&res), "no reply to %s", line)
+			return res
+		}
+
+		By("a request from another protocol version is refused as invalid, by its id")
+		res := sendRaw(9001, `{"jsonrpc":"1.0","id":9001,"method":"ping"}`)
+		Expect(res).To(HaveKey("error"))
+		Expect(res["error"].(map[string]any)["code"]).To(BeEquivalentTo(-32600))
+		Expect(res["error"].(map[string]any)["message"]).To(ContainSubstring(`jsonrpc must be "2.0"`))
+
+		By("a line that is not JSON gets a parse error with a null id, and the session goes on")
+		_, err := m.stdin.Write([]byte("this is not json\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(m.send("ping", nil)).NotTo(HaveKey("error"))
+
+		By("a tool called with no arguments at all reads them as none")
+		res = m.send("tools/call", map[string]any{"name": "project_list"})
+		Expect(res).NotTo(HaveKey("error"))
+
+		By("arguments that are not an object are refused by the tool, before anything is sent")
+		before := len(s.requests)
+		call := m.call("hold", "not an object")
+		Expect(call.isError).To(BeTrue())
+		Expect(call.text).To(ContainSubstring("expected an object"))
+		call = m.call("apply_patch", "not an object")
+		Expect(call.isError).To(BeTrue())
+		call = m.call("apply_patch", map[string]any{"ops": []any{map[string]any{"create_node": map[string]any{"title": "A"}}}, "view": 5})
+		Expect(call.isError).To(BeTrue())
+		Expect(call.text).To(ContainSubstring("view"))
+		Expect(s.requests).To(HaveLen(before), "a refused call reached the service")
 		Expect(m.closeStdin()).To(Equal(0), m.stderr.String())
 	})
 
