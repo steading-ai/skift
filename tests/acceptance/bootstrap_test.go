@@ -78,6 +78,39 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 		Expect(res.GetNodes()).To(BeEmpty())
 	})
 
+	It("Scenario: Under --no-migrate the service refuses a database that is behind", func(ctx SpecContext) {
+		By("given an empty database and a service told to apply nothing")
+		url := pg.EmptyDatabase(ctx)
+		socket := filepath.Join(GinkgoT().TempDir(), "skift.sock")
+		start := func() *gexec.Session {
+			GinkgoHelper()
+			session, err := gexec.Start(exec.Command(binary, "serve", "--socket", socket, "--database-url", url, "--no-migrate", "--shutdown-timeout", "5s"), GinkgoWriter, GinkgoWriter)
+			Expect(err).NotTo(HaveOccurred())
+			return session
+		}
+
+		By("when skift serve starts")
+		serve := start()
+
+		By("then it exits, naming the versions and the command that fixes it")
+		Eventually(serve, 30*time.Second).Should(gexec.Exit())
+		Expect(serve.ExitCode()).NotTo(BeZero())
+		Expect(string(serve.Err.Contents())).To(SatisfyAll(
+			ContainSubstring("schema is at version 0"),
+			ContainSubstring("run skift migrate"),
+		))
+
+		By("and once migrated, the same command serves")
+		Expect(admin(url, "migrate").ExitCode()).To(BeZero())
+		serve = start()
+		DeferCleanup(func() {
+			serve.Terminate().Wait(10 * time.Second)
+			serve.Kill()
+		})
+		Eventually(serve.Err, 30*time.Second).Should(gbytes.Say("database reachable; ready"))
+		Expect(string(serve.Err.Contents())).To(ContainSubstring("schema current"))
+	})
+
 	It("Scenario: Bootstrap is safe against an already-seeded database", func(ctx SpecContext) {
 		By("given a database that has already been bootstrapped")
 		url := pg.EmptyDatabase(ctx)

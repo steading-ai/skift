@@ -132,6 +132,11 @@ url = "https://dl.google.com/go/go1.25.7.darwin-amd64.tar.gz"
 checksum = "sha256:c75e5f4ff62d085cc0017be3ad19d5536f46825fa05db06ec468941f847e3228"
 url = "https://dl.google.com/go/go1.25.7.windows-amd64.zip"
 
+[[tools."go:github.com/go-gremlins/gremlins/cmd/gremlins"]]
+version = "0.6.0"
+backend = "go:github.com/go-gremlins/gremlins/cmd/gremlins"
+specifiers = ["0.6.0"]
+
 [[tools.golangci-lint]]
 version = "2.13.2"
 backend = "aqua:golangci/golangci-lint"

@@ -877,6 +877,93 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 		})
 	})
 
+	Describe("Operations the wire converts", func() {
+		It("carries holds, comment edits, a priority and label change, a cascading drop, and a reopen", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			f.mustApply(ctx,
+				createOp("a", "Epic"),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "b", Title: "Child", Parent: "a", Labels: []string{"auth"}}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "c", Title: "Downstream", BlockedBy: []string{"a"}}),
+				commentOp("a", "first draft"),
+			)
+
+			By("a hold on the epic parks the child, and a release returns it")
+			_, err := f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_HoldNode{HoldNode: &skiftv1.HoldNodeOp{Node: "#1", Reason: "parked"}}})
+			Expect(err).NotTo(HaveOccurred())
+			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
+			held := explained.Msg.GetReasons()[0].GetHeld()
+			Expect(held.GetNumber()).To(BeEquivalentTo(1))
+			Expect(held.GetSelf()).To(BeFalse())
+			Expect(held.GetHold().GetReason()).To(Equal("parked"))
+			Expect(held.GetHold().GetBy()).To(Equal(f.user.ID))
+			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_UnholdNode{UnholdNode: &skiftv1.UnholdNodeOp{Node: "#1", Reason: "back"}}})
+			Expect(err).NotTo(HaveOccurred())
+			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(BeEmpty())
+
+			By("a comment keeps its revisions when edited, and records who resolved it")
+			comments := f.getNode(ctx, "platform", "#1").GetComments()
+			Expect(comments).To(HaveLen(1))
+			id := comments[0].GetId()
+			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_EditComment{EditComment: &skiftv1.EditCommentOp{CommentId: id, Body: "second draft"}}})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_ResolveComment{ResolveComment: &skiftv1.ResolveCommentOp{CommentId: id}}})
+			Expect(err).NotTo(HaveOccurred())
+			comments = f.getNode(ctx, "platform", "#1").GetComments()
+			Expect(comments).To(HaveLen(1))
+			Expect(comments[0].GetBody()).To(Equal("second draft"))
+			Expect(comments[0].GetRevisions()).To(HaveLen(1))
+			Expect(comments[0].GetRevisions()[0].GetBody()).To(Equal("first draft"))
+			Expect(comments[0].GetResolvedAt()).NotTo(BeNil())
+			Expect(comments[0].GetResolvedBy()).To(Equal(f.user.ID))
+
+			By("an update carries a new priority and an empty label set, which clears the labels")
+			_, err = f.apply(ctx, "platform", updateOp(&skiftv1.UpdateNodeOp{Node: "#2", Priority: skiftv1.Priority_PRIORITY_P0.Enum(), Labels: &skiftv1.Labels{}}))
+			Expect(err).NotTo(HaveOccurred())
+			child := f.getNode(ctx, "platform", "#2").GetNode()
+			Expect(child.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P0))
+			Expect(child.GetLabels()).To(BeEmpty())
+
+			By("a drop with a cascade takes what the node blocks, and a reopen brings the node back")
+			dropped, err := f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_DropNode{DropNode: &skiftv1.DropNodeOp{
+				Node: "#1", Reason: skiftv1.DropReason_DROP_REASON_SUPERSEDED, Detail: "replaced", Cascade: &skiftv1.Cascade{MaxNodes: 10},
+			}}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dropped.GetDropped()).To(ConsistOf("platform#1", "platform#3"))
+			Expect(f.getNode(ctx, "platform", "#3").GetNode().GetStatus()).To(Equal(skiftv1.Status_STATUS_DROPPED))
+			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_ReopenNode{ReopenNode: &skiftv1.ReopenNodeOp{Node: "#1", Reason: "not superseded after all"}}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(f.getNode(ctx, "platform", "#1").GetNode().GetStatus()).To(Equal(skiftv1.Status_STATUS_OPEN))
+
+			By("an operation with nothing set is refused")
+			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{})
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
+		})
+
+		It("refuses status and held on a ready read or a claim, and a hold change without what it owes", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			f.mustApply(ctx, createOp("a", "Work"))
+
+			_, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Status: skiftv1.Status_STATUS_OPEN}}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
+			_, err = f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Held: true}, Harness: "spec", AgentRef: "spec"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
+
+			_, err = f.graph().UnholdProject(ctx, connect.NewRequest(&skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "platform"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
+			_, err = f.graph().UnholdProject(ctx, connect.NewRequest(&skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "nowhere", Reason: "back"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
+			_, err = f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
+			cleared, err := f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform", Reason: "nothing to clear"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleared.Msg.GetReleasedCount()).To(BeZero(), "a scope with no sweep is a no-op, not a mistake")
+		})
+	})
+
 	It("refuses a call the transport did not attribute", func(ctx SpecContext) {
 		bare := start(server.Config{}, server.Services{Graph: server.NewGraphService(domain.NewService(f.pool, pol))}, f.pool)
 		_, err := bare.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))

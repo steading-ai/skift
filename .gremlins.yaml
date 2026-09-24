@@ -1,0 +1,10 @@
+# Settings for `make mutate`, which runs gremlins over internal/domain.
+#
+# Each mutant reruns the whole domain suite against a PostgreSQL of its
+# own, so the workers are what bound the wall clock. The timeout is a
+# multiple of the unmutated run, and a mutant that hangs the suite counts
+# as killed by it. Efficacy is killed over killed plus lived: the share of
+# covered mutants the specs actually notice.
+workers: 8
+timeout-coefficient: 3
+threshold-efficacy: 80

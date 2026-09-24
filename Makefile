@@ -29,7 +29,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version cover test test-unit test-db test-acceptance test-policy lint check-generated generate clean package db-up db-down db-reset db-migrate
+.PHONY: all build version cover mutate test test-unit test-db test-acceptance test-policy lint check-generated generate clean package db-up db-down db-reset db-migrate
 
 all: build
 
@@ -93,6 +93,19 @@ cover: test-policy
 	    printf "cover: %.1f%% of %d hand-written statements (baseline %.1f%%)\n", p, t, base; \
 	    if (p < base) { print "cover: below coverage.baseline"; exit 1 } }' $(COVER_DIR)/cover.out
 	@echo "cover: go tool cover -html=$(COVER_DIR)/cover.out for the detail"
+
+# Mutation testing over the domain. gremlins changes one covered
+# statement at a time and reruns the domain suite; a mutant the suite
+# lets live is a check the specs do not make. Each mutant is a full run
+# against its own PostgreSQL, so this takes hours and is not part of test
+# or cover: run it when the domain's specs change shape, and read the
+# survivors, not the score. Settings are in .gremlins.yaml.
+#
+# The timeout gremlins gives each mutant is a multiple of the unmutated
+# run, and go test answers a cached run in milliseconds, so the cache is
+# off: every mutant would time out against a baseline that measured nothing.
+mutate:
+	GOFLAGS=-count=1 gremlins unleash ./internal/domain
 
 lint:
 	go vet ./...

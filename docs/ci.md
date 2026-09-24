@@ -1,9 +1,20 @@
 # CI
 
-The only workflow this repository runs is [publish.yml](../.github/workflows/publish.yml):
-on every push to `main`, it cross-compiles `skift` for linux/amd64 and
-linux/arm64 (the same `dist/skift-linux-%` build the Makefile uses for the
-rpm) and pushes a multi-arch image to GHCR, built from
+Two workflows run here.
+
+[check.yml](../.github/workflows/check.yml) runs on every pull request and
+every push to `main`: `make lint`, then `make cover`. That is every spec,
+including the ones that need PostgreSQL (through testcontainers on the
+runner's Docker) and the acceptance scenarios against the built binary,
+with the floor in `coverage.baseline` enforced. It is the gate the
+pre-commit hook applies locally, plus what the hook leaves out for speed.
+Tools come from `mise.toml` through `jdx/mise-action`, so the versions are
+the ones a developer runs.
+
+[publish.yml](../.github/workflows/publish.yml) runs on every push to
+`main`: it cross-compiles `skift` for linux/amd64 and linux/arm64 (the same
+`dist/skift-linux-%` build the Makefile uses for the rpm) and pushes a
+multi-arch image to GHCR, built from
 [packaging/Containerfile](../packaging/Containerfile). It does not run on
 pull requests — it publishes, it does not check anything.
 
