@@ -1,8 +1,9 @@
 # Development PostgreSQL.
 #
 # Specs bring up their own database through testcontainers; this stack exists
-# for running the service locally and inspecting the database by hand. See
-# the "Developing" section of README.md.
+# for running the service locally, inspecting the database by hand, and as
+# the one server every `make mutate` worker shares. See the "Developing"
+# section of README.md.
 #
 # Credentials and the host port come from .env, seeded from .env.example by
 # `make db-up`. Every variable is required so a missing .env fails loudly
@@ -17,6 +18,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    # Durability is off: this data is disposable, and the specs that share
+    # this server (make mutate) create and drop a database per spec. Every
+    # DROP DATABASE forces an immediate checkpoint, and with fsync on the
+    # single checkpointer spends most of its time in fsync while every
+    # worker queues behind it.
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
     ports:
       - "127.0.0.1:${DB_PORT:?set DB_PORT in .env}:5432"
     volumes:
