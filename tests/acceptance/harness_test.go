@@ -128,6 +128,9 @@ func (t *loopbackTailnet) address() string {
 // on a socket, and the tailnet listener beside it.
 type deployment struct {
 	socket string
+	// databaseURL reaches the scenario's database, for the binary's own
+	// timer work, which goes to the database rather than the service.
+	databaseURL string
 	// host is the agent, reaching skift serve over the socket.
 	host face
 	// laptop is the user, reaching the service over the tailnet.
@@ -140,7 +143,7 @@ func deploy(ctx context.Context) *deployment {
 	GinkgoHelper()
 	pool := pg.Database(ctx)
 	dir := GinkgoT().TempDir()
-	d := &deployment{socket: filepath.Join(dir, "skift.sock")}
+	d := &deployment{socket: filepath.Join(dir, "skift.sock"), databaseURL: pool.Config().ConnString()}
 
 	By("starting skift serve on a unix socket over the scenario's database")
 	cmd := exec.Command(binary, "serve",

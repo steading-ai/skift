@@ -66,6 +66,30 @@ var _ = Describe("root command", Label("unit"), func() {
 		})
 	})
 
+	Describe("reap", func() {
+		It("requires a database URL", func() {
+			GinkgoT().Setenv("DATABASE_URL", "")
+			err := execute("reap")
+			Expect(err).To(MatchError(ContainSubstring("database URL is required")))
+		})
+
+		It("rejects an unknown log level", func() {
+			err := execute("reap", "--database-url", "postgres://127.0.0.1:1/skift", "--log-level", "loud")
+			Expect(err).To(MatchError(ContainSubstring("--log-level")))
+		})
+
+		It("takes no arguments", func() {
+			err := execute("reap", "now", "--database-url", "postgres://127.0.0.1:1/skift")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("reports a database it cannot reach, and prints no summary", func() {
+			err := execute("reap", "--database-url", unreachableDB)
+			Expect(err).To(MatchError(ContainSubstring("skift reap:")))
+			Expect(stdout.String()).To(BeEmpty())
+		})
+	})
+
 	It("rejects unknown subcommands", func() {
 		Expect(execute("bogus")).To(HaveOccurred())
 	})

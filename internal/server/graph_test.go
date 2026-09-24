@@ -771,6 +771,102 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 		})
 	})
 
+	Describe("HoldProject and UnholdProject", func() {
+		It("parks a project's open work and returns it, and is a user's to do", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			f.mustApply(ctx, createOp("a", "Work"), createOp("b", "More work"))
+
+			f.as(f.agent)
+			_, err := f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform", Reason: "not this quarter"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied))
+
+			f.as(f.user)
+			_, err = f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
+			_, err = f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "nowhere", Reason: "parked"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
+
+			held, err := f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform", Reason: "not this quarter"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(held.Msg.GetHeldCount()).To(BeEquivalentTo(2))
+			Expect(held.Msg.GetProject().GetHold().GetReason()).To(Equal("not this quarter"))
+			Expect(held.Msg.GetProject().GetHold().GetBy()).To(Equal(f.user.ID))
+			Expect(held.Msg.GetProject().GetArchivedAt()).To(BeNil())
+
+			ready, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ready.Msg.GetNodes()).To(BeEmpty())
+			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#1"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
+			Expect(explained.Msg.GetReasons()[0].GetProjectHeld().GetProject().GetSlug()).To(Equal("platform"))
+			Expect(explained.Msg.GetReasons()[0].GetProjectHeld().GetProject().GetHold().GetReason()).To(Equal("not this quarter"))
+
+			_, err = f.apply(ctx, "platform", createOp("c", "Planned while parked"))
+			Expect(err).NotTo(HaveOccurred(), "a held project stays writable")
+
+			released, err := f.graph().UnholdProject(ctx, connect.NewRequest(&skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "platform", Reason: "green light"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(released.Msg.GetProject().GetHold()).To(BeNil())
+			ready, err = f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(numbers(ready.Msg.GetNodes())).To(ConsistOf(int64(1), int64(2), int64(3)))
+		})
+	})
+
+	Describe("Focus and ClearFocus", func() {
+		It("parks everything outside the keep-set of a scope and releases only its own sweep", func(ctx SpecContext) {
+			f.project(ctx, "Platform")
+			f.project(ctx, "Other")
+			f.mustApply(ctx, createOp("a", "A"), createOp("b", "B"))
+			_, err := f.apply(ctx, "other", createOp("c", "C"))
+			Expect(err).NotTo(HaveOccurred())
+
+			f.as(f.agent)
+			_, err = f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}, Reason: "platform week"}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied))
+			f.as(f.user)
+
+			By("an organization-wide sweep keeps projects")
+			org, err := f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}, Reason: "platform week"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(org.Msg.GetHeldCount()).To(BeEquivalentTo(1))
+			Expect(org.Msg.GetGroup()).NotTo(BeEmpty())
+			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "other", Node: "#1"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
+			Expect(explained.Msg.GetReasons()[0].GetProjectHeld().GetProject().GetSlug()).To(Equal("other"))
+
+			By("a project-scoped sweep keeps nodes")
+			within, err := f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Project: "platform", Keep: []string{"#1"}, Reason: "this one first"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(within.Msg.GetHeldCount()).To(BeEquivalentTo(1))
+			Expect(within.Msg.GetGroup()).NotTo(Equal(org.Msg.GetGroup()))
+			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
+			Expect(explained.Msg.GetReasons()[0].GetHeld().GetHold().GetReason()).To(Equal("this one first"))
+
+			By("each scope clears on its own")
+			cleared, err := f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform", Reason: "done"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleared.Msg.GetReleasedCount()).To(BeEquivalentTo(1))
+			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "other", Node: "#1"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(HaveLen(1), "the organization's sweep is still in place")
+
+			cleared, err = f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Reason: "week over"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleared.Msg.GetReleasedCount()).To(BeEquivalentTo(1))
+			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "other", Node: "#1"}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(explained.Msg.GetReasons()).To(BeEmpty())
+
+			_, err = f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}}))
+			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
+		})
+	})
+
 	It("refuses a call the transport did not attribute", func(ctx SpecContext) {
 		bare := start(server.Config{}, server.Services{Graph: server.NewGraphService(domain.NewService(f.pool, pol))}, f.pool)
 		_, err := bare.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))

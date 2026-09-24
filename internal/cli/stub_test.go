@@ -250,7 +250,8 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[skiftv1.ApplyP
 				res.Dropped = append(res.Dropped, n.GetReference())
 				res.Nodes = append(res.Nodes, &skiftv1.Node{Number: n.GetNumber(), Reference: n.GetReference(), Status: n.GetStatus()})
 			}
-		case *skiftv1.PatchOp_AddEdge, *skiftv1.PatchOp_AddComment, *skiftv1.PatchOp_EstimateNode:
+		case *skiftv1.PatchOp_AddEdge, *skiftv1.PatchOp_AddComment, *skiftv1.PatchOp_EstimateNode,
+			*skiftv1.PatchOp_HoldNode, *skiftv1.PatchOp_UnholdNode:
 			// Recorded; nothing to return.
 		default:
 			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("stub: %T", o))
