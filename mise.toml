@@ -2,7 +2,9 @@
 #
 # The harness that builds this project runs on Python. The project itself is Go.
 # Every tool below installs through mise alone; the only system package the
-# build assumes is podman, which testcontainers uses for the database specs.
+# build assumes is podman, which testcontainers uses for the database specs
+# and which runs compose.yaml through the docker-compose pinned here.
+min_version = "2026.8.11"
 
 [tools]
 python = "3.14.7"
@@ -14,6 +16,7 @@ golangci-lint = "2.13.2"
 hk = "1.57.0"
 opa = "1.19.1"
 nfpm = "2.47.0"
+docker-compose = "5.5.1"
 
 [env]
 _.python.venv = { path = "harness/.venv", create = true }

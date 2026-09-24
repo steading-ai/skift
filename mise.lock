@@ -89,6 +89,16 @@ url = "https://github.com/bufbuild/buf/releases/download/v1.72.0/buf-Windows-x86
 url_api = "https://api.github.com/repos/bufbuild/buf/releases/assets/480772631"
 provenance = "minisign"
 
+[[tools.docker-compose]]
+version = "5.5.1"
+backend = "github:docker/compose"
+specifiers = ["5.5.1"]
+
+[tools.docker-compose."platforms.linux-x64"]
+checksum = "sha256:db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966285"
+
 [[tools.go]]
 version = "1.25.7"
 backend = "core:go"
