@@ -145,6 +145,9 @@ type NodeView struct {
 	// Inputs is how much the node's inputs come to. The results
 	// themselves are [ReadInputs]'s to return.
 	Inputs InputsHint
+	// CommentsHint is what the node's unresolved comments come to,
+	// whatever the view the caller will project this through.
+	CommentsHint CommentsHint
 	// Estimate is the node's current estimate, else nil.
 	Estimate *Usage
 	// Usage is what the node and its descendants cost and are expected
@@ -215,6 +218,9 @@ func readNode(ctx context.Context, tx store.Tx, orgID, nodeID string) (*NodeView
 		return nil, err
 	}
 	if v.Inputs, err = InputsSize(ctx, tx, orgID, nodeID); err != nil {
+		return nil, err
+	}
+	if v.CommentsHint, err = CommentsSummary(ctx, tx, orgID, nodeID); err != nil {
 		return nil, err
 	}
 	if v.Estimate, err = CurrentEstimate(ctx, tx, orgID, nodeID); err != nil {

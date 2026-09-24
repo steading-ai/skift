@@ -25,6 +25,7 @@ package dagger.v1;
 
 import "dagger/v1/dagger.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/ivy/dagger/gen/dagger/v1;daggerv1";
 
@@ -470,6 +471,9 @@ message GetNodeResponse {
   // What the node and everything under it cost and are expected to cost,
   // by model, computed on this read. Only under VIEW_FULL.
   Rollup usage = 9;
+  // What the node's unresolved comments come to, whatever the view. The
+  // comments themselves are carried under VIEW_FULL alone.
+  CommentsHint comments_hint = 10;
 }
 
 // GetInputsRequest names the node whose inputs to read.
@@ -518,6 +522,19 @@ message InputsHint {
   int32 count = 1;
   // Total size of those result bodies in bytes.
   int64 bytes = 2;
+}
+
+// CommentsHint is what a node's unresolved comments come to without
+// carrying them: enough to know someone left a note, and whether it is
+// new, before spending a GetNode call on the bodies. Responses that hand a
+// node to whoever will work it carry one.
+message CommentsHint {
+  // How many of the node's comments are unresolved. A reply is resolved on
+  // its own, so it counts even under a resolved parent.
+  int32 unresolved = 1;
+  // When the newest unresolved comment was written. Unset when none is.
+  // An edit does not move it.
+  google.protobuf.Timestamp latest_at = 2;
 }
 
 // NodeFilter scopes and filters a claim or a read. Every field narrows;
@@ -951,6 +968,9 @@ message ClaimNextResponse {
   // The project the node was claimed in, so an orchestrator reads where the
   // work delivers without a second call. Unset when nothing was claimed.
   Project project = 4;
+  // What the claimed node's unresolved comments come to. Unset when
+  // nothing was claimed.
+  CommentsHint comments = 5;
 }
 
 // HeartbeatRequest renews a lease.

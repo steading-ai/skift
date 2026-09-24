@@ -34,13 +34,17 @@ func runIn(dir string, timeout time.Duration, name string, args ...string) strin
 }
 
 // git runs a git command in a copied checkout with a fixed identity, so a
-// commit needs no configuration from the machine running the specs, and
-// without hooks, so a global pre-commit hook does not lint the copy.
+// commit needs no configuration from the machine running the specs; with
+// no hooks at all, since --no-verify skips only pre-commit and commit-msg
+// and a machine-wide hooks path would run the rest; and with no automatic
+// maintenance, which a commit otherwise starts detached, repacking the
+// copy while the spec's cleanup removes it.
 func git(dir string, args ...string) {
 	GinkgoHelper()
 	runIn(dir, time.Minute, "git", append([]string{
 		"-c", "user.name=spec", "-c", "user.email=spec@example.invalid",
 		"-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false",
+		"-c", "core.hooksPath=/dev/null", "-c", "maintenance.auto=false",
 	}, args...)...)
 }
 
@@ -59,12 +63,6 @@ func rpmPaths(rpm string) []string {
 }
 
 var _ = Describe("Packaging", Label("unit", "slow"), func() {
-	BeforeEach(func() {
-		if os.Getenv(nestedRun) != "" {
-			Skip("already inside make test-unit")
-		}
-	})
-
 	Describe("the version", func() {
 		var dir string
 
@@ -167,10 +165,6 @@ var _ = Describe("The image", Label("db", "slow"), Ordered, func() {
 	var dir, image string
 
 	BeforeAll(func() {
-		if os.Getenv(nestedRun) != "" {
-			Skip("already inside make test-unit")
-		}
-
 		dir = checkout()
 		runIn(dir, 5*time.Minute, "make", "dist/dg-linux-"+runtime.GOARCH, "VERSION=9.9.9")
 

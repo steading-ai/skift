@@ -267,8 +267,9 @@ func (s *stub) GetNode(_ context.Context, req *connect.Request[daggerv1.GetNodeR
 		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
 	}
 	res := &daggerv1.GetNodeResponse{
-		Node:   s.nodes[0],
-		Inputs: &daggerv1.InputsHint{Count: int32(len(s.nodes) - 1), Bytes: 42}, //nolint:gosec // a spec's node count
+		Node:         s.nodes[0],
+		Inputs:       &daggerv1.InputsHint{Count: int32(len(s.nodes) - 1), Bytes: 42}, //nolint:gosec // a spec's node count
+		CommentsHint: stubCommentsHint(),
 	}
 	// The full view is the one that carries content, and cost is content:
 	// the node's current estimate and the rollup over its subtree.
@@ -503,6 +504,12 @@ func (s *stub) Ready(_ context.Context, req *connect.Request[daggerv1.ReadyReque
 	return connect.NewResponse(&daggerv1.ReadyResponse{Nodes: s.ready()}), nil
 }
 
+// stubCommentsHint is the comments hint every node the stub hands out
+// carries: one unresolved comment, so a spec can see the hint pass through.
+func stubCommentsHint() *daggerv1.CommentsHint {
+	return &daggerv1.CommentsHint{Unresolved: 1, LatestAt: timestamppb.Now()}
+}
+
 // ClaimNext hands out the first ready node, or waits for one up to the
 // request's wait, bounded like the real handler.
 func (s *stub) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.ClaimNextRequest]) (*connect.Response[daggerv1.ClaimNextResponse], error) {
@@ -521,7 +528,7 @@ func (s *stub) ClaimNext(ctx context.Context, req *connect.Request[daggerv1.Clai
 			s.leases[id] = &stubLease{node: n, expiresAt: time.Now().Add(ttlOr(req.Msg.GetTtl()))}
 			l := s.lease(id)
 			s.mu.Unlock()
-			return connect.NewResponse(&daggerv1.ClaimNextResponse{Node: n, Lease: l}), nil
+			return connect.NewResponse(&daggerv1.ClaimNextResponse{Node: n, Lease: l, Comments: stubCommentsHint()}), nil
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {

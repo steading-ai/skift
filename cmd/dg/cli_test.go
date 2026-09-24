@@ -53,12 +53,9 @@ func serveStub() string {
 }
 
 var _ = Describe("dg as a client", Label("unit"), func() {
-	var binary, socket string
+	var socket string
 
 	BeforeEach(func() {
-		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
 		socket = serveStub()
 	})
 

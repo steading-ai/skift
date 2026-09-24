@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -152,6 +153,31 @@ func Comments(ctx context.Context, tx store.Tx, orgID, nodeID string, limit, off
 		out = append(out, *h)
 	}
 	return out, nil
+}
+
+// CommentsHint is what a node's unresolved comments come to without
+// carrying them: enough for a claimant to know someone left a note and
+// whether it is new, so it can decide whether to read them.
+type CommentsHint struct {
+	// Unresolved is how many of the node's comments are unresolved,
+	// replies counted on their own.
+	Unresolved int
+	// LatestAt is when the newest unresolved comment was written, else
+	// nil.
+	LatestAt *time.Time
+}
+
+// CommentsSummary is the hint a response carries beside a node. It reads
+// one row, never the bodies.
+func CommentsSummary(ctx context.Context, tx store.Tx, orgID, nodeID string) (CommentsHint, error) {
+	row, err := tx.LatestUnresolvedComment(ctx, store.LatestUnresolvedCommentParams{OrgID: orgID, NodeID: nodeID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CommentsHint{}, nil
+	}
+	if err != nil {
+		return CommentsHint{}, fmt.Errorf("summarize comments of node %s: %w", nodeID, err)
+	}
+	return CommentsHint{Unresolved: int(row.Unresolved), LatestAt: &row.CreatedAt}, nil
 }
 
 func withRevisions(ctx context.Context, tx store.Tx, orgID string, c store.Comment) (*CommentHistory, error) {

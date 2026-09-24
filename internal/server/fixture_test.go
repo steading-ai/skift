@@ -19,6 +19,7 @@ import (
 	"github.com/ivy/dagger/internal/domain"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/ivy/dagger/internal/testsupport"
 )
 
 // The handler specs run the real handlers over the real domain against a
@@ -78,6 +79,7 @@ type fixture struct {
 // until [fixture.as] says otherwise.
 func newFixture(ctx context.Context) *fixture {
 	GinkgoHelper()
+	testsupport.RequirePeerCredentials()
 	pool := pg.Database(ctx)
 	f := &fixture{pool: pool, org: newID()}
 	f.user = interceptor.Principal{ID: newID(), OrgID: f.org, Kind: interceptor.KindUser}

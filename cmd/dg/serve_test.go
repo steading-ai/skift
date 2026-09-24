@@ -41,15 +41,12 @@ func socketClient(path string) *http.Client {
 
 var _ = Describe("dg serve", Label("unit"), func() {
 	var (
-		binary  string
 		socket  string
 		session *gexec.Session
 	)
 
 	BeforeEach(func() {
 		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
 		socket = filepath.Join(GinkgoT().TempDir(), "dg.sock")
 
 		cmd := exec.Command(binary, "serve",
@@ -69,6 +66,7 @@ var _ = Describe("dg serve", Label("unit"), func() {
 	})
 
 	It("serves the Connect handlers over the socket", func(ctx SpecContext) {
+		testsupport.RequirePeerCredentials()
 		By("when a client calls GetProject over the socket")
 		client := daggerv1connect.NewGraphServiceClient(socketClient(socket), "http://dagger")
 		_, err := client.GetProject(ctx, connect.NewRequest(&daggerv1.GetProjectRequest{Project: "skeleton"}))
@@ -114,8 +112,6 @@ const shutdownRuns = 5
 
 var _ = Describe("dg serve shutdown", Label("unit"), func() {
 	It("The shutdown log line always precedes exit", func() {
-		binary, err := gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
 		dir := GinkgoT().TempDir()
 
 		for i := range shutdownRuns {
@@ -168,15 +164,9 @@ func health(ctx context.Context, socket string) (server.Health, error) {
 }
 
 var _ = Describe("dg serve and the schema", Label(testsupport.DBLabel), func() {
-	var (
-		binary string
-		socket string
-	)
+	var socket string
 
 	BeforeEach(func() {
-		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
 		socket = filepath.Join(GinkgoT().TempDir(), "dg.sock")
 	})
 

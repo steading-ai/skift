@@ -375,6 +375,9 @@ type ClaimOutcome struct {
 	// Inputs is how much the claimed node's inputs come to, so the
 	// claimant knows they exist without being handed them.
 	Inputs InputsHint
+	// Comments is what the claimed node's unresolved comments come to,
+	// so the claimant knows someone left a note without being handed it.
+	Comments CommentsHint
 	// Project is the project the node was claimed in, so the claimant
 	// reads where the work delivers without a second call.
 	Project *Project
@@ -399,6 +402,10 @@ func (g *Service) ClaimNext(ctx context.Context, orgID string, actor Actor, req 
 			return err
 		}
 		out.Inputs, err = InputsSize(ctx, tx, orgID, claimed.Node.ID)
+		if err != nil {
+			return err
+		}
+		out.Comments, err = CommentsSummary(ctx, tx, orgID, claimed.Node.ID)
 		return err
 	})
 	if err != nil {

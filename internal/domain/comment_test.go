@@ -57,6 +57,18 @@ func (g *graph) comments(ctx context.Context, ref string) []domain.CommentHistor
 	return cs
 }
 
+// commentsSummary reads the comments hint for a node in a transaction of
+// its own.
+func (g *graph) commentsSummary(ctx context.Context, ref string) domain.CommentsHint {
+	GinkgoHelper()
+	var h domain.CommentsHint
+	Expect(g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) (err error) {
+		h, err = domain.CommentsSummary(ctx, tx, g.org, g.id(ref))
+		return err
+	})).To(Succeed())
+	return h
+}
+
 func (g *graph) countComments(ctx context.Context) int {
 	GinkgoHelper()
 	var n int
@@ -203,6 +215,53 @@ var _ = Describe("Comments with revision history", Label(testsupport.DBLabel), f
 			_, err := g.apply(ctx, actor, "again", resolveComment(id))
 			Expect(err).To(MatchError(domain.ErrCommentResolved))
 			Expect(g.readComment(ctx, id).ResolvedBy).To(HaveValue(Equal(resolver.PrincipalID)))
+		})
+	})
+
+	Describe("Summarizing", func() {
+		It("gives nothing for a node with no comments", func(ctx SpecContext) {
+			Expect(g.commentsSummary(ctx, "#1")).To(Equal(domain.CommentsHint{}))
+		})
+
+		It("counts the unresolved comments and dates the newest of them", func(ctx SpecContext) {
+			first := g.mustApply(ctx, actor, "first", addComment("c", "#1", "first")).CommentAliases["c"]
+			g.mustApply(ctx, actor, "second", addComment("c", "#1", "second"))
+			answer := g.mustApply(ctx, actor, "reply", reply("r", "#1", "a reply", first)).CommentAliases["r"]
+			g.mustApply(ctx, actor, "elsewhere", addComment("c", "#2", "on another node"))
+			newest := g.mustApply(ctx, actor, "newest", addComment("c", "#1", "newest")).CommentAliases["c"]
+			g.mustApply(ctx, actor, "resolve", resolveComment(newest))
+
+			h := g.commentsSummary(ctx, "#1")
+			Expect(h.Unresolved).To(Equal(3))
+			Expect(h.LatestAt).To(HaveValue(Equal(g.readComment(ctx, answer).CreatedAt)))
+
+			By("and a comment on another node is that node's alone")
+			Expect(g.commentsSummary(ctx, "#2").Unresolved).To(Equal(1))
+		})
+
+		It("counts a reply whose parent is resolved", func(ctx SpecContext) {
+			parent := g.mustApply(ctx, actor, "add", addComment("c", "#1", "question")).CommentAliases["c"]
+			answer := g.mustApply(ctx, actor, "reply", reply("r", "#1", "answer", parent)).CommentAliases["r"]
+			g.mustApply(ctx, actor, "resolve", resolveComment(parent))
+
+			h := g.commentsSummary(ctx, "#1")
+			Expect(h.Unresolved).To(Equal(1))
+			Expect(h.LatestAt).To(HaveValue(Equal(g.readComment(ctx, answer).CreatedAt)))
+		})
+
+		It("is not moved by an edit", func(ctx SpecContext) {
+			id := g.mustApply(ctx, actor, "add", addComment("c", "#1", "draft")).CommentAliases["c"]
+			before := g.commentsSummary(ctx, "#1")
+			g.mustApply(ctx, actor, "edit", editComment(id, "revised"))
+
+			Expect(g.commentsSummary(ctx, "#1")).To(Equal(before))
+		})
+
+		It("gives nothing once every comment is resolved", func(ctx SpecContext) {
+			id := g.mustApply(ctx, actor, "add", addComment("c", "#1", "note")).CommentAliases["c"]
+			g.mustApply(ctx, actor, "resolve", resolveComment(id))
+
+			Expect(g.commentsSummary(ctx, "#1")).To(Equal(domain.CommentsHint{}))
 		})
 	})
 

@@ -637,6 +637,7 @@ var _ = Describe("dg commands", Label("unit"), func() {
 			Expect(res.GetNode().GetTitle()).To(Equal("Appeared"))
 			Expect(res.GetNode().GetClaimed()).To(BeTrue())
 			Expect(res.GetLease().GetId()).NotTo(BeEmpty())
+			Expect(res.GetComments().GetUnresolved()).To(Equal(int32(1)), "the comments hint passes through")
 
 			sent := last[*daggerv1.ClaimNextRequest](s)
 			Expect(sent.GetTtl().AsDuration()).To(Equal(5 * time.Minute))

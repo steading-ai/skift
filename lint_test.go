@@ -40,12 +40,6 @@ func makeLint(dir string) *gexec.Session {
 }
 
 var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
-	BeforeEach(func() {
-		if os.Getenv(nestedRun) != "" {
-			Skip("already inside make test-unit")
-		}
-	})
-
 	It("make lint passes on the current tree", func() {
 		Expect(makeLint(checkout())).To(gexec.Exit(0))
 	})

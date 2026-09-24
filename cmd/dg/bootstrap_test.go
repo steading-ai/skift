@@ -34,14 +34,6 @@ func bootstrapped(session *gexec.Session) domain.Bootstrapped {
 }
 
 var _ = Describe("dg admin bootstrap", func() {
-	var binary string
-
-	BeforeEach(func() {
-		var err error
-		binary, err = gexec.Build("github.com/ivy/dagger/cmd/dg")
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("Scenario: Bootstrap is safe against an already-seeded database", Label(testsupport.DBLabel), func(ctx SpecContext) {
 		url := pg.Database(ctx).Config().ConnString()
 

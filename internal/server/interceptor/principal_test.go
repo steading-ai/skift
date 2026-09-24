@@ -18,6 +18,7 @@ import (
 	"github.com/ivy/dagger/gen/dagger/v1/daggerv1connect"
 	"github.com/ivy/dagger/internal/server"
 	"github.com/ivy/dagger/internal/server/interceptor"
+	"github.com/ivy/dagger/internal/testsupport"
 )
 
 // attribution is what a handler saw in its context for one call.
@@ -106,6 +107,7 @@ const baseURL = "http://dagger"
 
 var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 	It("Identity comes from the socket", func(ctx SpecContext) {
+		testsupport.RequirePeerCredentials()
 		By("given a unix identity mapping this process's uid to a principal")
 		lookup := interceptor.StaticLookup{myIdentity: alice}
 		graph := newRecordingGraph()
@@ -183,6 +185,7 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 	})
 
 	It("Adding a resolver requires no handler change", func(ctx SpecContext) {
+		testsupport.RequirePeerCredentials()
 		By("given the unix resolver and a second resolver for another transport, in front of the same handler")
 		bob := interceptor.Principal{ID: "01J00000000000000000000BOB", OrgID: alice.OrgID, Kind: interceptor.KindUser}
 		lookup := interceptor.StaticLookup{

@@ -394,6 +394,80 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			})
 		})
 
+		Describe("Scenario: A claimant learns someone left a note", func() {
+			It("A claimant learns someone left a note", func(ctx SpecContext) {
+				By("given a person commented on a ready node")
+				f.project(ctx, "Platform")
+				f.mustApply(ctx, createOp("a", "Alpha"))
+				f.mustApply(ctx, commentOp("#1", "use the staging bucket, not prod"))
+
+				By("when an agent claims it")
+				claimed := f.claim(ctx, "platform", nil)
+				Expect(claimed.GetNode().GetReference()).To(Equal("platform#1"))
+
+				By("then the claim says one unresolved comment is there, and when it was written")
+				Expect(claimed.GetComments().GetUnresolved()).To(Equal(int32(1)))
+				Expect(claimed.GetComments().GetLatestAt().AsTime()).To(BeTemporally("~", time.Now(), time.Minute))
+
+				By("and the claim does not contain the comment body")
+				raw, err := protojson.Marshal(claimed)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(raw)).NotTo(ContainSubstring("staging bucket"))
+			})
+		})
+
+		Describe("Scenario: The comments hint survives a narrow view", func() {
+			It("The comments hint survives a narrow view", func(ctx SpecContext) {
+				By("given a node with a comment")
+				f.project(ctx, "Platform")
+				f.mustApply(ctx, createOp("a", "Alpha"))
+				f.mustApply(ctx, commentOp("#1", "use the staging bucket, not prod"))
+
+				By("when show_node is called with the summary view")
+				res, err := f.graph().GetNode(ctx, connect.NewRequest(&daggerv1.GetNodeRequest{
+					Project: "platform", Node: "#1", View: daggerv1.View_VIEW_SUMMARY,
+				}))
+				Expect(err).NotTo(HaveOccurred())
+
+				By("then the response counts the comment")
+				Expect(res.Msg.GetCommentsHint().GetUnresolved()).To(Equal(int32(1)))
+				Expect(res.Msg.GetCommentsHint().GetLatestAt()).NotTo(BeNil())
+
+				By("and does not contain its body")
+				Expect(res.Msg.GetComments()).To(BeEmpty())
+				raw, err := protojson.Marshal(res.Msg)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(raw)).NotTo(ContainSubstring("staging bucket"))
+			})
+		})
+
+		Describe("Scenario: Resolving clears the comments hint", func() {
+			It("Resolving clears the comments hint", func(ctx SpecContext) {
+				By("given a claimed node whose only comment is then resolved")
+				f.project(ctx, "Platform")
+				f.mustApply(ctx, createOp("a", "Alpha"))
+				f.mustApply(ctx, commentOp("#1", "use the staging bucket, not prod"))
+				claimed := f.claim(ctx, "platform", nil)
+				Expect(claimed.GetComments().GetUnresolved()).To(Equal(int32(1)))
+				id := f.getNode(ctx, "platform", "#1").GetComments()[0].GetId()
+				f.mustApply(ctx, &daggerv1.PatchOp{Op: &daggerv1.PatchOp_ResolveComment{ResolveComment: &daggerv1.ResolveCommentOp{CommentId: id}}})
+				f.as(f.agent)
+				_, err := f.work().Release(ctx, connect.NewRequest(&daggerv1.ReleaseRequest{
+					RequestId: newID(), LeaseId: claimed.GetLease().GetId(), Reason: daggerv1.ReleaseReason_RELEASE_REASON_PREEMPTED,
+				}))
+				f.as(f.user)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("when the node is claimed again")
+				again := f.claim(ctx, "platform", nil)
+				Expect(again.GetNode().GetReference()).To(Equal("platform#1"))
+
+				By("then the hint reports no unresolved comments and no date")
+				Expect(again.GetComments().GetUnresolved()).To(BeZero())
+				Expect(again.GetComments().GetLatestAt()).To(BeNil())
+			})
+		})
+
 		Describe("Scenario: Only satisfied predecessors are inputs", func() {
 			It("Only satisfied predecessors are inputs", func(ctx SpecContext) {
 				By("given D blocks C and D is still open")

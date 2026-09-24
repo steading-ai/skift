@@ -45,9 +45,12 @@ version:
 test: test-policy
 	$(GINKGO) ./...
 
-# Specs that run without external services.
+# Specs that run without external services. DOCKER_HOST names a socket
+# nobody listens on, so a unit spec that starts a container fails here
+# rather than passing on a machine where podman happens to be running.
 test-unit: test-policy
-	$(GINKGO) --label-filter='!db' ./...
+	DOCKER_HOST=unix:///nonexistent/podman.sock TESTCONTAINERS_RYUK_DISABLED=true \
+	  $(GINKGO) --label-filter='!db' ./...
 
 # The Rego suite beside the default policy bundle.
 test-policy:

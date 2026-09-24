@@ -70,7 +70,7 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 		Eventually(serve.Err, 30*time.Second).Should(gbytes.Say("database reachable; ready"))
 
 		By("then dg ready answers the bootstrapped user with an empty ready set and no error")
-		me := face{name: "host", flags: []string{"--socket", socket}, env: cleanEnv(dir)}
+		me := face{name: "host", flags: []string{"--socket", socket}, env: cleanEnv(dir), unix: true}
 		project := me.createProject("Platform")
 		Expect(project.GetSlug()).To(Equal(platform))
 		res := &daggerv1.ReadyResponse{}
