@@ -24,7 +24,7 @@ $$;
 CREATE OR REPLACE FUNCTION notify_event() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
-    PERFORM pg_notify('skift_events', NEW.org_id);
+    PERFORM pg_notify('dagger_events', NEW.org_id);
     RETURN NULL;
 END
 $$;
