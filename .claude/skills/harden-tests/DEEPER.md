@@ -2,19 +2,20 @@
 
 ## A state machine, checked against a model
 
-Where the domain holds a lifecycle (a node that is open, done or dropped,
-held or not, leased or not), write the rules down as a model and let rapid
-drive random action sequences against the real service. No library beyond
+Where the domain holds a lifecycle (an entity with a status, plus the
+orthogonal flags that gate what may happen to it: a lock, a hold, an
+expiry), write the rules down as a model and let rapid drive random action
+sequences against the real service. No library beyond
 `pgregory.net/rapid`, which has this built in:
 
 ```go
 checkProperty(func(t *rapid.T) {
-	m := newModel(ctx, t, s)            // fresh org, one seed node, model state
+	m := newModel(ctx, t, s)            // fresh tenant, one seed entity, the model's state
 	t.Repeat(map[string]func(*rapid.T){
-		"":       m.check,              // invariant: stored row == model, after every action
-		"claim":  m.claim,              // model predicts accept/refuse and the sentinel
-		"finish": func(t *rapid.T) { if !m.live { t.Skip("no lease") }; m.finish(t) },
-		// complete, drop, reopen, hold, unhold, heartbeat, release, expire ...
+		"":        m.check,             // invariant: stored row == model, after every action
+		"acquire": m.acquire,           // the model predicts accept/refuse and the sentinel
+		"finish":  func(t *rapid.T) { if !m.locked { t.Skip("nothing held") }; m.finish(t) },
+		// advance, retract, reopen, park, unpark, renew, release, expire ...
 	})
 })
 ```
@@ -44,21 +45,20 @@ exclusions:
     - path: (_suite|_fuzz)_test\.go$
       linters: [forbidigo]
 ```
-Target every parser of bytes a client chooses (wire codec, cursor decoder,
-reference parser): seed with valid and malformed inputs, assert no panic,
-and that anything accepted survives a round trip unchanged. `go test`
-drives one target at a time:
+Target every parser of bytes a client chooses (a wire codec, a pagination
+token, an identifier or reference grammar): seed with valid and malformed
+inputs, assert no panic, and that anything accepted survives a round trip
+unchanged. `go test` drives one target at a time, so the target lists them:
 ```make
 FUZZ_TIME ?= 20s
 fuzz:
-	go test ./internal/codec -run '^$$' -fuzz '^FuzzUnmarshal$$' -fuzztime $(FUZZ_TIME)
-	go test ./internal/domain -run '^$$' -fuzz '^FuzzDecodeCursor$$' -fuzztime $(FUZZ_TIME)
+	go test ./internal/<pkg> -run '^$$' -fuzz '^Fuzz<Name>$$' -fuzztime $(FUZZ_TIME)
 ```
 
 ## The race detector
 
 ```make
-test-race: test-policy
+test-race:            # with whatever prerequisites `test` has
 	$(GINKGO) -race ./...
 ```
 Cheap, and nothing else finds a data race the specs happen not to trip.
@@ -68,6 +68,6 @@ neither lengthens the gate.
 ## What the mutation survivors still leave
 
 Retry loops, conflict detectors and back-off are reachable only by a
-race. A stress spec that fires N concurrent claims at one ready node and
-asserts exactly one lease exercises them deterministically enough; that
-and connection-kill fault injection on the listener are the next step.
+race. A stress spec that fires N concurrent writers at one contended row
+and asserts exactly one wins exercises them deterministically enough; that
+and killing the connection under any long-lived listener are the next step.

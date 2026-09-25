@@ -9,7 +9,7 @@ short list of what only they can decide.
 
 ```
 /harden-tests grade
-/harden-tests ./internal/domain
+/harden-tests ./pkg/engine
 /harden-tests --diff main
 ```
 
@@ -18,9 +18,9 @@ short list of what only they can decide.
 **The coverage number lies in both directions.** Generated code drags it
 down and nobody knows what to do about it; a spec that calls a function and
 asserts nothing pushes it up. In the repository this skill was written
-against, 80% coverage hid a hold event that recorded no reason, two
-malformed-request paths that surfaced as internal errors, and a policy
-denial that crashed its own audit. Those were found by specs written for
+against, 80% coverage hid an audit event written without the reason its
+schema required, two malformed-request paths that surfaced as internal
+errors, and an authorization refusal that crashed its own audit. Those were found by specs written for
 behaviour and by mutants nobody's specs noticed, not by chasing the figure.
 
 **Mutation testing is easy to run wrong and hard to tell.** The first run

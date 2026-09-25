@@ -36,9 +36,9 @@ it built. Both distort the figure in the direction of "nothing to do here".
    ^github.com/org/repo/gen/
    \.gen\.go:
    # the test harness itself
-   /internal/testsupport/
-   # needs a tailnet nobody has in CI
-   /internal/server/transport/tsnet\.go:
+   /internal/testharness/
+   # needs a private network nobody has in CI
+   /internal/transport/overlay\.go:
    ```
    ```
    grep -v -E '^(#|$)' coverage.exclude > .cover/exclude

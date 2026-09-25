@@ -76,13 +76,13 @@ ask what observable differs:
 | a boundary a later step neutralises (trim, min, equal strings) | equivalent | none |
 | a retry counter, conflict detector, or back-off only a race reaches | race-only | none; a stress spec later |
 | a timestamp byte, a carry after 2^72 increments | equivalent for our lifetime | none |
-| a field the code documents as part of a contract (policy input, event before-image, cursor, page boundary) | real gap | spec |
+| a field the code documents as part of a contract (what an authorization policy is shown, an audit record's before-image, a pagination token, a page boundary) | real gap | spec |
 | a count or filter that changes what a caller receives | real gap | spec |
 
 For every real gap, **apply the mutant by hand and watch the spec fail**:
 ```sh
 cp $F $S/orig; sed -i '390s/Size > 0/Size >= 0/' $F
-go tool ginkgo --focus-file the_spec_test.go ./internal/domain && echo SURVIVED || echo killed
+go tool ginkgo --focus-file the_spec_test.go ./internal/<core> && echo SURVIVED || echo killed
 cp $S/orig $F
 ```
 A spec written from the survivor's line but never run against it is a
