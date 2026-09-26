@@ -59,7 +59,7 @@ const (
 	MaxEdgesPerPatch   = 2000
 	MaxBodyBytes       = 256 << 10
 	MaxResultBytes     = 256 << 10
-	MaxCommentBytes    = 64 << 10
+	MaxCommentBytes    = 256 << 10
 	MaxInlinePartBytes = 256 << 10
 	MaxBlobBytes       = 64 << 20
 	MaxLeaseTTL        = time.Hour
