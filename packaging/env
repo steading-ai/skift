@@ -4,3 +4,13 @@
 # The service does not create its database; that must exist before it can
 # become active. It brings the schema up to date itself at start.
 #DATABASE_URL=postgres://skift:password@127.0.0.1:5432/skift
+
+# Serving the tailnet as well as the socket, as a node named by
+# SKIFT_TAILNET_HOSTNAME. TS_AUTHKEY enrols it on first start and may be an
+# OAuth client secret with the ?ephemeral=false&preauthorized=true query;
+# SKIFT_TAILNET_TAGS is the ACL tags it advertises, comma separated, which
+# the key must permit. Leave SKIFT_TAILNET_HOSTNAME unset to serve the
+# socket alone.
+#SKIFT_TAILNET_HOSTNAME=skift
+#SKIFT_TAILNET_TAGS=tag:service
+#TS_AUTHKEY=tskey-client-...?ephemeral=false&preauthorized=true

@@ -148,7 +148,8 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(unit)).To(MatchRegexp(`(?m)^User=skift$`))
 			Expect(string(unit)).To(MatchRegexp(`(?m)^WantedBy=multi-user\.target$`))
-			Expect(string(unit)).NotTo(ContainSubstring("tailnet"), "the packaged unit carries no tailnet options")
+			Expect(string(unit)).NotTo(ContainSubstring("--tailnet"), "the packaged unit carries no tailnet options; the environment file turns the tailnet on")
+			Expect(string(unit)).To(MatchRegexp(`(?m)^StateDirectory=skift$`), "the tailnet node's state outlives a restart")
 
 			sysusers, err := os.ReadFile(filepath.Join(dir, "packaging/sysusers.d/skift.conf"))
 			Expect(err).NotTo(HaveOccurred())

@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,10 +31,46 @@ import (
 // from when --database-url is not given. .env.example documents it.
 const databaseURLEnv = "DATABASE_URL"
 
-// tailnetAuthKeyEnv is the variable the tailnet auth key is read from when
-// --tailnet-auth-key is not given. It is the name tailscaled itself uses, so
-// one secret serves both.
-const tailnetAuthKeyEnv = "TS_AUTHKEY"
+// The tailnet is configured by environment as well as by flag, so that a
+// packaged unit whose command line is fixed joins a tailnet from its
+// EnvironmentFile alone. tailnetAuthKeyEnv is the name tailscaled itself
+// uses, so one secret serves both.
+const (
+	tailnetHostnameEnv = "SKIFT_TAILNET_HOSTNAME"
+	tailnetTagsEnv     = "SKIFT_TAILNET_TAGS"
+	tailnetStateDirEnv = "SKIFT_TAILNET_STATE_DIR"
+	tailnetAuthKeyEnv  = "TS_AUTHKEY"
+)
+
+// stateDirectoryEnv is what systemd sets under a StateDirectory=, colon
+// separated when there are several. The node's state has to outlive a
+// restart, or the service re-enrols as a new node, so under a unit it
+// defaults to a directory there.
+const stateDirectoryEnv = "STATE_DIRECTORY"
+
+// defaultTailnetStateDir is $SKIFT_TAILNET_STATE_DIR, else "tailnet" under
+// the unit's state directory, else empty, which leaves the choice to tsnet.
+func defaultTailnetStateDir() string {
+	if dir := os.Getenv(tailnetStateDirEnv); dir != "" {
+		return dir
+	}
+	if dirs := os.Getenv(stateDirectoryEnv); dirs != "" {
+		first, _, _ := strings.Cut(dirs, ":")
+		return filepath.Join(first, "tailnet")
+	}
+	return ""
+}
+
+// defaultTailnetTags is $SKIFT_TAILNET_TAGS split on commas, blanks dropped.
+func defaultTailnetTags() []string {
+	var tags []string
+	for tag := range strings.SplitSeq(os.Getenv(tailnetTagsEnv), ",") {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
+}
 
 // defaultSocketPath is the runtime directory of the invoking user when
 // there is one, and the system runtime directory otherwise, which is where
@@ -62,9 +99,11 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Run the skift service",
 		Long: `Run the skift service: the skift.v1 Connect handlers over PostgreSQL,
-listening on a unix socket and, when --tailnet-hostname is given, as a node
-on a tailnet as well. Both serve the same handlers; a caller over the socket
-is identified by its unix user, over the tailnet by its tailscale node.
+listening on a unix socket and, when --tailnet-hostname or
+$SKIFT_TAILNET_HOSTNAME is given, as a node on a tailnet as well. Both serve
+the same handlers; a caller over the socket is identified by its unix user,
+over the tailnet by its tailscale node. Every --tailnet flag has an
+environment variable, so a unit joins the tailnet from its EnvironmentFile.
 
 The service brings the database to the current schema once it answers,
 and reports itself ready only then, so a deployment needs no migration
@@ -90,10 +129,10 @@ process exits.`,
 	f.BoolVar(&opts.noMigrate, "no-migrate", false, "apply no migrations at start, and refuse a database that is behind the schema")
 	f.DurationVar(&opts.shutdownTimeout, "shutdown-timeout", server.DefaultShutdownTimeout, "how long to wait for in-flight requests on shutdown")
 	f.StringVar(&opts.logLevel, "log-level", "info", "minimum log level: debug, info, warn, error")
-	f.StringVar(&opts.tailnet.Hostname, "tailnet-hostname", "", "also serve on the tailnet as a node with this name")
+	f.StringVar(&opts.tailnet.Hostname, "tailnet-hostname", os.Getenv(tailnetHostnameEnv), "also serve on the tailnet as a node with this name (default: $"+tailnetHostnameEnv+")")
 	f.StringVar(&opts.tailnet.AuthKey, "tailnet-auth-key", os.Getenv(tailnetAuthKeyEnv), "auth key that enrols the tailnet node on first start (default: $"+tailnetAuthKeyEnv+")")
-	f.StringSliceVar(&opts.tailnet.Tags, "tailnet-tag", nil, "ACL tag the tailnet node advertises, as tag:name; repeatable")
-	f.StringVar(&opts.tailnet.StateDir, "tailnet-state-dir", "", "directory the tailnet node keeps its state in (default: tsnet's choice under the user config directory)")
+	f.StringSliceVar(&opts.tailnet.Tags, "tailnet-tag", defaultTailnetTags(), "ACL tag the tailnet node advertises, as tag:name; repeatable (default: $"+tailnetTagsEnv+", comma separated)")
+	f.StringVar(&opts.tailnet.StateDir, "tailnet-state-dir", defaultTailnetStateDir(), "directory the tailnet node keeps its state in (default: $"+tailnetStateDirEnv+", else tailnet/ under the unit's $"+stateDirectoryEnv+", else tsnet's choice under the user config directory)")
 	f.Uint16Var(&opts.tailnet.Port, "tailnet-port", transport.DefaultTailnetPort, "tailnet port to serve on")
 	return cmd
 }
