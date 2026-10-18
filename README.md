@@ -61,12 +61,22 @@ sudo systemctl enable --now skift.service skift-reap.timer
   adopted, so provisioning can run it every time without knowing whether
   it has run before. The uid is the one the `skift` CLI will run as;
   `$(id -u)` is the invoking user's. Every caller that will reach the
-  socket needs a principal; run it once per uid.
+  socket needs a principal; run it once per uid. With `--tailscale-node
+  <stable id>` the same principal is also what a caller from that tailnet
+  node resolves to.
 - **`skift.service`** reads `DATABASE_URL` from `/etc/skift/env`, one
   `KEY=value` per line, so put the same URL there; the package ships the
   template. It is `Type=notify` and becomes active only once the socket is
   bound, the database has answered, and the schema is current.
   `skift-reap.timer` runs `skift reap` every minute.
+- **The tailnet** is served alongside the socket when the same file sets
+  `SKIFT_TAILNET_HOSTNAME`, with `TS_AUTHKEY` to enrol the node and
+  `SKIFT_TAILNET_TAGS` for the ACL tags it advertises; the template shows
+  the three. The node's state lives under the unit's `StateDirectory=`,
+  `/var/lib/skift`, so a restart is the same node. A caller on another
+  machine then reaches it with `SKIFT_ADDRESS=http://<hostname>.<tailnet>.ts.net`
+  and is identified by its own node, which `skift admin bootstrap
+  --tailscale-node` binds to a principal.
 
 `skift ready` then answers as the bootstrapped user, with an empty ready set
 once a project exists to ask about. The caller reaches the socket through

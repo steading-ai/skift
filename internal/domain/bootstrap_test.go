@@ -39,7 +39,7 @@ var _ = Describe("Bootstrap", Label(testsupport.DBLabel), func() {
 		Expect(out.Organization.Name).To(Equal("acme"))
 		Expect(out.Principal.Created).To(BeTrue())
 		Expect(out.Principal.Kind).To(Equal("user"))
-		Expect(out.Principal.Identity).To(Equal(domain.BootstrappedIdentity{Scheme: "unix", Value: "1000"}))
+		Expect(out.Principal.Identities).To(Equal([]domain.BootstrappedIdentity{{Scheme: "unix", Value: "1000", Created: true}}))
 
 		By("and the identity resolves to the principal the way the socket's interceptor does")
 		svc := domain.NewService(db, pol)
@@ -92,6 +92,69 @@ var _ = Describe("Bootstrap", Label(testsupport.DBLabel), func() {
 		Expect(err).To(MatchError(domain.ErrIdentityElsewhere))
 		By("and the transaction rolled back, so no second organization was left behind")
 		Expect(countRows(ctx, db)).To(Equal(before))
+	})
+
+	Describe("with a tailscale node", func() {
+		const node = "nAbCdEfGh11CNTRL"
+		withNode := domain.BootstrapParams{OrgName: "acme", UID: uid, TailscaleNode: node}
+
+		It("Scenario: The uid's principal is reached from the tailnet too", func(ctx SpecContext) {
+			db := pg.Database(ctx)
+
+			By("given a database bootstrapped for the uid alone")
+			first, err := domain.Bootstrap(ctx, db, params)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("when bootstrap runs again for the same uid with a tailscale node")
+			out, err := domain.Bootstrap(ctx, db, withNode)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then the same principal holds both identities, and only the tailscale one is new")
+			Expect(out.Principal.ID).To(Equal(first.Principal.ID))
+			Expect(out.Principal.Created).To(BeFalse())
+			Expect(out.Principal.Identities).To(Equal([]domain.BootstrappedIdentity{
+				{Scheme: "unix", Value: "1000"},
+				{Scheme: "tailscale", Value: node, Created: true},
+			}))
+			svc := domain.NewService(db, pol)
+			p, err := svc.PrincipalByIdentity(ctx, "tailscale", node)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.ID).To(Equal(first.Principal.ID))
+			Expect(countRows(ctx, db)).To(Equal(counts{1, 1, 2}))
+		})
+
+		It("Scenario: Bootstrap with a node is safe to repeat", func(ctx SpecContext) {
+			db := pg.Database(ctx)
+
+			By("given a database bootstrapped with the node")
+			first, err := domain.Bootstrap(ctx, db, withNode)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(first.Principal.Identities).To(HaveLen(2))
+			before := countRows(ctx, db)
+
+			By("when bootstrap runs again with the same arguments")
+			second, err := domain.Bootstrap(ctx, db, withNode)
+
+			By("then it succeeds, reports both identities as found, and the counts are unchanged")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(second.Principal.ID).To(Equal(first.Principal.ID))
+			Expect(second.Principal.Identities).To(Equal([]domain.BootstrappedIdentity{
+				{Scheme: "unix", Value: "1000"},
+				{Scheme: "tailscale", Value: node},
+			}))
+			Expect(countRows(ctx, db)).To(Equal(before))
+		})
+
+		It("refuses to move a node held by another principal", func(ctx SpecContext) {
+			db := pg.Database(ctx)
+			_, err := domain.Bootstrap(ctx, db, withNode)
+			Expect(err).NotTo(HaveOccurred())
+			before := countRows(ctx, db)
+			_, err = domain.Bootstrap(ctx, db, domain.BootstrapParams{OrgName: "acme", UID: 1001, TailscaleNode: node})
+			Expect(err).To(MatchError(domain.ErrIdentityHeld))
+			By("and the transaction rolled back, so the second uid's principal was not left behind")
+			Expect(countRows(ctx, db)).To(Equal(before))
+		})
 	})
 
 	It("converges when several bootstraps race", func(ctx SpecContext) {

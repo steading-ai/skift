@@ -37,8 +37,9 @@ database URL that "skift serve" takes.`,
 }
 
 type bootstrapOptions struct {
-	databaseURL string
-	logLevel    string
+	databaseURL   string
+	logLevel      string
+	tailscaleNode string
 }
 
 func newBootstrapCommand() *cobra.Command {
@@ -56,7 +57,13 @@ uid, so an installer can run it on every provision without knowing whether
 it has run before. The database must be at the current schema: run
 "skift migrate" first.
 
-The uid is the one "skift" will run as: for the invoking user, "$(id -u)".`,
+The uid is the one "skift" will run as: for the invoking user, "$(id -u)".
+
+With --tailscale-node, the same principal is also what a caller from that
+tailnet node resolves to, when the service is serving the tailnet. The
+value is the node's stable id, "tailscale status --json | jq -r .Self.ID"
+on the node itself. A node already bound to the principal is adopted; one
+bound to any other principal is refused.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			uid, err := strconv.ParseUint(args[0], 10, 32)
@@ -66,10 +73,11 @@ The uid is the one "skift" will run as: for the invoking user, "$(id -u)".`,
 			if args[1] == "" {
 				return usage("skift admin bootstrap: the organization name must not be empty")
 			}
-			return runBootstrap(cmd, opts, domain.BootstrapParams{UID: uint32(uid), OrgName: args[1]})
+			return runBootstrap(cmd, opts, domain.BootstrapParams{UID: uint32(uid), OrgName: args[1], TailscaleNode: opts.tailscaleNode})
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&opts.tailscaleNode, "tailscale-node", "", "stable id of a tailnet node the same principal calls from")
 	f.StringVar(&opts.databaseURL, "database-url", os.Getenv(databaseURLEnv), "PostgreSQL connection URL (default: $"+databaseURLEnv+")")
 	f.StringVar(&opts.logLevel, "log-level", "info", "minimum log level: debug, info, warn, error")
 	return cmd
@@ -100,8 +108,10 @@ func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.Boots
 		return fmt.Errorf("skift admin bootstrap: %w", err)
 	}
 	log.Info("organization "+createdOrFound(out.Organization.Created), "org_id", out.Organization.ID, "name", out.Organization.Name)
-	log.Info("principal "+createdOrFound(out.Principal.Created), "org_id", out.Organization.ID, "principal_id", out.Principal.ID,
-		"kind", out.Principal.Kind, "identity", out.Principal.Identity.Scheme+":"+out.Principal.Identity.Value)
+	log.Info("principal "+createdOrFound(out.Principal.Created), "org_id", out.Organization.ID, "principal_id", out.Principal.ID, "kind", out.Principal.Kind)
+	for _, id := range out.Principal.Identities {
+		log.Info("identity "+createdOrFound(id.Created), "principal_id", out.Principal.ID, "identity", id.Scheme+":"+id.Value)
+	}
 	raw, err := json.Marshal(out)
 	if err != nil {
 		return fmt.Errorf("skift admin bootstrap: %w", err)

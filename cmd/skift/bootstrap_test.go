@@ -44,7 +44,7 @@ var _ = Describe("skift admin bootstrap", func() {
 		Expect(first.Organization.Created).To(BeTrue())
 		Expect(first.Principal.Created).To(BeTrue())
 		Expect(first.Principal.Kind).To(Equal("user"))
-		Expect(first.Principal.Identity).To(Equal(domain.BootstrappedIdentity{Scheme: "unix", Value: "1000"}))
+		Expect(first.Principal.Identities).To(Equal([]domain.BootstrappedIdentity{{Scheme: "unix", Value: "1000", Created: true}}))
 		principals, identities := principalRows(ctx, url)
 		Expect(principals).To(Equal(1))
 		Expect(identities).To(Equal(1))
@@ -70,6 +70,25 @@ var _ = Describe("skift admin bootstrap", func() {
 		session := skift(binary, "admin", "bootstrap", "--database-url", url, "1000", "other")
 		Expect(session.ExitCode()).To(Equal(cli.ExitFailure))
 		Expect(string(session.Err.Contents())).To(ContainSubstring("another organization"))
+	})
+
+	It("binds a tailscale node to the uid's principal with --tailscale-node", Label(testsupport.DBLabel), func(ctx SpecContext) {
+		url := pg.Database(ctx).Config().ConnString()
+		session := skift(binary, "admin", "bootstrap", "--database-url", url, "--tailscale-node", "nAbCdEfGh11CNTRL", "1000", "acme")
+		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+		out := bootstrapped(session)
+		Expect(out.Principal.Identities).To(ConsistOf(
+			domain.BootstrappedIdentity{Scheme: "unix", Value: "1000", Created: true},
+			domain.BootstrappedIdentity{Scheme: "tailscale", Value: "nAbCdEfGh11CNTRL", Created: true},
+		))
+		principals, identities := principalRows(ctx, url)
+		Expect(principals).To(Equal(1))
+		Expect(identities).To(Equal(2))
+
+		By("and refuses the node for a different uid")
+		session = skift(binary, "admin", "bootstrap", "--database-url", url, "--tailscale-node", "nAbCdEfGh11CNTRL", "1001", "acme")
+		Expect(session.ExitCode()).To(Equal(cli.ExitFailure))
+		Expect(string(session.Err.Contents())).To(ContainSubstring("another principal"))
 	})
 
 	It("rejects a uid that is not a number as a usage error", Label("unit"), func() {
