@@ -4,11 +4,11 @@
 # Every tool below installs through mise alone; the only system package the
 # build assumes is podman, which testcontainers uses for the database specs
 # and which runs compose.yaml through the docker-compose pinned here.
-min_version = "2026.8.11"
+min_version = "2026.10.17"
 
 [tools]
-python = "3.14.7"
-go = "1.25.7"
+python = "3.14.9"
+go = "1.26.10"
 buf = "1.72.0"
 sqlc = "1.31.1"
 "aqua:pressly/goose" = "3.28.0"

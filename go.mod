@@ -1,6 +1,6 @@
 module github.com/steading-ai/skift
 
-go 1.25.7
+go 1.26.10
 
 require (
 	connectrpc.com/connect v1.20.0
