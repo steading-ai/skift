@@ -246,8 +246,22 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 
 			By("and the waiters hold no connection between polls")
 			Eventually(func() int32 { return pool.Stat().AcquiredConns() }).Should(BeZero())
+			conn, err := pool.Acquire(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			defer conn.Release()
+			// A waiter mid-poll is inside a transaction by design, so a
+			// reading counts only if no other connection left the pool
+			// while it was taken.
 			var open int
-			Expect(pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'`).Scan(&open)).To(Succeed())
+			Eventually(func() bool {
+				before := pool.Stat()
+				if before.AcquiredConns() != 1 {
+					return false
+				}
+				Expect(conn.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'`).Scan(&open)).To(Succeed())
+				after := pool.Stat()
+				return after.AcquireCount() == before.AcquireCount() && after.AcquiredConns() == 1
+			}).WithTimeout(10*time.Second).Should(BeTrue(), "no reading of pg_stat_activity was taken between polls")
 			Expect(open).To(BeZero())
 
 			stop()
