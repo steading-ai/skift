@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/policy"
@@ -188,7 +189,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// The pool connects lazily, so a database that is down at startup is
 	// reported by the health check rather than preventing the service from
 	// listening; systemd would otherwise restart it in a loop.
-	pool, err := pgxpool.New(ctx, opts.databaseURL)
+	pool, err := dbpool.New(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift serve: database url: %w", err)
 	}

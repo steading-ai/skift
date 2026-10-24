@@ -25,6 +25,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tclog "github.com/testcontainers/testcontainers-go/log"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/steading-ai/skift/internal/dbpool"
 )
 
 // postgresImage is the same pinned postgres:18 the development stack in
@@ -239,7 +241,7 @@ func (p *Postgres) clone(ctx context.Context, name string) (*pgxpool.Pool, error
 	if err := p.admin(ctx, `CREATE DATABASE `+pgx.Identifier{name}.Sanitize()+` TEMPLATE `+p.template); err != nil {
 		return nil, fmt.Errorf("create database %s: %w", name, err)
 	}
-	pool, err := pgxpool.New(ctx, p.databaseURL(name))
+	pool, err := dbpool.New(ctx, p.databaseURL(name))
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("open pool on %s: %w", name, err), p.drop(ctx, name))
 	}

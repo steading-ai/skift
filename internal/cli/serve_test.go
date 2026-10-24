@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -47,8 +48,10 @@ func (b *syncBuffer) String() string {
 }
 
 // notifyListener binds a datagram socket, points $NOTIFY_SOCKET at it and
-// returns a channel of the state lines the service sends there.
-func notifyListener() chan string {
+// returns a function that takes the next state line already queued there.
+// The read never waits: a state the service sent before returning is in the
+// socket's queue by the time it returns, and one it still owes is not.
+func notifyListener() func() (string, error) {
 	GinkgoHelper()
 	path := filepath.Join(GinkgoT().TempDir(), "notify.sock")
 	conn, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: path, Net: "unixgram"})
@@ -56,19 +59,23 @@ func notifyListener() chan string {
 	DeferCleanup(conn.Close)
 	GinkgoT().Setenv(sdnotify.Env, path)
 
-	states := make(chan string, 2*shutdownRuns)
-	go func() {
-		defer GinkgoRecover()
-		buf := make([]byte, 4096)
-		for {
-			n, err := conn.Read(buf)
-			if err != nil {
-				return
-			}
-			states <- string(buf[:n])
+	raw, err := conn.SyscallConn()
+	Expect(err).NotTo(HaveOccurred())
+	buf := make([]byte, 4096)
+	return func() (string, error) {
+		var n int
+		var recvErr error
+		if err := raw.Read(func(fd uintptr) bool {
+			n, _, recvErr = syscall.Recvfrom(int(fd), buf, syscall.MSG_DONTWAIT)
+			return true
+		}); err != nil {
+			return "", err
 		}
-	}()
-	return states
+		if recvErr != nil {
+			return "", recvErr
+		}
+		return string(buf[:n]), nil
+	}
 }
 
 var _ = Describe("skift serve shutdown", Label("unit"), func() {
@@ -76,7 +83,7 @@ var _ = Describe("skift serve shutdown", Label("unit"), func() {
 	// goroutine that logs while runServe returns loses the race often
 	// enough that the line goes missing under load.
 	It("writes the shutdown notice and notifies systemd before it returns", func() {
-		states := notifyListener()
+		queued := notifyListener()
 		dir := GinkgoT().TempDir()
 
 		for i := range shutdownRuns {
@@ -113,7 +120,9 @@ var _ = Describe("skift serve shutdown", Label("unit"), func() {
 			By("and it precedes the drain, so the notification sent between the two precedes the socket's removal")
 			Expect(strings.Index(out, "shutdown signal received")).
 				To(BeNumerically("<", strings.Index(out, "draining")), "run %d", i)
-			Expect(states).To(Receive(ContainSubstring(sdnotify.Stopping)), "run %d", i)
+			state, err := queued()
+			Expect(err).NotTo(HaveOccurred(), "run %d: nothing was sent to systemd before serve returned", i)
+			Expect(state).To(ContainSubstring(sdnotify.Stopping), "run %d", i)
 
 			By("and the socket is gone")
 			_, err = os.Lstat(socket)

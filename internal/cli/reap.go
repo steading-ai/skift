@@ -8,9 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/policy"
@@ -77,7 +77,7 @@ func runReap(cmd *cobra.Command, opts reapOptions) error {
 	if err != nil {
 		return fmt.Errorf("skift reap: %w", err)
 	}
-	pool, err := pgxpool.New(ctx, opts.databaseURL)
+	pool, err := dbpool.New(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift reap: database url: %w", err)
 	}

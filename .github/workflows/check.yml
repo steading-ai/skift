@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+# The runner ships podman without its API socket, and Docker with one.
+# `podman compose` hands DOCKER_HOST to the docker-compose it runs, and
+# testcontainers reads it too, so both use the runner's Docker.
+env:
+  DOCKER_HOST: unix:///var/run/docker.sock
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -46,5 +52,9 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@v3
+      # The root specs run `make lint` in copies of the tree and give it
+      # two minutes, which holds only once the build and lint caches are
+      # warm, as the check job's own lint leaves them.
+      - run: make lint
       - run: make test-race
       - run: make fuzz
