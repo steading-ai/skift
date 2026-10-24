@@ -246,22 +246,28 @@ var _ = Describe("Leases", Label(testsupport.DBLabel), func() {
 
 			By("and the waiters hold no connection between polls")
 			Eventually(func() int32 { return pool.Stat().AcquiredConns() }).Should(BeZero())
-			conn, err := pool.Acquire(ctx)
-			Expect(err).NotTo(HaveOccurred())
-			defer conn.Release()
-			// A waiter mid-poll is inside a transaction by design, so a
-			// reading counts only if no other connection left the pool
-			// while it was taken.
-			var open int
-			Eventually(func() bool {
-				before := pool.Stat()
-				if before.AcquiredConns() != 1 {
-					return false
+			// Holding every connection in the pool leaves no waiter
+			// mid-poll, so the count below sees only what outlives a poll.
+			// A waiter that kept a connection while waiting stops the
+			// acquisition from completing.
+			acquireCtx, cancelAcquire := context.WithTimeout(ctx, 10*time.Second)
+			defer cancelAcquire()
+			held := make([]*pgxpool.Conn, 0, config.MaxConns)
+			release := func() {
+				for _, conn := range held {
+					conn.Release()
 				}
-				Expect(conn.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'`).Scan(&open)).To(Succeed())
-				after := pool.Stat()
-				return after.AcquireCount() == before.AcquireCount() && after.AcquiredConns() == 1
-			}).WithTimeout(10*time.Second).Should(BeTrue(), "no reading of pg_stat_activity was taken between polls")
+				held = nil
+			}
+			defer release()
+			for range config.MaxConns {
+				conn, err := pool.Acquire(acquireCtx)
+				Expect(err).NotTo(HaveOccurred(), "a waiter kept a connection between polls")
+				held = append(held, conn)
+			}
+			var open int
+			Expect(held[0].QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'`).Scan(&open)).To(Succeed())
+			release()
 			Expect(open).To(BeZero())
 
 			stop()
