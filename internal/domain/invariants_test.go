@@ -31,8 +31,7 @@ import (
 // every statement to tracer.
 func tracedStore(ctx context.Context, pool *pgxpool.Pool, tracer pgx.QueryTracer) *store.Store {
 	GinkgoHelper()
-	cfg, err := pgxpool.ParseConfig(pool.Config().ConnString())
-	Expect(err).NotTo(HaveOccurred())
+	cfg := pool.Config()
 	cfg.ConnConfig.Tracer = tracer
 	traced, err := pgxpool.NewWithConfig(ctx, cfg)
 	Expect(err).NotTo(HaveOccurred())

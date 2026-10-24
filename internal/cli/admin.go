@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/version"
@@ -96,7 +96,7 @@ func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.Boots
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, opts.databaseURL)
+	pool, err := dbpool.New(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift admin bootstrap: database url: %w", err)
 	}

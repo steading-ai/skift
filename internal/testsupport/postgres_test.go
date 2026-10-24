@@ -2,8 +2,10 @@ package testsupport_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -88,6 +90,17 @@ var _ = Describe("PostgreSQL harness", Label(testsupport.DBLabel), func() {
 		var exists bool
 		Expect(db.QueryRow(ctx, `SELECT to_regclass('projects') IS NOT NULL`).Scan(&exists)).To(Succeed())
 		Expect(exists).To(BeTrue())
+	})
+
+	It("A spec database reads timestamptz in UTC, as a JSON round trip gives it back", func(ctx SpecContext) {
+		var at time.Time
+		Expect(pg.Database(ctx).QueryRow(ctx, `SELECT now()`).Scan(&at)).To(Succeed())
+		encoded, err := json.Marshal(at)
+		Expect(err).NotTo(HaveOccurred())
+		var decoded time.Time
+		Expect(json.Unmarshal(encoded, &decoded)).To(Succeed())
+		Expect(at.Location()).To(BeIdenticalTo(time.UTC))
+		Expect(decoded).To(Equal(at))
 	})
 
 	It("Databases cloned concurrently from the template do not interfere", func(ctx SpecContext) {
