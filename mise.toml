@@ -2,8 +2,9 @@
 #
 # The harness that builds this project runs on Python. The project itself is Go.
 # Every tool below installs through mise alone; the only system package the
-# build assumes is podman, which testcontainers uses for the database specs
-# and which runs compose.yaml through the docker-compose pinned here.
+# build assumes is a container runtime for the database specs and for
+# compose.yaml, which runs through the docker-compose pinned here. Locally that
+# is podman; CI points DOCKER_HOST at the runner's Docker (see check.yml).
 min_version = "2026.10.17"
 
 [tools]
