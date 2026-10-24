@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+# The runner ships podman without its API socket, and Docker with one.
+# `podman compose` hands DOCKER_HOST to the docker-compose it runs, and
+# testcontainers reads it too, so both use the runner's Docker.
+env:
+  DOCKER_HOST: unix:///var/run/docker.sock
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
