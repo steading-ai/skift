@@ -1,0 +1,214 @@
+# What skift.stead.ing says on its front page, and how its docs are arranged.
+# The pages under /docs/ are README.md and every Markdown file in docs/.
+# The fields are documented at https://github.com/steading-ai/stead.ing
+project: skift
+headline: One plan for every agent, on every machine.
+summary: >-
+  Skift holds your work as a graph of nodes and what each one waits on, so "what can be worked on
+  right now?" always has an exact answer. Agents and people add, split, claim, and finish work
+  through the same interface: a command line, an API, or an MCP server.
+fit: >-
+  Skift suits people whose agents run in more than one session or on more than one machine, and who
+  want one plan all of them work from. It needs Linux and PostgreSQL.
+facts:
+  - Open source
+  - ISC
+  - Built in Go
+
+demo:
+  title: A small plan in skift, with one node spelled out at a time
+  nodes:
+    - ref: "#10"
+      title: Pick the limit for the public API
+      kind: task
+      priority: p1
+      state: done
+      who: a person
+      note: >-
+        A question only a person could answer, so it was assigned to one and no agent could claim
+        it. The answer is its result, and the nodes that wait on it receive it.
+    - ref: "#11"
+      title: Add the limiter middleware
+      kind: task
+      priority: p1
+      state: done
+      who: any agent
+      note: >-
+        Completed with a result. Skift stores only that a node is open, done, or dropped; everything
+        else here is worked out from the graph when you ask.
+    - ref: "#15"
+      title: Mint a token for the status page
+      kind: chore
+      priority: p2
+      state: needs-you
+      who: a person
+      note: >-
+        An agent needed a credential, so it filed this for a person and carried on with other work.
+        It stays open, and holds up #16, until someone does it.
+    - ref: "#12"
+      title: Rate-limit the webhook handler
+      kind: task
+      priority: p1
+      state: claimed
+      who: an agent, in Claude Code on a laptop
+      note: >-
+        Held under a lease that the agent renews while it works. If the agent dies, the lease runs
+        out and the node goes back to being ready.
+      waits: ["#10", "#11"]
+    - ref: "#13"
+      title: Rate-limit the export endpoint
+      kind: task
+      priority: p1
+      state: ready
+      who: any agent
+      note: >-
+        Open, nothing it waits on is open, and nobody holds it. `skift ready` lists it, and the next
+        agent to call `skift claim` gets it.
+      waits: ["#11"]
+    - ref: "#16"
+      title: Show the limits on the status page
+      kind: task
+      priority: p2
+      state: blocked
+      who: any agent
+      note: >-
+        It waits on #15, which waits on a person. `skift explain` says so, which is how work stops
+        getting lost behind something nobody is looking at.
+      waits: ["#15"]
+    - ref: "#14"
+      title: Document the limits
+      kind: task
+      priority: p2
+      state: blocked
+      who: any agent
+      note: >-
+        Not ready until both nodes it waits on are done. Nobody marks it blocked or unblocks it: the
+        day #12 and #13 finish, it is ready.
+      waits: ["#12", "#13"]
+    - ref: "#17"
+      title: Load-test the limits
+      kind: spike
+      priority: p3
+      state: held
+      who: any agent
+      note: >-
+        Parked by a person, with a reason: the staging database is down. A hold keeps a node out of
+        the ready set until a person releases it, so "not now" doesn't have to pretend to be "low
+        priority".
+      waits: ["#13"]
+
+video:
+  caption: Two agents on two machines working one plan, from the first node filed to the last one merged.
+
+offers:
+  title: What skift holds
+  items:
+    - title: Projects
+      body: >-
+        Free to start, for an afternoon's experiment or a year's work, with nothing to configure.
+        Abandoned ones are kept, because a failed spike is often the most useful record you have.
+    - title: Nodes
+      body: >-
+        One piece of work each. A node's body is the prompt an agent receives, so it is written to
+        be picked up cold.
+    - title: Dependencies
+      body: >-
+        What has to finish before what. From these skift works out what is ready, so nobody keeps a
+        board up to date.
+    - title: Leases
+      body: >-
+        A claim that expires unless the agent keeps renewing it. A crashed agent can't hold work
+        hostage.
+    - title: Work for a person
+      body: >-
+        A password, a purchase, a decision. Assign a node to a person and no agent can claim it.
+        Agents help by researching in nodes of their own, so you arrive with their recommendation
+        waiting.
+    - title: Holds
+      body: >-
+        Park a node, a branch of the plan, or a whole project, with a reason, and release it when
+        you're ready.
+    - title: Results
+      body: What each finished node produced, handed to the nodes that wait on it.
+    - title: History
+      body: Every change, kept. Nothing is deleted, and search covers all of it.
+
+thinking:
+  title: How skift thinks about work
+  items:
+    - title: The graph is the truth
+      body: >-
+        Skift stores only what can't be worked out: whether a node is open, done, or dropped, what
+        it waits on, who holds a lease, and what is parked. Ready, blocked, and claimed are answers
+        it computes each time you ask, so they can't drift from the facts.
+      href: /docs/core-principles/
+    - title: A small model
+      body: >-
+        Nodes, the lines between them, leases, and holds. There is no "epic" type and no "gate"
+        type: an epic is a node with children, and a gate is a node assigned to a person.
+      href: /docs/domain-model/
+    - title: One door
+      body: >-
+        One binary is the service, the command line, and the MCP server, and one API is the only
+        way in. Agents and people are held to the same rules, and an agent can't grant another
+        agent permission.
+      href: /docs/architecture/
+
+quickstart:
+  title: Run your first node
+  steps:
+    - title: Set it up
+      body: >-
+        Paste this into your agent. It reads how skift is installed and walks you through it: one
+        binary, a PostgreSQL database, and a first project.
+      prompt: true
+    - title: Install the plugin
+      body: >-
+        For Claude Code, from a clone of skift's repository. The plugin registers skift's MCP
+        server and teaches your agent to use it.
+        [The plugin's README](https://github.com/steading-ai/skift/blob/main/plugin/skift/README.md)
+        covers what it needs and how to check it worked.
+      code: |-
+        claude plugin marketplace add ./plugin
+        claude plugin install skift@skift
+    - title: Use the skill
+      body: >-
+        Ask your agent what is ready in skift. The skill takes it from there: it finds ready work,
+        claims a node under a lease, and completes it with a result.
+    - title: Use the command line yourself
+      body: The same things, by hand. Every command prints JSON when it isn't writing to a terminal.
+      code: |-
+        skift ready
+        skift claim
+        skift explain '#14'
+
+not:
+  - title: Not an orchestrator.
+    body: It doesn't decide which agent runs what, and it never starts, watches, or messages one.
+    use: mill
+  - title: Not a workflow engine.
+    body: No event ingestion.
+    use: almanac
+  - title: Not a chat tool.
+    body: Agents talk to each other, and to you, somewhere else. Skift holds the work.
+    use: thicket
+instead: >-
+  Built for distributed agents *first*. Use it together with your agent of choice or coordinate your
+  *fleet*.
+
+pairs:
+  - project: mill
+    body: turns ready nodes into merged changes.
+  - project: almanac
+    body: turns outside events (CVEs, exceptions, customer feedback, etc.) into ready tasks.
+  - project: thicket
+    body: lets you talk an idea through with an agent and have it file the nodes.
+
+docs:
+  order: [vision, core-principles, domain-model, architecture, roadmap, ci]
+  exclude:
+    - docs/adrs/000-adr-template.md
+  groups:
+    plans: Plans
+    research: Research
+    retrospectives: Retrospectives
