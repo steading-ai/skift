@@ -1,6 +1,6 @@
 # CI
 
-Two workflows run here.
+Three workflows run here.
 
 [check.yml](../.github/workflows/check.yml) runs on every pull request and
 every push to `main`: `make lint`, then `make cover`. That is every spec,
@@ -20,6 +20,16 @@ developer runs.
 multi-arch image to GHCR, built from
 [packaging/Containerfile](../packaging/Containerfile). It does not run on
 pull requests — it publishes, it does not check anything.
+
+[site.yml](../.github/workflows/site.yml) builds
+[skift.stead.ing](https://skift.stead.ing/) from this repository and
+publishes it to GitHub Pages. [site.yaml](../site.yaml) writes the front
+page; `README.md` and every Markdown file under `docs/` are the pages
+under `/docs/`. It runs when any of those change: a pull request builds
+the site without publishing it, and a push to `main` publishes. The site's
+code is not here. It is shared by every Steading project and comes from
+[steading-ai/stead.ing](https://github.com/steading-ai/stead.ing), whose
+README documents `site.yaml`.
 
 ## The image
 
