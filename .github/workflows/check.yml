@@ -26,14 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           # Full history: the Makefile's VERSION reads tags, and the root
           # specs copy the checkout to lint it.
           fetch-depth: 0
 
       # Every tool comes from mise.toml, at the version a developer runs.
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v3.6.3
 
       - run: make lint
 
@@ -48,10 +48,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           fetch-depth: 0
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v3.6.3
       # The root specs run `make lint` in copies of the tree and give it
       # two minutes, which holds only once the build and lint caches are
       # warm, as the check job's own lint leaves them.

@@ -1,6 +1,6 @@
 # CI
 
-Three workflows run here.
+Four workflows run here.
 
 [check.yml](../.github/workflows/check.yml) runs on every pull request and
 every push to `main`: `make lint`, then `make cover`. That is every spec,
@@ -30,6 +30,14 @@ the site without publishing it, and a push to `main` publishes. The site's
 code is not here. It is shared by every Steading project and comes from
 [steading-ai/stead.ing](https://github.com/steading-ai/stead.ing), whose
 README documents `site.yaml`.
+
+[actions-lock.yml](../.github/workflows/actions-lock.yml) runs on every
+pull request and every push to `main`: `gh actions-lock --verify` fails
+when [actions.lock](../.github/workflows/actions.lock), which pins the
+commit behind every action the workflows use, no longer matches them or
+pins a commit that no longer verifies upstream. `gh actions-lock` rewrites
+it. Renovate ([renovate.json5](../renovate.json5)) bumps the actions and
+regenerates the lockfile with them.
 
 ## The image
 
