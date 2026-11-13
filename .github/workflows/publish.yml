@@ -18,7 +18,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
         with:
           # Full history: the Makefile's VERSION falls back to counting
           # commits and finding tags with git, both of which need it. A
