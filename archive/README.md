@@ -16,3 +16,4 @@ The current design is in [docs/](../docs/), and [AGENTS.md](../AGENTS.md) says h
 | `docs/plans/` | [docs/plans/](docs/plans/) | Dated plans from September 2026: the sprint plan "prove the bet" and the implementation plans of two nodes. |
 | `docs/research/` | [docs/research/](docs/research/) | One research note: a summary of METR and Redwood Research's report on the OpenAI / Hugging Face incident. |
 | `docs/retrospectives/` | [docs/retrospectives/](docs/retrospectives/) | One retrospective, of the first build, dated 2026-09-05. |
+| `README.md` | [README-2026-11.md](README-2026-11.md) | The README of November 2026: the introduction, with the deployment and development instructions that [docs/deploying.md](../docs/deploying.md) and [docs/developing.md](../docs/developing.md) carry. |

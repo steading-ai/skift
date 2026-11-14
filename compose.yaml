@@ -2,8 +2,7 @@
 #
 # Specs bring up their own database through testcontainers; this stack exists
 # for running the service locally, inspecting the database by hand, and as
-# the one server every `make mutate` worker shares. See the "Developing"
-# section of README.md.
+# the one server every `make mutate` worker shares. See docs/developing.md.
 #
 # Credentials and the host port come from .env, seeded from .env.example by
 # `make db-up`. Every variable is required so a missing .env fails loudly
