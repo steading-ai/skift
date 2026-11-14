@@ -62,7 +62,7 @@ An identity is a row, not a principal, so one principal may hold several. Adding
 
 ## Deployment
 
-Skift is a wellspring service in [homestead](https://github.com/ivy/homestead) terms: it shares the platform PostgreSQL, and agents in application zones reach it as clients. That places it where Artifactory sat in the incident [ADR-006](adrs/006-provenance-not-authority.md) describes, which is why tenancy scoping is load-bearing rather than convenient.
+Skift is a wellspring service in homestead terms: it shares the platform PostgreSQL, and agents in application zones reach it as clients. That places it where Artifactory sat in the incident [ADR-006](adrs/006-provenance-not-authority.md) describes, which is why tenancy scoping is load-bearing rather than convenient.
 
 ```
 wellspring                         grove
