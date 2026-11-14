@@ -1,4 +1,4 @@
-amends "package://github.com/jdx/hk/releases/download/v1.57.0/hk@1.57.0#/Config.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Config.pkl"
 
 // The gate before a commit is `make lint`, then the specs that need no
 // database. CI runs the same lint and every spec. Both steps run over the
