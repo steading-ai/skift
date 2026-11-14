@@ -40,7 +40,7 @@ Agents on other machines. Adds tsnet, the change stream with a commit-ordered cu
 
 The first deployment that is not the author's. Adds a second organization and everything that implies: OIDC, policy administration, field masking for sensitive data, adaptive quotas informed by real usage, retention and export controls, backup and restore guarantees, and a web UI.
 
-Most of the [external review's](../docs/adrs/) deferred findings live here. That is deliberate: they are the cost of a second tenant, and paying it before there is one is how projects die before shipping.
+Most of the [external review's](adrs/) deferred findings live here. That is deliberate: they are the cost of a second tenant, and paying it before there is one is how projects die before shipping.
 
 **Done when** someone else runs skift and it survives.
 

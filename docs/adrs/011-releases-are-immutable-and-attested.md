@@ -68,7 +68,7 @@ Rejected: platform names in another convention, such as Rust target triples. The
 
 ### 4. Signing
 
-[GitHub artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations) sign each archive and the image, once for build provenance and once for the SBOM. A [packslip](https://packslip.dev) manifest, signed with the release workflow's identity, describes the release for installers.
+[GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations) sign each archive and the image, once for build provenance and once for the SBOM. A [packslip](https://packslip.dev) manifest, signed with the release workflow's identity, describes the release for installers.
 
 [mise](https://mise.jdx.dev) is the install path skift documents first: `mise use packslip:github.com/steading-ai/skift` verifies the manifest and pins its signer. The same manifest declares skift's agent skills, the directories under `plugin/skift/skills/`, so that `mise skills sync` links the skill matching the installed binary into an agent's skills directory. Asset names stay platform-conventional so that mise's `github:` backend also selects the right archive unaided. Every release is installed both ways, on every platform, before its run is green.
 
@@ -80,7 +80,7 @@ Rejected: a GPG-signed `SHA256SUMS`. It needs a long-lived key in CI and proves 
 
 ### 5. Immutability
 
-[Immutable releases](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases) are enabled on the repository. Every asset is uploaded to a draft, the draft is published once it is complete, and only the title and the notes change afterwards. A version that fails after publication is spent; the fix is the next version.
+[Immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) are enabled on the repository. Every asset is uploaded to a draft, the draft is published once it is complete, and only the title and the notes change afterwards. A version that fails after publication is spent; the fix is the next version.
 
 Rejected: publishing first and attaching assets as they are ready. An immutable release refuses them, and a mutable one is a release whose contents depend on when it was downloaded.
 

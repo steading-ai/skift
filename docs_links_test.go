@@ -144,22 +144,18 @@ func anchorOf(text string) string {
 	return out.String()
 }
 
-// scanMarkdown reads one Markdown file's source: the links it makes, and
-// the anchors its headings and HTML ids offer. A heading repeated in one
-// file takes -1, -2 and so on, in order. Fenced code and front matter are
-// skipped, and only ATX headings count.
-func scanMarkdown(source string) (links []docLink, anchors map[string]bool) {
-	anchors = map[string]bool{}
-	seen := map[string]int{}
-	offer := func(anchor string) {
-		unique := anchor
-		for anchors[unique] {
-			seen[anchor]++
-			unique = fmt.Sprintf("%s-%d", anchor, seen[anchor])
-		}
-		anchors[unique] = true
-	}
+// proseLine is one line of a Markdown file that is neither front matter
+// nor fenced code, and the number it has in the file.
+type proseLine struct {
+	number int
+	text   string
+}
 
+// proseLines reads one Markdown file's source down to the lines a reader
+// sees as prose: front matter, fenced code and the fences themselves are
+// left out.
+func proseLines(source string) []proseLine {
+	var prose []proseLine
 	lines := strings.Split(source, "\n")
 	inFrontMatter := len(lines) > 0 && strings.TrimRight(lines[0], " \t\r") == frontMatter
 	fence := ""
@@ -178,20 +174,41 @@ func scanMarkdown(source string) (links []docLink, anchors map[string]bool) {
 			}
 			continue
 		}
-		if fence != "" {
-			continue
+		if fence == "" {
+			prose = append(prose, proseLine{number: i + 1, text: line})
 		}
-		if m := atxHeading.FindStringSubmatch(line); m != nil {
+	}
+	return prose
+}
+
+// scanMarkdown reads one Markdown file's source: the links it makes, and
+// the anchors its headings and HTML ids offer. A heading repeated in one
+// file takes -1, -2 and so on, in order. Fenced code and front matter are
+// skipped, and only ATX headings count.
+func scanMarkdown(source string) (links []docLink, anchors map[string]bool) {
+	anchors = map[string]bool{}
+	seen := map[string]int{}
+	offer := func(anchor string) {
+		unique := anchor
+		for anchors[unique] {
+			seen[anchor]++
+			unique = fmt.Sprintf("%s-%d", anchor, seen[anchor])
+		}
+		anchors[unique] = true
+	}
+
+	for _, line := range proseLines(source) {
+		if m := atxHeading.FindStringSubmatch(line.text); m != nil {
 			offer(anchorOf(headingText(m[1])))
 		}
-		prose := withoutCodeSpans(line)
+		prose := withoutCodeSpans(line.text)
 		for _, m := range htmlAnchor.FindAllStringSubmatch(prose, -1) {
 			anchors[m[1]] = true
 		}
 		for _, re := range []*regexp.Regexp{inlineLink, definition, htmlTarget} {
 			for _, m := range re.FindAllStringSubmatch(prose, -1) {
 				dest := strings.TrimSuffix(strings.TrimPrefix(m[1], "<"), ">")
-				links = append(links, docLink{line: i + 1, dest: dest})
+				links = append(links, docLink{line: line.number, dest: dest})
 			}
 		}
 	}

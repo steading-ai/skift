@@ -1,6 +1,6 @@
 # How to develop skift
 
-This guide shows how to work on skift from a checkout: build the binary, run a development database, and run the specs and the linters. [AGENTS.md](../AGENTS.md) lists every `make` target and the rules a change is held to.
+This guide shows how to work on skift from a checkout: build the binary, run a development database, and run the specs and the linters. [The guide for coding agents](../AGENTS.md) lists the `make` commands a change is checked with and the rules it is held to.
 
 Skift stores everything in PostgreSQL, and the behaviour worth testing (row
 locking, recursive queries) only exists in a real server. Development runs

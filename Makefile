@@ -281,7 +281,7 @@ image-tags:
 	    } \
 	  }'
 
-# Development database. See compose.yaml and the "Developing" section of README.md.
+# Development database. See compose.yaml and docs/developing.md.
 
 # .env carries the development credentials and is gitignored. Seed it from the
 # example on a fresh clone so db-up works out of the box.

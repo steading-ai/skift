@@ -250,8 +250,7 @@ file. A bare `#7` with no current project is an error, so qualify it.
 | remote service | `--address`, `$SKIFT_ADDRESS` — wins over the socket |
 | config file | `--config`, `$SKIFT_CONFIG`, then `$XDG_CONFIG_HOME/skift/config.json` |
 
-Priorities `p0` (most urgent) to `p4`, default `p2`. Statuses `open`, `done`,
-`dropped`. Drop reasons `superseded`, `not_viable`, `no_longer_relevant`.
+Priorities `p0` (most urgent) to `p4`, default `p2`. Statuses `open`, `done`, `dropped`. Drop reasons `superseded`, `not_viable`, `no_longer_relevant`, and `other`, which needs a `--detail`.
 
 ## What work costs
 
