@@ -1,6 +1,7 @@
 # Checks every pull request and every push to main: the gate the
 # pre-commit hook applies locally, plus the specs it leaves out for speed
-# and the coverage floor. See docs/ci.md.
+# and the coverage floor. It runs on Blacksmith runners, which release.yml
+# and publish.yml deliberately do not. See docs/ci.md.
 name: check
 
 on:
@@ -23,18 +24,38 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: check
+    runs-on: blacksmith-8vcpu-ubuntu-2604
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: useblacksmith/checkout@v1.8.3
         with:
           # Full history: the Makefile's VERSION reads tags, and the root
           # specs copy the checkout to lint it.
           fetch-depth: 0
           persist-credentials: false
 
+      # What a job would otherwise fetch again each run, kept on disks that
+      # outlive it. The Go build cache is not among them: Blacksmith serves
+      # that itself. https://docs.blacksmith.sh/blacksmith-caching/dependencies-sticky-disks
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-mise
+          path: ~/.local/share/mise
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-go-mod
+          path: ~/go/pkg/mod
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-golangci-lint-check
+          path: ~/.cache/golangci-lint
+
       # Every tool comes from mise.toml, at the version a developer runs.
+      # The tools are on a sticky disk, so the action caches nothing itself.
       - uses: jdx/mise-action@v5.2.7
+        with:
+          cache: false
 
       - run: make lint
 
@@ -43,20 +64,58 @@ jobs:
       # on the runner's Docker.
       - run: make cover
 
-  # The same specs under the race detector, and the fuzz targets for a
-  # short while each, beside the main job rather than after it.
+  # The same specs under the race detector, beside the main job rather
+  # than after it.
   race:
-    runs-on: ubuntu-latest
+    name: race
+    runs-on: blacksmith-8vcpu-ubuntu-2604
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: useblacksmith/checkout@v1.8.3
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-mise
+          path: ~/.local/share/mise
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-go-mod
+          path: ~/go/pkg/mod
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-golangci-lint-race
+          path: ~/.cache/golangci-lint
       - uses: jdx/mise-action@v5.2.7
+        with:
+          cache: false
       # The root specs run `make lint` in copies of the tree and give it
       # four minutes, which holds only once the build and lint caches are
       # warm, as the check job's own lint leaves them.
       - run: make lint
       - run: make test-race
+
+  # The fuzz targets, for a short while each. They run for a fixed time
+  # whatever the machine, so they have a small one of their own instead of
+  # holding the race job's larger one for another minute.
+  fuzz:
+    name: fuzz
+    runs-on: blacksmith-4vcpu-ubuntu-2604
+    timeout-minutes: 15
+    steps:
+      - uses: useblacksmith/checkout@v1.8.3
+        with:
+          persist-credentials: false
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-mise
+          path: ~/.local/share/mise
+      - uses: useblacksmith/stickydisk@v1.7.2
+        with:
+          key: ${{ github.repository }}-go-mod
+          path: ~/go/pkg/mod
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          cache: false
       - run: make fuzz
