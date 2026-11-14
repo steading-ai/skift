@@ -1,25 +1,7 @@
 ---
 name: skift
-description: Use when working with a skift work graph — taking the next piece of work, claiming and completing it, finding what is ready, decomposing work into linked nodes, or writing a node body another agent will pick up cold. Covers the MCP tools and the skift CLI, when to prefer each, and the mistakes that silently build the wrong graph.
-when_to_use: claim a node, work the next node, take the next piece of work, what should I work on, skift ready, skift claim, skift patch apply, apply_patch, show_node, inputs, explain, the ready set, blocked_by, grouping node, work graph, backlog node, work order.
-allowed-tools:
-  - Bash(skift ready:*)
-  - Bash(skift node show:*)
-  - Bash(skift node list:*)
-  - Bash(skift explain:*)
-  - Bash(skift inputs:*)
-  - Bash(skift search:*)
-  - Bash(skift project list:*)
-  - Bash(skift project show:*)
-  - Bash(skift version:*)
-  - mcp__plugin_skift_skift__ready
-  - mcp__plugin_skift_skift__search
-  - mcp__plugin_skift_skift__show_node
-  - mcp__plugin_skift_skift__inputs
-  - mcp__plugin_skift_skift__node_list
-  - mcp__plugin_skift_skift__explain
-  - mcp__plugin_skift_skift__project_list
-  - mcp__plugin_skift_skift__project_show
+description: Use when working with a skift work graph — taking the next piece of work, claiming and completing it, finding what is ready, decomposing work into linked nodes, or writing a node body another agent will pick up cold. Covers the MCP tools and the skift CLI, when to prefer each, and the mistakes that silently build the wrong graph. Trigger phrases — claim a node, work the next node, take the next piece of work, what should I work on, skift ready, skift claim, skift patch apply, apply_patch, show_node, inputs, explain, the ready set, blocked_by, grouping node, work graph, backlog node, work order.
+allowed-tools: Bash(skift ready:*) Bash(skift node show:*) Bash(skift node list:*) Bash(skift explain:*) Bash(skift inputs:*) Bash(skift search:*) Bash(skift project list:*) Bash(skift project show:*) Bash(skift version:*) mcp__plugin_skift_skift__ready mcp__plugin_skift_skift__search mcp__plugin_skift_skift__show_node mcp__plugin_skift_skift__inputs mcp__plugin_skift_skift__node_list mcp__plugin_skift_skift__explain mcp__plugin_skift_skift__project_list mcp__plugin_skift_skift__project_show
 ---
 
 # Skift
@@ -115,13 +97,7 @@ dropped gate still blocks, so an agent cannot drop its own gate and proceed.
 
 ## Which interface
 
-MCP tools are the default: a lease taken through them renews in the background
-and is released if the session ends, so a claim made there needs no
-`heartbeat`. Reach for the `skift` CLI for shell pipelines, hooks, and a scripted
-`skift claim --wait`. Each MCP tool is the same command with the same arguments
-and the same JSON response, so translating either way is mechanical;
-[references/commands.md](references/commands.md) carries the inventory, the
-response views, and the enum spellings.
+The tools of the skift MCP server are the default wherever the server is registered: a lease taken through them renews in the background and is released if the session ends, so a claim made there needs no `heartbeat`. They are named here as the server names them — `ready`, `claim`, `show_node` — and a harness may list them under a prefix of its own. Reach for the `skift` CLI when the server is not registered, and for shell pipelines, hooks, and a scripted `skift claim --wait`. Each MCP tool is the same command with the same arguments and the same JSON response, so translating either way is mechanical; [references/commands.md](references/commands.md) carries the inventory, the response views, and the enum spellings.
 
 Three reads are easy to confuse. `ready` is what could be worked and claims
 nothing. `node_list` is everything else — what is open, what is done, what a

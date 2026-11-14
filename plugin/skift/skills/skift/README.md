@@ -1,13 +1,10 @@
-# `skift:skift` — Driving the Work Graph
+# `skift` — Driving the Work Graph
 
-Teaches an agent to take, do and finish work in a skift graph, through the
-MCP tools or the `skift` CLI. Model-invoked whenever a conversation touches
-a graph, and invocable by name.
+Teaches an agent to take, do and finish work in a skift graph, through the tools of the skift MCP server or the `skift` CLI. A harness loads it whenever a conversation touches a graph, and it can be asked for by name:
 
-```
-/skift:skift
-/skift:skift claim the next node and work it
-/skift:skift decompose this into nodes an agent can pick up cold
+```text
+use the skift skill to claim the next node and work it
+use the skift skill to decompose this into nodes an agent can pick up cold
 ```
 
 ## Why this exists
@@ -45,5 +42,4 @@ short enough to survive in a context window.
 | `references/commands.md` | every command, the patch operations, settings, identity |
 | `references/work-orders.md` | what a node body owes an agent starting cold |
 
-Installation, the MCP registration, and the version-as-cache-key gotcha are in
-[the plugin README](../../README.md).
+Installing the skill and registering the MCP server are in [Agent skills and the MCP server](../../../../docs/agent-skills.md). The Claude Code plugin and its version-as-cache-key gotcha are in [the plugin README](../../README.md).

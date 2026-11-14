@@ -20,10 +20,12 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 // pluginManifest is the part of a Claude Code plugin or marketplace
 // manifest these specs read.
 type pluginManifest struct {
+	Name    string `json:"name"`
 	Version string `json:"version"`
 	License string `json:"license"`
 	Plugins []struct {
 		Name    string `json:"name"`
+		Source  string `json:"source"`
 		Version string `json:"version"`
 	} `json:"plugins"`
 }
@@ -56,7 +58,7 @@ var _ = Describe("The licence", Label("unit"), func() {
 
 	It("is the one the plugin declares, at one version in both manifests", func() {
 		plugin := readManifest("plugin/skift/.claude-plugin/plugin.json")
-		marketplace := readManifest("plugin/.claude-plugin/marketplace.json")
+		marketplace := readManifest(".claude-plugin/marketplace.json")
 
 		Expect(plugin.License).To(Equal("ISC"))
 		Expect(plugin.Version).NotTo(BeEmpty())
