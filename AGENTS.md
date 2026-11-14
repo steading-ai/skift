@@ -85,7 +85,7 @@ Specs are Ginkgo and Gomega. Two lint rules carry design decisions rather than s
 - **How the pieces fit** — `docs/architecture.md` for the request path, transports, and trust boundaries.
 - **Why something is the way it is** — `docs/adrs/`. Check here before changing a decision.
 - **What is planned and deliberately deferred** — `docs/roadmap.md`.
-- **How to build, test and run it from a checkout** — `docs/developing.md`.
+- **How to build it, run a development database and run the specs** — `docs/developing.md`.
 - **How it is installed** — `docs/install.md` for a server in containers, the CLI and an agent; `docs/deploying.md` for the rpm under systemd; `docs/agent-skills.md` for the skills and the MCP server.
 - **How it is checked and released** — `docs/ci.md` for the workflows, `docs/releasing.md` to cut a release, `docs/verifying-a-release.md` to check one.
 - **What used to be here** — `archive/README.md`. The loop that built the first version, the first backlog, and dated plans and notes. Records, not guidance.
