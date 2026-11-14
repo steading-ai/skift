@@ -30,7 +30,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version cover mutate test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release db-up db-down db-reset db-migrate
+.PHONY: all build version cover mutate test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release image-tags db-up db-down db-reset db-migrate
 
 all: build
 
@@ -222,6 +222,45 @@ release:
 	  tar -xzOf $(RELEASE_DIR)/skift_$(VERSION)_linux_$$arch.tar.gz skift > dist/skift-linux-$$arch && \
 	  chmod 0755 dist/skift-linux-$$arch || exit 1; \
 	done
+
+# The image tags a release of VERSION owns, one per line, given the v*
+# tags in the repository. Always the version itself, which never moves.
+# A stable release also takes the moving tags, each only forward: X.Y
+# unless a later stable X.Y.* is tagged, X from 1.0 on unless a later
+# stable X.* is, and latest unless any later stable version is. So a patch
+# to an older line moves its own X.Y and nothing else. A prerelease owns
+# its exact tag alone, and a prerelease tag never counts as later. A
+# version with build metadata, which every development build has, is not a
+# release: the target fails and prints no tag.
+# docs/adrs/011-releases-are-immutable-and-attested.md, decision 6.
+#
+# The tags are read from git, so they must have been fetched: without
+# them every release would be handed latest.
+image-tags:
+	@tags=$$(git tag --list 'v*') || exit 1; \
+	printf '%s\n' "$$tags" | awk -v version='$(VERSION)' ' \
+	  BEGIN { \
+	    release = version ~ /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$/; \
+	    stable = release && version !~ /-/; \
+	    split(version, v, "."); major = v[1] + 0; minor = v[2] + 0; patch = v[3] + 0; \
+	    if (release) print version \
+	  } \
+	  stable && /^v[0-9]+\.[0-9]+\.[0-9]+$$/ { \
+	    split(substr($$0, 2), t, "."); a = t[1] + 0; b = t[2] + 0; c = t[3] + 0; \
+	    if (a > major || (a == major && (b > minor || (b == minor && c > patch)))) { \
+	      later = 1; \
+	      if (a == major) { later_in_major = 1; if (b == minor) later_in_minor = 1 } \
+	    } \
+	  } \
+	  END { \
+	    if (!release) { \
+	      print "image-tags: " version " is not a release version" > "/dev/stderr"; exit 1 \
+	    } else if (stable) { \
+	      if (!later_in_minor) print major "." minor; \
+	      if (major >= 1 && !later_in_major) print major; \
+	      if (!later) print "latest" \
+	    } \
+	  }'
 
 # Development database. See compose.yaml and the "Developing" section of README.md.
 

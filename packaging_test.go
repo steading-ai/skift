@@ -19,14 +19,14 @@ import (
 	"github.com/steading-ai/skift/internal/testsupport"
 )
 
-// runIn executes a command in dir and returns what it wrote to stdout once
-// it has exited successfully. Git's and make's own variables are dropped
-// from the environment. Under a pre-commit hook the git ones point every
-// git command, and the Makefile's git describe, at the repository being
+// sessionIn executes a command in dir and returns it once it has exited,
+// whatever its status. Git's and make's own variables are dropped from the
+// environment. Under a pre-commit hook the git ones point every git
+// command, and the Makefile's git describe, at the repository being
 // committed to rather than the copy. Under make test-unit the make ones
 // mark the copy's make as a sub-make, and a sub-make announces directory
 // changes on stdout, in front of the value the spec reads.
-func runIn(dir string, timeout time.Duration, name string, args ...string) string {
+func sessionIn(dir string, timeout time.Duration, name string, args ...string) *gexec.Session {
 	GinkgoHelper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
@@ -37,7 +37,15 @@ func runIn(dir string, timeout time.Duration, name string, args ...string) strin
 	}
 	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(session.Wait(timeout)).To(gexec.Exit(0))
+	return session.Wait(timeout)
+}
+
+// runIn executes a command in dir, as sessionIn does, and returns what it
+// wrote to stdout once it has exited successfully.
+func runIn(dir string, timeout time.Duration, name string, args ...string) string {
+	GinkgoHelper()
+	session := sessionIn(dir, timeout, name, args...)
+	Expect(session).To(gexec.Exit(0))
 	return strings.TrimSpace(string(session.Out.Contents()))
 }
 
@@ -176,6 +184,115 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 		It("is semver-shaped with no tag at all", func() {
 			git(dir, "tag", "-d", "v9.9.9")
 			Expect(makeVersion(dir)).To(MatchRegexp(`^0\.0\.0\+dev\.1\.g[0-9a-f]+$`))
+		})
+	})
+
+	// What `make image-tags` prints is what the release workflow tags the
+	// image with. docs/adrs/011-releases-are-immutable-and-attested.md,
+	// decision 6, fixes the rule.
+	Describe("the image tags", func() {
+		var dir string
+
+		// The tags a release owns depend on the other versions tagged, so
+		// each spec tags a copy of its own. One commit carries every tag:
+		// a version's place in history is not what orders it.
+		BeforeEach(func() {
+			dir = checkout()
+			git(dir, "init", "-q")
+			git(dir, "add", "-A")
+			git(dir, "commit", "-q", "--no-verify", "-m", "initial")
+		})
+
+		tagged := func(tags ...string) {
+			GinkgoHelper()
+			for _, tag := range tags {
+				git(dir, "tag", tag)
+			}
+		}
+
+		// imageTags is what `make image-tags` prints for a version, one
+		// tag per line.
+		imageTags := func(version string) []string {
+			GinkgoHelper()
+			return strings.Split(runIn(dir, time.Minute, "make", "image-tags", "VERSION="+version), "\n")
+		}
+
+		It("The first stable release takes the moving tags", func() {
+			By("given a repository whose only version tag is v0.1.0")
+			tagged("v0.1.0")
+
+			By("when make image-tags runs with VERSION=0.1.0")
+			tags := imageTags("0.1.0")
+
+			By("then it prints 0.1.0, 0.1 and latest")
+			Expect(tags).To(Equal([]string{"0.1.0", "0.1", "latest"}))
+			By("and it does not print 0")
+			Expect(tags).NotTo(ContainElement("0"))
+		})
+
+		It("A prerelease owns only its exact tag", func() {
+			By("given a repository tagged v0.1.0 and v0.2.0-rc.1")
+			tagged("v0.1.0", "v0.2.0-rc.1")
+
+			By("when make image-tags runs with VERSION=0.2.0-rc.1")
+			tags := imageTags("0.2.0-rc.1")
+
+			By("then it prints 0.2.0-rc.1 and nothing else")
+			Expect(tags).To(Equal([]string{"0.2.0-rc.1"}))
+		})
+
+		It("A patch to an older line does not take latest", func() {
+			By("given a repository tagged v1.2.3, v1.3.0 and v1.2.4")
+			tagged("v1.2.3", "v1.3.0", "v1.2.4")
+
+			By("when make image-tags runs with VERSION=1.2.4")
+			tags := imageTags("1.2.4")
+
+			By("then it prints 1.2.4 and 1.2")
+			Expect(tags).To(Equal([]string{"1.2.4", "1.2"}))
+			By("and it prints neither 1 nor latest")
+			Expect(tags).NotTo(ContainElement("1"))
+			Expect(tags).NotTo(ContainElement("latest"))
+		})
+
+		It("A release past 1.0 takes its major tag", func() {
+			By("given a repository tagged v0.9.0 and v1.0.0")
+			tagged("v0.9.0", "v1.0.0")
+
+			By("when make image-tags runs with VERSION=1.0.0")
+			tags := imageTags("1.0.0")
+
+			By("then it prints 1.0.0, 1.0, 1 and latest")
+			Expect(tags).To(Equal([]string{"1.0.0", "1.0", "1", "latest"}))
+		})
+
+		It("A development build owns no tags", func() {
+			By("given a checkout three commits past v0.1.0")
+			tagged("v0.1.0")
+			for _, message := range []string{"one", "two", "three"} {
+				git(dir, "commit", "-q", "--no-verify", "--allow-empty", "-m", message)
+			}
+			Expect(makeVersion(dir)).To(MatchRegexp(`^0\.1\.0\+dev\.3\.g[0-9a-f]+$`))
+
+			By("when make image-tags runs with that checkout's version")
+			session := sessionIn(dir, time.Minute, "make", "image-tags")
+
+			By("then it exits non-zero")
+			Expect(session).NotTo(gexec.Exit(0))
+			By("and prints nothing on stdout")
+			Expect(session.Out.Contents()).To(BeEmpty())
+		})
+
+		It("never counts a prerelease tag as a later version", func() {
+			tagged("v0.1.0", "v0.2.0-rc.1")
+			Expect(imageTags("0.1.0")).To(Equal([]string{"0.1.0", "0.1", "latest"}))
+		})
+
+		// Versions order by number, not by spelling: 1.10 is after 1.9.
+		It("moves a tag forward past a two-digit version, and not back before one", func() {
+			tagged("v1.9.0", "v1.10.0", "v1.10.1")
+			Expect(imageTags("1.9.1")).To(Equal([]string{"1.9.1", "1.9"}))
+			Expect(imageTags("1.10.1")).To(Equal([]string{"1.10.1", "1.10", "1", "latest"}))
 		})
 	})
 
