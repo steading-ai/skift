@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
 
       # Every tool comes from mise.toml, at the version a developer runs.
-      - uses: jdx/mise-action@v3.6.3
+      - uses: jdx/mise-action@v5.2.7
 
       - run: make lint
 
@@ -53,7 +53,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@v3.6.3
+      - uses: jdx/mise-action@v5.2.7
       # The root specs run `make lint` in copies of the tree and give it
       # four minutes, which holds only once the build and lint caches are
       # warm, as the check job's own lint leaves them.
