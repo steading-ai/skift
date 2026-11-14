@@ -63,11 +63,7 @@ error naming the path it looked for.
 
 ## Body
 
-Everything after the frontmatter, following
-[../../skift/references/work-orders.md](../../skift/references/work-orders.md):
-Context, Deliverables, Acceptance criteria, Scenarios, Notes. Write it for an
-agent with an empty context window — it has none of the conversation that
-produced it and no way to ask.
+Everything after the frontmatter, following the `skift` skill's work-order reference, [../../skift/references/work-orders.md](../../skift/references/work-orders.md): Context, Deliverables, Acceptance criteria, Scenarios, Notes. Write it for an agent with an empty context window — it has none of the conversation that produced it and no way to ask.
 
 `%% … %%` is a review comment, stripped before filing: use it for notes to
 yourself and to whoever proofreads. Runs of three or more blank lines collapse to

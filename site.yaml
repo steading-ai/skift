@@ -164,12 +164,12 @@ quickstart:
       prompt: true
     - title: Install the plugin
       body: >-
-        For Claude Code, from a clone of skift's repository. The plugin registers skift's MCP
-        server and teaches your agent to use it.
+        For Claude Code. The plugin registers skift's MCP server and teaches your agent to use it.
         [The plugin's README](https://github.com/steading-ai/skift/blob/main/plugin/skift/README.md)
         covers what it needs and how to check it worked.
+        [Agent skills and the MCP server](/docs/agent-skills/) covers every other harness.
       code: |-
-        claude plugin marketplace add ./plugin
+        claude plugin marketplace add steading-ai/skift
         claude plugin install skift@skift
     - title: Use the skill
       body: >-
@@ -205,7 +205,7 @@ pairs:
     body: lets you talk an idea through with an agent and have it file the nodes.
 
 docs:
-  order: [vision, core-principles, domain-model, architecture, roadmap, ci]
+  order: [vision, core-principles, domain-model, architecture, agent-skills, roadmap, ci]
   exclude:
     - docs/adrs/000-adr-template.md
   groups:

@@ -1,27 +1,7 @@
 ---
 name: epic
-description: Use when work is large enough to plan before filing — writing a mini-PRD for an epic, decomposing one into skift nodes as one Markdown file each, or reviewing a draft decomposition before it is filed. Covers the epic document, the patches directory, the YAML frontmatter a node file carries, and how a directory becomes one patch.
-when_to_use: write this up as an epic, draft an epic, mini-PRD, decompose this into nodes, plan this before filing, epic document, work orders as files, node frontmatter, patches directory, file a decomposition, skift patch import, skift node export.
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Bash(skift ready:*)
-  - Bash(skift node show:*)
-  - Bash(skift node list:*)
-  - Bash(skift explain:*)
-  - Bash(skift search:*)
-  - Bash(skift project list:*)
-  - Bash(skift project show:*)
-  - mcp__plugin_skift_skift__ready
-  - mcp__plugin_skift_skift__search
-  - mcp__plugin_skift_skift__show_node
-  - mcp__plugin_skift_skift__node_list
-  - mcp__plugin_skift_skift__explain
-  - mcp__plugin_skift_skift__project_list
-  - mcp__plugin_skift_skift__project_show
+description: Use when work is large enough to plan before filing — writing a mini-PRD for an epic, decomposing one into skift nodes as one Markdown file each, or reviewing a draft decomposition before it is filed. Covers the epic document, the patches directory, the YAML frontmatter a node file carries, and how a directory becomes one patch. Trigger phrases — write this up as an epic, draft an epic, mini-PRD, decompose this into nodes, plan this before filing, epic document, work orders as files, node frontmatter, patches directory, file a decomposition, skift patch import, skift node export.
+allowed-tools: Read Write Edit Glob Grep Bash(skift ready:*) Bash(skift node show:*) Bash(skift node list:*) Bash(skift explain:*) Bash(skift search:*) Bash(skift project list:*) Bash(skift project show:*) mcp__plugin_skift_skift__ready mcp__plugin_skift_skift__search mcp__plugin_skift_skift__show_node mcp__plugin_skift_skift__node_list mcp__plugin_skift_skift__explain mcp__plugin_skift_skift__project_list mcp__plugin_skift_skift__project_show
 ---
 
 # Epic
@@ -60,11 +40,7 @@ inline patch with `apply_patch` and skip all of this.
    repository** — an ADR, a document under `docs/` — and every node after it
    cites the file, not the epic. This is what makes the rest of the graph
    workable by an agent with an empty context window.
-4. **Decompose into one file per claimable unit** —
-   [references/node-files.md](references/node-files.md) has the layout, the
-   frontmatter keys, and how references resolve. The body follows
-   [../skift/references/work-orders.md](../skift/references/work-orders.md):
-   Context, Deliverables, Acceptance criteria, Scenarios, Notes.
+4. **Decompose into one file per claimable unit** — [references/node-files.md](references/node-files.md) has the layout, the frontmatter keys, and how references resolve. The body follows the `skift` skill's work-order reference, [../skift/references/work-orders.md](../skift/references/work-orders.md): Context, Deliverables, Acceptance criteria, Scenarios, Notes.
 5. **Write the patches README** — the dependency shape as a diagram, the sizing,
    what must be true before applying, and what the epic proves when it lands.
 6. **Proofread against the graph.** `skift patch import <dir> --dry-run` prints the
@@ -99,7 +75,5 @@ inline patch with `apply_patch` and skip all of this.
 - [references/node-files.md](references/node-files.md) — the file format: layout,
   the frontmatter keys, references, filing with `skift patch import`, reading back
   with `skift node export`, and the traps
-- [../skift/references/work-orders.md](../skift/references/work-orders.md) —
-  what a node body owes an agent starting cold
-- [../skift/SKILL.md](../skift/SKILL.md) — the graph model: readiness, holds,
-  leases, gates, and which interface to reach for
+- [../skift/references/work-orders.md](../skift/references/work-orders.md) — from the `skift` skill, installed beside this one: what a node body owes an agent starting cold
+- [../skift/SKILL.md](../skift/SKILL.md) — the `skift` skill itself: the graph model of readiness, holds, leases and gates, and which interface to reach for
