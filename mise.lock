@@ -89,6 +89,41 @@ url = "https://github.com/bufbuild/buf/releases/download/v1.72.0/buf-Windows-x86
 url_api = "https://api.github.com/repos/bufbuild/buf/releases/assets/480772631"
 provenance = "minisign"
 
+[[tools.communique]]
+version = "1.8.0"
+backend = "packslip:github.com/jdx/communique"
+specifiers = ["1.8.0"]
+
+[tools.communique."platforms.linux-arm64"]
+checksum = "sha256:365f67f2bb21f31966d265ad42516fb14e423411e36fadab8f99002046a6310e"
+url = "https://github.com/jdx/communique/releases/download/v1.8.0/communique-aarch64-unknown-linux-gnu.tar.gz"
+signer = "sigstore-oidc:https://github.com/jdx/communique/.github/workflows/release.yml"
+
+[tools.communique."platforms.linux-arm64-musl"]
+checksum = "sha256:0fc5cc37af55f9acd205f8d4b54a118a36315e5fc809c775aa7b3bae70071abd"
+url = "https://github.com/jdx/communique/releases/download/v1.8.0/communique-aarch64-unknown-linux-musl.tar.gz"
+signer = "sigstore-oidc:https://github.com/jdx/communique/.github/workflows/release.yml"
+
+[tools.communique."platforms.linux-x64"]
+checksum = "sha256:a600a3a26ef66e5695e1ac7bf57b3d30fdf6d075dc8349d054711a605a311199"
+url = "https://github.com/jdx/communique/releases/download/v1.8.0/communique-x86_64-unknown-linux-gnu.tar.gz"
+signer = "sigstore-oidc:https://github.com/jdx/communique/.github/workflows/release.yml"
+
+[tools.communique."platforms.linux-x64-musl"]
+checksum = "sha256:50131e6cd61be26c7b34154bab1da26c53146064d0dd18ba20ee936451369526"
+url = "https://github.com/jdx/communique/releases/download/v1.8.0/communique-x86_64-unknown-linux-musl.tar.gz"
+signer = "sigstore-oidc:https://github.com/jdx/communique/.github/workflows/release.yml"
+
+[tools.communique."platforms.macos-arm64"]
+checksum = "sha256:e22c3a05649241fa0e7ffd27d32a436ecde19a23e09f39ff00686ea8d71a5f9b"
+url = "https://github.com/jdx/communique/releases/download/v1.8.0/communique-aarch64-apple-darwin.tar.gz"
+signer = "sigstore-oidc:https://github.com/jdx/communique/.github/workflows/release.yml"
+
+[tools.communique."platforms.windows-x64"]
+checksum = "sha256:1f51b5c434fb65fa5c16826322bdcc25f980083b90eaf24051d12beff9524b58"
+url = "https://github.com/jdx/communique/releases/download/v1.8.0/communique-x86_64-pc-windows-msvc.zip"
+signer = "sigstore-oidc:https://github.com/jdx/communique/.github/workflows/release.yml"
+
 [[tools.docker-compose]]
 version = "5.5.1"
 backend = "github:docker/compose"

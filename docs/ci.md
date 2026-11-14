@@ -45,6 +45,8 @@ regenerates the lockfile with them.
 
 [verify-release.yml](../.github/workflows/verify-release.yml) checks a published release from the outside: GitHub's attestation of the release, the checksums, each archive's provenance and SBOM attestations, and an install with mise on linux/amd64, linux/arm64 and darwin/arm64. `release.yml` calls it last, and it can be dispatched for any tag.
 
+[release-notes.yml](../.github/workflows/release-notes.yml) writes a published release's notes with [communiqué](https://communique.jdx.dev), configured by [communique.toml](../communique.toml). The repository stores no model credential: the job exchanges its GitHub identity for a short-lived Anthropic token by [workload identity federation](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation), naming the identifiers the `release` environment holds as variables. Another workflow can call it with a tag, and it can be dispatched for any release; with `dry_run` it writes the notes to the job summary and leaves the release as it is.
+
 ## The image
 
 - **Name:** `ghcr.io/steading-ai/skift`

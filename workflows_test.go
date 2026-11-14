@@ -3,6 +3,7 @@ package skift_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -16,6 +17,9 @@ type workflow struct {
 	On          map[string]workflowTrigger `yaml:"on"`
 	Permissions map[string]string          `yaml:"permissions"`
 	Jobs        map[string]workflowJob     `yaml:"jobs"`
+
+	// source is the file as written, for what the fields above leave out.
+	source string
 }
 
 type workflowTrigger struct {
@@ -66,7 +70,23 @@ func loadWorkflow(name string) workflow {
 	Expect(err).NotTo(HaveOccurred())
 	var w workflow
 	Expect(yaml.Unmarshal(raw, &w)).To(Succeed(), name)
+	w.source = string(raw)
 	return w
+}
+
+// secretsContext matches each use of the secrets context, capturing the
+// secret's name where the use names one.
+var secretsContext = regexp.MustCompile(`\bsecrets\b(?:\.(\w+))?`)
+
+// secrets names the secret read at each place the workflow uses the
+// secrets context, anywhere in the file. A use that names no single
+// secret, such as passing every secret on, is an empty name.
+func (w workflow) secrets() []string {
+	var names []string
+	for _, use := range secretsContext.FindAllStringSubmatch(w.source, -1) {
+		names = append(names, use[1])
+	}
+	return names
 }
 
 // triggers names the events that start a workflow.
