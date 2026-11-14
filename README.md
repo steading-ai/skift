@@ -20,7 +20,7 @@ Or download an archive from the [releases](https://github.com/steading-ai/skift/
 gh attestation verify skift_*.tar.gz --repo steading-ai/skift --signer-workflow steading-ai/skift/.github/workflows/release.yml
 ```
 
-That is the CLI and the MCP server, which call a running service. [How to deploy skift from the rpm](docs/deploying.md) runs the service under systemd.
+That is the CLI and the MCP server, which call a running service. [How to install skift](docs/install.md) is the full path: a server, the CLI on each workstation, and the skills in your agent harness. [How to deploy skift from the rpm](docs/deploying.md) runs the server under systemd instead of in containers.
 
 ## Status
 
@@ -32,6 +32,7 @@ It is pre-1.0: a minor version may change the interface. [docs/roadmap.md](docs/
 
 To get something done:
 
+- [How to install skift](docs/install.md): a server, the CLI, and a working agent
 - [How to deploy skift from the rpm](docs/deploying.md)
 - [How to develop skift](docs/developing.md)
 

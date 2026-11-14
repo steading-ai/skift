@@ -1,6 +1,6 @@
 # How to deploy skift from the rpm
 
-This guide shows how to run the skift service under systemd from its rpm: build the package, install it, point it at a database, create the first caller, and start the units.
+This guide shows how to run the skift service under systemd from its rpm: build the package, install it, point it at a database, create the first caller, and start the units. To run the service in containers instead, and for the CLI and agent setup that follow either way, see [How to install skift](install.md).
 
 You need:
 
