@@ -53,16 +53,8 @@ regenerates the lockfile with them.
 
 ## Reading it from another repository
 
-GHCR is the one place on GitHub where another repository's workflow can
-pull with nothing but its own `GITHUB_TOKEN`: a package can grant a
-repository read access to Actions. This is why skift publishes an image
-here rather than a release asset — a private repository's release assets
-grant no such thing.
+The package is public, as the repository is, so any workflow or machine pulls `ghcr.io/steading-ai/skift` with no login and no grant.
 
-That grant is a person's step, not this workflow's, and it happens once
-per consuming repository: on the package's page
-(`https://github.com/orgs/steading-ai/packages/container/skift`), under
-**Package settings → Manage Actions access**, add the consuming
-repository with the **Read** role. Once granted, that repository's
-workflows can `docker login ghcr.io -u <actor> -p $GITHUB_TOKEN` and pull
-the image with no further credential.
+## Releases
+
+What a release contains, who builds each part, and how it is signed and verified are governed by [ADR-011](adrs/011-releases-are-immutable-and-attested.md). The image this page describes is the edge feed built from `main`; release artifacts are a separate matter decided there.
