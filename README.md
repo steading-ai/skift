@@ -6,6 +6,20 @@ A software project is a graph of tasks. When every dependency of a task is satis
 
 Skift holds the plan. It does not run agents, schedule work, or define workflows. See [docs/vision.md](docs/vision.md) for why, [docs/core-principles.md](docs/core-principles.md) for the decision filters, and [docs/domain-model.md](docs/domain-model.md) for the model itself.
 
+## Install
+
+With [mise](https://mise.jdx.dev), which verifies the release's signature and pins who signed it:
+
+```sh
+mise use -g packslip:github.com/steading-ai/skift
+```
+
+Or download an archive from the [releases](https://github.com/steading-ai/skift/releases) and check that this repository's release workflow built it:
+
+```sh
+gh attestation verify skift_*.tar.gz --repo steading-ai/skift --signer-workflow steading-ai/skift/.github/workflows/release.yml
+```
+
 ## Status
 
 Working service, CLI, and MCP server, built from the backlog below by an autonomous agent loop. Architecture decisions are recorded in [docs/adrs/](docs/adrs/); milestones in [docs/roadmap.md](docs/roadmap.md).

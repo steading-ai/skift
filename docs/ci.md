@@ -1,6 +1,6 @@
 # CI
 
-Four workflows run here.
+Six workflows live here.
 
 [check.yml](../.github/workflows/check.yml) runs on every pull request and
 every push to `main`: `make lint`, then `make cover`. That is every spec,
@@ -40,6 +40,10 @@ commit behind every action the workflows use, no longer matches them or
 pins a commit that no longer verifies upstream. `gh actions-lock` rewrites
 it. Renovate ([renovate.json5](../renovate.json5)) bumps the actions and
 regenerates the lockfile with them.
+
+[release.yml](../.github/workflows/release.yml) runs when a `v*` tag is pushed. It builds the archives, SBOMs and checksums with `make release`, attests each archive, puts every file on a draft release, signs a packslip manifest for it, and only then publishes, because a published release is immutable. [ADR-011](adrs/011-releases-are-immutable-and-attested.md) has the reasons for that order.
+
+[verify-release.yml](../.github/workflows/verify-release.yml) checks a published release from the outside: GitHub's attestation of the release, the checksums, each archive's provenance and SBOM attestations, and an install with mise on linux/amd64, linux/arm64 and darwin/arm64. `release.yml` calls it last, and it can be dispatched for any tag.
 
 ## The image
 

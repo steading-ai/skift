@@ -15,11 +15,12 @@ BINARY  := skift
 #   v0.1.0, clean          0.1.0
 #   3 commits past v0.1.0  0.1.0+dev.3.g1a2b3c4
 #   the same, edited       0.1.0+dev.3.g1a2b3c4.dirty
+#   v0.2.0-rc.1, clean     0.2.0-rc.1
 GIT_DESCRIBE := $(shell git describe --tags --match 'v*' --long --dirty 2>/dev/null || \
   { git rev-parse --verify -q HEAD >/dev/null 2>&1 && \
     echo "v0.0.0-$$(git rev-list --count HEAD)-g$$(git rev-parse --short HEAD)$$(git diff-index --quiet HEAD -- || echo -dirty)"; })
 VERSION      ?= $(if $(GIT_DESCRIBE),$(shell echo '$(GIT_DESCRIBE)' | sed -E \
-  's/^v//; s/^([^-]+)-0-g[0-9a-f]+$$/\1/; s/^([^-]+)-([0-9]+)-g([0-9a-f]+)$$/\1+dev.\2.g\3/; s/^([^-]+)-([0-9]+)-g([0-9a-f]+)-dirty$$/\1+dev.\2.g\3.dirty/'),0.0.0+dev.unknown)
+  's/^v//; s/^(.+)-0-g[0-9a-f]+$$/\1/; s/^(.+)-([0-9]+)-g([0-9a-f]+)$$/\1+dev.\2.g\3/; s/^(.+)-([0-9]+)-g([0-9a-f]+)-dirty$$/\1+dev.\2.g\3.dirty/'),0.0.0+dev.unknown)
 
 LDFLAGS := -X $(MODULE)/internal/version.version=$(VERSION)
 

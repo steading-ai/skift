@@ -1,0 +1,151 @@
+# Verifies a published release from the outside, the way a stranger would:
+# with public tools and the release's own URLs, and nothing from the build
+# that made it. Then installs it with mise on every platform it was built
+# for. release.yml calls this last; a person can dispatch it for any tag.
+# See docs/adrs/011-releases-are-immutable-and-attested.md.
+name: verify-release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.1.0.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.1.0.
+        required: true
+        type: string
+
+permissions: {}
+
+# It changes nothing, so a newer check of a tag replaces an older one.
+concurrency:
+  group: verify-release-${{ inputs.tag }}
+  cancel-in-progress: true
+
+env:
+  REPO: steading-ai/skift
+  # The only workflow whose attestations count.
+  SIGNER: steading-ai/skift/.github/workflows/release.yml
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # download the release's assets
+      attestations: read # read the attestations made for them
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require a gh that can verify releases
+        run: |
+          gh release verify --help >/dev/null 2>&1 ||
+            { echo "::error::this runner's gh has no 'release verify': $(gh --version | head -1)"; exit 1; }
+
+      - name: Download every asset of the release
+        run: |
+          mkdir assets
+          gh release download "$TAG" --repo "$REPO" --dir assets ||
+            { echo "::error::no release with assets for tag $TAG in $REPO"; exit 1; }
+          ls -l assets
+
+      # GitHub attests an immutable release when it is published.
+      # https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases
+      - name: Verify the release, and each asset against it
+        run: |
+          gh release verify "$TAG" --repo "$REPO"
+          for asset in assets/*; do
+            gh release verify-asset "$TAG" "$asset" --repo "$REPO"
+          done
+
+      - name: Check SHA256SUMS, and that it covers every archive and SBOM
+        working-directory: assets
+        run: |
+          sha256sum --check --strict SHA256SUMS
+          for asset in *.tar.gz *.cdx.json; do
+            grep -q "  $asset\$" SHA256SUMS ||
+              { echo "::error::$asset is not listed in SHA256SUMS"; exit 1; }
+          done
+
+      # Twice for each archive: who built it, and what is in it. Both must
+      # come from the release workflow, run for this tag.
+      - name: Verify each archive's provenance and SBOM attestations
+        run: |
+          for archive in assets/*.tar.gz; do
+            gh attestation verify "$archive" --repo "$REPO" \
+              --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG"
+            gh attestation verify "$archive" --repo "$REPO" \
+              --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
+              --predicate-type https://cyclonedx.org/bom
+          done
+
+  install:
+    name: install (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read # read the release mise installs from
+      attestations: read # mise checks an asset's attestations as it installs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_amd64
+            runner: ubuntu-latest
+            uname: Linux x86_64
+          - platform: linux_arm64
+            runner: ubuntu-24.04-arm
+            uname: Linux aarch64
+          - platform: darwin_arm64
+            runner: macos-latest
+            uname: Darwin arm64
+    env:
+      MISE_GITHUB_TOKEN: ${{ github.token }}
+      WANT_UNAME: ${{ matrix.uname }}
+    steps:
+      # mise alone: there is no checkout, so nothing of this repository is
+      # on the runner but what a release hands out.
+      - uses: jdx/mise-action@v3.6.3
+        with:
+          install: false
+          cache: false
+
+      - name: The runner is the platform this leg is named for
+        run: |
+          test "$(uname -sm)" = "$WANT_UNAME" ||
+            { echo "::error::runner is $(uname -sm), not $WANT_UNAME"; exit 1; }
+
+      # https://mise.jdx.dev/dev-tools/backends/packslip.html
+      - name: Install from the signed manifest, pinning its signer
+        run: |
+          version="${TAG#v}"
+          mkdir packslip && cd packslip
+          mise use "packslip:github.com/$REPO@$version"
+          test "$(mise exec -- skift version)" = "skift version $version"
+          mise lock
+          grep -F "signer = \"sigstore-oidc:https://github.com/$SIGNER\"" mise.lock
+
+      # https://mise.jdx.dev/dev-tools/packslip-resources.html
+      - name: The manifest delivers the agent skills
+        working-directory: packslip
+        run: |
+          mise skills ls > skills.txt
+          cat skills.txt
+          for skill in skift epic; do
+            awk '{ print $1 }' skills.txt | grep -qx "$skill" ||
+              { echo "::error::the release declares no $skill skill"; exit 1; }
+          done
+
+      # https://mise.jdx.dev/dev-tools/backends/github.html
+      - name: Install by asset name, as someone who has not heard of packslip
+        run: |
+          version="${TAG#v}"
+          mkdir github && cd github
+          mise use "github:$REPO@$version"
+          test "$(mise exec -- skift version)" = "skift version $version"
