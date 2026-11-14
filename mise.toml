@@ -1,6 +1,5 @@
 # Tool versions for skift.
 #
-# The harness that builds this project runs on Python. The project itself is Go.
 # Every tool below installs through mise alone; the only system package the
 # build assumes is a container runtime for the database specs and for
 # compose.yaml, which runs through the docker-compose pinned here. Locally that
@@ -8,7 +7,6 @@
 min_version = "2026.10.17"
 
 [tools]
-python = "3.14.9"
 go = "1.26.10"
 buf = "1.72.0"
 sqlc = "1.31.1"
@@ -24,6 +22,3 @@ docker-compose = "5.5.1"
 jactionlint = "2.5.0"
 shellcheck = "0.11.0"
 communique = "1.8.0"
-
-[env]
-_.python.venv = { path = "harness/.venv", create = true }

@@ -208,7 +208,3 @@ docs:
   order: [vision, core-principles, domain-model, architecture, agent-skills, roadmap, ci]
   exclude:
     - docs/adrs/000-adr-template.md
-  groups:
-    plans: Plans
-    research: Research
-    retrospectives: Retrospectives

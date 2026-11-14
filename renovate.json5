@@ -4,4 +4,7 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["github>ivy/renovate-config"],
   enabledManagers: ["github-actions", "custom.regex"],
+  // archive/ holds retired material, which takes no updates.
+  // https://docs.renovatebot.com/configuration-options/#ignorepaths
+  ignorePaths: ["archive/**"],
 }
