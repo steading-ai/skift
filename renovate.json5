@@ -4,8 +4,9 @@
 // start, the hk release hk.pkl names, the GitHub Actions in .github/workflows
 // with their lockfile actions.lock, and the gh-actions-lock release the
 // actions-lock workflow installs. No manager is switched off, so a new kind of
-// manifest is managed from the day it is added. The preset merges an update
-// once its pull request's checks pass; docs/ci.md says which those are.
+// manifest is managed from the day it is added. The preset holds a release for
+// three days and then merges its update once the pull request's checks pass,
+// with no exception here; docs/ci.md says which checks those are.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: [
@@ -73,12 +74,6 @@
       matchDepNames: ["!go"],
       // https://docs.renovatebot.com/configuration-options/#extractversion
       extractVersion: "^v?(?<version>.+)$",
-    },
-    {
-      description: "No check runs hk, which is the git hooks, or gremlins, which is make mutate, so a person merges their updates. The preset's README gives the rule under Adding an exception.",
-      matchDepNames: ["hk", "go:github.com/go-gremlins/gremlins/cmd/gremlins"],
-      // https://docs.renovatebot.com/configuration-options/#automerge
-      automerge: false,
     },
   ],
 }
