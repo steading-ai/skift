@@ -214,7 +214,9 @@ var _ = Describe("skift serve readiness", func() {
 	It("reports ready once the database answers, and stopping on shutdown", Label(testsupport.DBLabel), func(ctx SpecContext) {
 		session, got := startServe(binary, pg.Database(ctx).Config().ConnString())
 		Eventually(got, 15*time.Second).Should(Receive(ContainSubstring("READY=1")))
-		Expect(string(session.Err.Contents())).To(ContainSubstring("database reachable; ready"))
+		// The log line is written before the notification is sent, but it
+		// reaches this process down a pipe and may arrive after it.
+		Eventually(session.Err).Should(gbytes.Say("database reachable; ready"))
 
 		session.Signal(syscall.SIGTERM)
 		Eventually(got, 10*time.Second).Should(Receive(ContainSubstring("STOPPING=1")))
