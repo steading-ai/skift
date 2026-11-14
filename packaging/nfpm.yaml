@@ -16,6 +16,7 @@ description: |
   the CLI that talks to either.
 vendor: Ivy Evans
 homepage: https://github.com/steading-ai/skift
+license: ISC
 depends:
   - systemd
 contents:

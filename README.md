@@ -241,3 +241,7 @@ marker such as `+dev.3.g1a2b3c4.dirty`.
 - [Retrospectives](docs/retrospectives/)
 - [Current plan: prove the bet](docs/plans/2026-09-prove-the-bet.md)
 - [Architecture decision records](docs/adrs/)
+
+## License
+
+Skift is released under the [ISC license](LICENSE.md).
