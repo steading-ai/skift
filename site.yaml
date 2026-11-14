@@ -206,6 +206,21 @@ pairs:
     body: lets you talk an idea through with an agent and have it file the nodes.
 
 docs:
-  order: [install, vision, core-principles, domain-model, architecture, agent-skills, deploying, verifying-a-release, developing, releasing, roadmap, ci]
+  # The navigation, by who is reading. A page not listed here shows under "More".
+  sections:
+    - title: Using skift
+      pages:
+        - install: Install
+        - agent-skills: Agent skills and MCP
+        - deploying: Deploy from the rpm
+        - verifying-a-release: Verify a release
+    - title: Understanding skift
+      pages: [vision, core-principles, domain-model, architecture, roadmap, adrs/]
+    - title: Developing skift
+      collapsed: true
+      pages:
+        - developing: Develop
+        - ci
+        - releasing: Cut a release
   exclude:
     - docs/adrs/000-adr-template.md
