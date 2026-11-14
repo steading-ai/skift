@@ -1,0 +1,207 @@
+# Writes a published release's notes with communiqué. A published release
+# is immutable but its title and notes stay editable, so this runs after
+# publication, and a failure here costs the release nothing but its notes.
+# The repository stores no model credential: the job exchanges its GitHub
+# identity for an Anthropic token that lasts minutes. Another workflow can
+# call this with the tag it published; a person can dispatch it for any
+# release, with dry_run to read the notes before they replace anything.
+# See docs/adrs/011-releases-are-immutable-and-attested.md, decision 8.
+name: release-notes
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.1.0.
+        required: true
+        type: string
+      dry_run:
+        description: Write the notes to the job summary and leave the release as it is.
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.1.0.
+        required: true
+        type: string
+      dry_run:
+        description: Write the notes to the job summary and leave the release as it is.
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+# One run per tag at a time, and never cancelled: a run that is under way
+# has already been charged for its model calls.
+concurrency:
+  group: release-notes-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  notes:
+    name: notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds, as variables, the identifiers the token
+    # exchange names.
+    environment: release
+    permissions:
+      id-token: write # ask GitHub for the identity token the exchange presents
+      contents: write # replace the release's title and notes
+      pull-requests: read # communiqué reads the pull requests the release merged
+    env:
+      TAG: ${{ inputs.tag }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Full history and every tag: the notes describe the commits between
+      # two tags. The checkout is the ref the workflow runs on, so
+      # communique.toml and the pinned communiqué are that ref's, whichever
+      # tag the notes are for.
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # communiqué alone, and from no cache another run could have written:
+      # this job can write to releases.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          install_args: communique
+          cache: false
+
+      # Before any model call is paid for. The notes as they stand are kept
+      # so a dry run can show it left them alone.
+      - name: The tag exists and has a release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git rev-parse --verify --quiet "refs/tags/$TAG^{commit}" >/dev/null ||
+            { echo "::error::this repository has no tag $TAG"; exit 1; }
+          gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/body.before" ||
+            { echo "::error::tag $TAG has no release"; exit 1; }
+
+      # GitHub's identity token for this job is exchanged for an Anthropic
+      # access token, once: an identity token is good for one exchange.
+      # Each token is masked on the line after it comes to exist. The
+      # claims printed are the ones a federation rule is matched against,
+      # and none is secret.
+      # https://docs.github.com/en/actions/reference/security/oidc
+      # https://platform.claude.com/docs/en/manage-claude/wif-reference
+      - name: Exchange this job's identity for a model token
+        id: token
+        env:
+          AUDIENCE: https://api.anthropic.com
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+        run: |
+          set -euo pipefail
+
+          jwt="$(curl -sS --fail --retry 3 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r '.value // empty')"
+          test -n "$jwt" ||
+            { echo "::error::GitHub issued no identity token"; exit 1; }
+          echo "::add-mask::$jwt"
+
+          echo "The identity GitHub vouches for:"
+          printf '%s' "$jwt" | jq -rR '
+            (split(".")[1] | gsub("-"; "+") | gsub("_"; "/")) as $claims
+            | $claims + ("=" * ((4 - ($claims | length) % 4) % 4) // "")
+            | @base64d | fromjson
+            | {sub, aud, job_workflow_ref, ref, repository}'
+
+          reply="$(jwt="$jwt" jq -n '{
+              grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+              assertion: $ENV.jwt,
+              federation_rule_id: $ENV.ANTHROPIC_FEDERATION_RULE_ID,
+              organization_id: $ENV.ANTHROPIC_ORGANIZATION_ID,
+              service_account_id: $ENV.ANTHROPIC_SERVICE_ACCOUNT_ID,
+              workspace_id: $ENV.ANTHROPIC_WORKSPACE_ID
+            }' | curl -sS -w '\n%{http_code}' -H 'content-type: application/json' \
+              --data-binary @- https://api.anthropic.com/v1/oauth/token)"
+          status="${reply##*$'\n'}"
+          body="${reply%$'\n'*}"
+
+          access_token="$(printf '%s' "$body" | jq -r '.access_token // empty' 2>/dev/null || true)"
+          if test -n "$access_token"; then
+            echo "::add-mask::$access_token"
+          fi
+
+          if test "$status" != 200 || test -z "$access_token"; then
+            echo "::error::the token exchange answered HTTP $status"
+            echo "A 401 says only that the exchange was refused; the reason is in the Claude Console's authentication history."
+            printf '%s' "$body" | jq 'del(.access_token)' 2>/dev/null ||
+              echo "The answer was not JSON."
+            exit 1
+          fi
+
+          printf '%s' "$body" |
+            jq -r '"The model token is good for \(.expires_in)s, with scope \(.scope)."'
+          {
+            echo "access_token=$access_token"
+            printf '%s' "$body" | jq -r '"expires_in=\(.expires_in)"'
+          } >> "$GITHUB_OUTPUT"
+
+      # A stable release is compared with the stable release before it, so
+      # its notes cover what its release candidates brought; a prerelease
+      # is compared with whichever tag came before it. A dry run asks the
+      # model for exactly what a real run does, and differs only in not
+      # publishing the answer. The notes go to a file, not the log: they
+      # are a model's words. https://communique.jdx.dev/cli/generate
+      - name: Write the notes
+        env:
+          OPENAI_API_KEY: ${{ steps.token.outputs.access_token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPIRES_IN: ${{ steps.token.outputs.expires_in }}
+        run: |
+          case "$TAG" in *-*) channel=all ;; *) channel=stable ;; esac
+          flags=(--channel "$channel" --verbose --output "$RUNNER_TEMP/notes.md")
+          if test "$DRY_RUN" != true; then
+            flags+=(--github-release)
+          fi
+
+          status=0
+          communique generate "$TAG" "${flags[@]}" || status=$?
+          echo "communiqué ran for ${SECONDS}s; the model token was good for ${EXPIRES_IN}s."
+          exit "$status"
+
+      # In the job summary, and in the log with workflow commands stopped,
+      # so that no line of the notes is read as one.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#stopping-and-starting-workflow-commands
+      - name: Show the notes, and on a dry run that the release is as it was
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if test "$DRY_RUN" = true; then
+            gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/body.after"
+            cmp "$RUNNER_TEMP/body.before" "$RUNNER_TEMP/body.after" ||
+              { echo "::error::the notes of release $TAG changed during a dry run"; exit 1; }
+            heading="Dry run: notes for $TAG"
+            outcome="Nothing was published: the release's notes are byte for byte what they were before this run. Below the line is what a run without dry_run would write."
+          else
+            heading="Notes for $TAG"
+            outcome="Below the line is what this run wrote to the release."
+          fi
+
+          {
+            echo "## $heading"
+            echo
+            echo "$outcome"
+            echo
+            echo "---"
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$heading. $outcome"
+          resume="$(cat /proc/sys/kernel/random/uuid)"
+          echo "::stop-commands::$resume"
+          cat "$RUNNER_TEMP/notes.md"
+          echo
+          echo "::$resume::"

@@ -1,0 +1,23 @@
+# How communiqué writes a release's notes. .github/workflows/release-notes.yml
+# runs it, and docs/adrs/011-releases-are-immutable-and-attested.md, decision
+# 8, says why. Every key: https://communique.jdx.dev/guide/configuration
+
+system_extra = """
+Write for someone who installs and runs skift. Lead with what changes for them: the CLI, the MCP server, the service and its API, the Claude Code plugin and its skills, and how skift is installed and verified.
+Put internal work last, in one short section: CI, specs, tooling, refactoring, the build harness, and design documents. Leave it out when a release has nothing else to say about it.
+"""
+
+context = """
+Skift is agent-first project management built on directed acyclic graphs. A software project is a graph of tasks. When every dependency of a task is satisfied, the task is ready, and a ready task is something an agent can start on. Skift is the durable store for that graph: agents and humans build and mutate a backlog through one API, and orchestrators consume the set of ready work to dispatch agents in parallel. Skift holds the plan. It does not run agents, schedule work, or define workflows.
+It ships as one binary, `skift`, that is a CLI, an MCP server, and a service.
+"""
+
+[defaults]
+model = "claude-opus-5-5"
+
+# The workflow holds no API key: it authenticates as a workload, with a
+# short-lived bearer token. communiqué's openai provider is the one that
+# sends a bearer token, so it is pointed at Anthropic's endpoint for that
+# protocol. https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk
+provider = "openai"
+base_url = "https://api.anthropic.com/v1"
