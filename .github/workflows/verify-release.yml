@@ -111,7 +111,7 @@ jobs:
     steps:
       # mise alone: there is no checkout, so nothing of this repository is
       # on the runner but what a release hands out.
-      - uses: jdx/mise-action@v3.6.3
+      - uses: jdx/mise-action@v5.2.7
         with:
           install: false
           cache: false
