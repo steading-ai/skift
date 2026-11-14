@@ -1,0 +1,77 @@
+# Builds what a release uploads: an archive, an SBOM and a checksum line for
+# each platform. `make release` runs this, always as a snapshot, so a
+# rehearsal on a laptop and the release workflow take one path. It publishes
+# nothing; creating the release, the image, signing and attesting belong to
+# the workflow. See docs/adrs/011-releases-are-immutable-and-attested.md.
+#
+# Reference: https://goreleaser.com/customization/
+version: 2
+
+project_name: skift
+dist: dist/goreleaser
+
+# The Makefile hands over the version and the commit's time. The version,
+# so `make build`, the rpm, the image and a release all carry the one it
+# printed. The time, because a snapshot in a repository goreleaser cannot
+# fully read (one with no remote, say) quietly uses the time of the build
+# for its own CommitDate, and the archives then differ from run to run.
+snapshot:
+  version_template: "{{ .Env.VERSION }}"
+
+builds:
+  - main: ./cmd/skift
+    binary: skift
+    env:
+      - CGO_ENABLED=0
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X github.com/steading-ai/skift/internal/version.version={{ .Env.VERSION }}
+    # The commit's time, not the build's, so the same commit builds the
+    # same bytes. https://goreleaser.com/blog/reproducible-builds/
+    mod_timestamp: "{{ .Env.SOURCE_DATE_EPOCH }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "skift_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      owner: root
+      group: root
+      mode: 0755
+      mtime: "{{ .Env.COMMIT_DATE }}"
+    files:
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .Env.COMMIT_DATE }}"
+      - src: LICENSE.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .Env.COMMIT_DATE }}"
+
+sboms:
+  - artifacts: archive
+    cmd: syft
+    args: ["$artifact", "--output", "cyclonedx-json=$document"]
+    documents:
+      - "skift_{{ .Version }}_{{ .Os }}_{{ .Arch }}.cdx.json"
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+# goreleaser publishes nothing here, and with its release step enabled it
+# would refuse a checkout that has no remote.
+release:
+  disable: true
+
+changelog:
+  disable: true

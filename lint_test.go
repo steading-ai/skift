@@ -29,8 +29,10 @@ func appendToFile(root, rel, content string) {
 }
 
 // makeLint runs `make lint` in the given checkout and waits for it to exit.
-// Every package compiles from the shared build cache, so a couple of
-// minutes covers a cold golangci-lint run with margin. The copy is made a
+// Every package compiles from the shared build cache, so a cold
+// golangci-lint run takes under a minute alone; the budget is four, because
+// on a hosted runner six of these run at once on four cores, and the same
+// job has taken eight minutes one run and thirteen the next. The copy is made a
 // git repository first: jactionlint finds the workflows, and the lockfile
 // that pins their actions, only inside one.
 func makeLint(dir string) *gexec.Session {
@@ -40,7 +42,7 @@ func makeLint(dir string) *gexec.Session {
 	cmd.Dir = dir
 	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
-	return session.Wait(2 * time.Minute)
+	return session.Wait(4 * time.Minute)
 }
 
 var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {

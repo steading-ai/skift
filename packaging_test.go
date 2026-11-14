@@ -111,6 +111,18 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			Expect(makeVersion(dir)).To(MatchRegexp(`^9\.9\.9\+dev\.1\.g[0-9a-f]+$`))
 		})
 
+		// A release candidate's tag has a hyphen of its own, which is not
+		// the one git describe adds.
+		It("keeps a prerelease tag whole", func() {
+			git(dir, "tag", "-d", "v9.9.9")
+			git(dir, "tag", "v9.9.9-rc.1")
+			Expect(makeVersion(dir)).To(Equal("9.9.9-rc.1"))
+
+			appendToFile(dir, "README.md", "\nedited\n")
+			git(dir, "commit", "-q", "--no-verify", "-am", "edit")
+			Expect(makeVersion(dir)).To(MatchRegexp(`^9\.9\.9-rc\.1\+dev\.1\.g[0-9a-f]+$`))
+		})
+
 		It("is semver-shaped with no tag at all", func() {
 			git(dir, "tag", "-d", "v9.9.9")
 			Expect(makeVersion(dir)).To(MatchRegexp(`^0\.0\.0\+dev\.1\.g[0-9a-f]+$`))

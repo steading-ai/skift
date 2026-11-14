@@ -15,11 +15,12 @@ BINARY  := skift
 #   v0.1.0, clean          0.1.0
 #   3 commits past v0.1.0  0.1.0+dev.3.g1a2b3c4
 #   the same, edited       0.1.0+dev.3.g1a2b3c4.dirty
+#   v0.2.0-rc.1, clean     0.2.0-rc.1
 GIT_DESCRIBE := $(shell git describe --tags --match 'v*' --long --dirty 2>/dev/null || \
   { git rev-parse --verify -q HEAD >/dev/null 2>&1 && \
     echo "v0.0.0-$$(git rev-list --count HEAD)-g$$(git rev-parse --short HEAD)$$(git diff-index --quiet HEAD -- || echo -dirty)"; })
 VERSION      ?= $(if $(GIT_DESCRIBE),$(shell echo '$(GIT_DESCRIBE)' | sed -E \
-  's/^v//; s/^([^-]+)-0-g[0-9a-f]+$$/\1/; s/^([^-]+)-([0-9]+)-g([0-9a-f]+)$$/\1+dev.\2.g\3/; s/^([^-]+)-([0-9]+)-g([0-9a-f]+)-dirty$$/\1+dev.\2.g\3.dirty/'),0.0.0+dev.unknown)
+  's/^v//; s/^(.+)-0-g[0-9a-f]+$$/\1/; s/^(.+)-([0-9]+)-g([0-9a-f]+)$$/\1+dev.\2.g\3/; s/^(.+)-([0-9]+)-g([0-9a-f]+)-dirty$$/\1+dev.\2.g\3.dirty/'),0.0.0+dev.unknown)
 
 LDFLAGS := -X $(MODULE)/internal/version.version=$(VERSION)
 
@@ -29,7 +30,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version cover mutate test test-unit test-db test-acceptance test-policy lint check-generated generate clean package db-up db-down db-reset db-migrate
+.PHONY: all build version cover mutate test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release db-up db-down db-reset db-migrate
 
 all: build
 
@@ -144,6 +145,7 @@ lint:
 	buf lint
 	opa check --strict policy
 	opa fmt --fail --list policy
+	goreleaser check --quiet
 	$(MAKE) --no-print-directory check-generated
 
 # Generated code is committed, so a consumer needs no proto or SQL toolchain.
@@ -196,6 +198,30 @@ dist/skift-linux-%: FORCE
 	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/skift
 
 FORCE:
+
+# What a release uploads, in dist/release/: for each platform an archive
+# and its SBOM, and SHA256SUMS over them all. goreleaser builds them from
+# .goreleaser.yaml, always as a snapshot: it publishes nothing and takes
+# its version from here, so a rehearsal and a release are the same build.
+# The linux binaries are then lifted out of their archives to where
+# packaging/Containerfile reads them, so the image holds the very bytes a
+# release's archives do.
+#
+# Every timestamp in an archive is the commit's, passed in both spellings
+# goreleaser's templates take, so one commit always builds the same bytes.
+RELEASE_DIR := dist/release
+
+release:
+	rm -rf $(RELEASE_DIR)
+	epoch=$$(git log -1 --format=%ct) && \
+	date=$$(TZ=UTC0 git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd) && \
+	VERSION='$(VERSION)' SOURCE_DATE_EPOCH=$$epoch COMMIT_DATE=$$date goreleaser release --snapshot --clean
+	mkdir -p $(RELEASE_DIR)
+	cp dist/goreleaser/skift_$(VERSION)_*.tar.gz dist/goreleaser/skift_$(VERSION)_*.cdx.json dist/goreleaser/SHA256SUMS $(RELEASE_DIR)/
+	for arch in amd64 arm64; do \
+	  tar -xzOf $(RELEASE_DIR)/skift_$(VERSION)_linux_$$arch.tar.gz skift > dist/skift-linux-$$arch && \
+	  chmod 0755 dist/skift-linux-$$arch || exit 1; \
+	done
 
 # Development database. See compose.yaml and the "Developing" section of README.md.
 

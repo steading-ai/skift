@@ -1,0 +1,226 @@
+# A pushed v* tag becomes a release: built, attested, drafted, signed, and
+# only then published, because a published release is immutable and nothing
+# can be added to it. Each job holds the least it needs; the two that can
+# write to the release run nothing but gh. The decisions are in
+# docs/adrs/011-releases-are-immutable-and-attested.md, and docs/ci.md says
+# what each workflow does.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+# One run per tag, never cancelled part way: a half-published release
+# cannot be taken back.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  # Builds what the release uploads and attests each archive: who built
+  # it, and what is in it.
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # sign the attestations as this workflow
+      attestations: write # record them against the repository
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # Full history and tags: the Makefile's VERSION comes from them.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Before anything else touches the checkout, so the answer is the
+      # tag's and not a later step's.
+      - name: The tag is the version the Makefile computes
+        id: version
+        run: |
+          version="$(make version)"
+          test "v$version" = "$TAG" ||
+            { echo "::error::the tag is $TAG but make version says $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # No cache: what this job builds is published, so it restores
+      # nothing an earlier run could have written.
+      - uses: jdx/mise-action@v3.6.3
+        with:
+          cache: false
+
+      # A binary records whether its source tree was modified, so a build
+      # from a tree a step has changed would not be the one anyone else
+      # gets by building the tag.
+      - name: Build what the release uploads, from the tree as tagged
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          test -z "$(git status --porcelain)" ||
+            { echo "::error::the tree is not as the tag left it"; git status --short; exit 1; }
+          make release VERSION="$VERSION"
+
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/release/*.tar.gz
+
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/release/skift_${{ steps.version.outputs.version }}_linux_amd64.tar.gz
+          sbom-path: dist/release/skift_${{ steps.version.outputs.version }}_linux_amd64.cdx.json
+
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/release/skift_${{ steps.version.outputs.version }}_linux_arm64.tar.gz
+          sbom-path: dist/release/skift_${{ steps.version.outputs.version }}_linux_arm64.cdx.json
+
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/release/skift_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz
+          sbom-path: dist/release/skift_${{ steps.version.outputs.version }}_darwin_arm64.cdx.json
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release
+          path: dist/release/
+          if-no-files-found: error
+
+  # Refuses an incomplete release, then puts every file on a draft. Assets
+  # reach later jobs as workflow artifacts: a job with contents: read
+  # cannot download a draft's.
+  draft:
+    name: draft
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the draft and upload to it
+      attestations: read # check each archive was attested
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SIGNER: ${{ github.repository }}/.github/workflows/release.yml
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: release
+          path: release
+
+      - name: Every archive has its SBOM, its checksum and both attestations
+        working-directory: release
+        run: |
+          sha256sum --check --strict SHA256SUMS
+          archives=0
+          for archive in *.tar.gz; do
+            archives=$((archives + 1))
+            sbom="${archive%.tar.gz}.cdx.json"
+            test -f "$sbom" || { echo "::error::$archive has no SBOM"; exit 1; }
+            for file in "$archive" "$sbom"; do
+              grep -q "  $file\$" SHA256SUMS ||
+                { echo "::error::$file is not in SHA256SUMS"; exit 1; }
+            done
+            gh attestation verify "$archive" --repo "$GH_REPO" \
+              --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG"
+            gh attestation verify "$archive" --repo "$GH_REPO" \
+              --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
+              --predicate-type https://cyclonedx.org/bom
+          done
+          test "$archives" -eq 3 ||
+            { echo "::error::expected 3 archives, found $archives"; exit 1; }
+
+      # A tag with a semver prerelease part, such as v0.2.0-rc.1, is a
+      # prerelease. The notes are GitHub's until better ones are written;
+      # they stay editable after the release is published.
+      - name: Draft the release with every asset
+        run: |
+          flags=(--draft --verify-tag --generate-notes --title "$TAG")
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" "${flags[@]}" release/*
+
+  # Signs the manifest installers read, as this workflow. It can write
+  # nothing: the bundle leaves as a workflow artifact.
+  # https://packslip.dev/docs/publishing/
+  sign:
+    name: sign
+    needs: [build, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # sign the manifest as this workflow
+    steps:
+      # The skills are declared by their path at this commit.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: release
+          path: release
+
+      # The archives were attested as they were built, so the manifest
+      # links those attestations. Resource syntax:
+      # https://packslip.dev/docs/resources/
+      - uses: jdx/packslip@v1.11.3
+        id: packslip
+        with:
+          artifacts: release/*.tar.gz
+          bin: skift
+          attest: link
+          upload: false
+          resources: |
+            sbom/cyclonedx@linux/x86_64=asset:release/skift_${{ needs.build.outputs.version }}_linux_amd64.cdx.json
+            sbom/cyclonedx@linux/aarch64=asset:release/skift_${{ needs.build.outputs.version }}_linux_arm64.cdx.json
+            sbom/cyclonedx@darwin/aarch64=asset:release/skift_${{ needs.build.outputs.version }}_darwin_arm64.cdx.json
+            skill/skift=repo:plugin/skift/skills/skift
+            skill/epic=repo:plugin/skift/skills/epic
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: packslip
+          path: ${{ steps.packslip.outputs.bundle }}
+          if-no-files-found: error
+
+  # Adds the manifest, the last asset, and publishes. From here the
+  # release cannot change.
+  publish:
+    name: publish
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # upload the manifest and publish the draft
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: packslip
+          path: packslip
+
+      - name: Add the manifest and publish
+        run: |
+          gh release upload "$TAG" packslip/packslip.sigstore.json
+          gh release edit "$TAG" --draft=false
+
+  # Checks the published release from outside and installs it with mise
+  # on every platform.
+  verify:
+    name: verify
+    needs: publish
+    permissions:
+      contents: read
+      attestations: read
+    uses: ./.github/workflows/verify-release.yml
+    with:
+      tag: ${{ github.ref_name }}

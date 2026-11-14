@@ -57,7 +57,8 @@ make cover              # statement coverage of hand-written code, gated by cove
 make test-race          # all specs under the race detector
 make fuzz               # the fuzz targets in *_fuzz_test.go, FUZZ_TIME each
 make mutate             # mutation testing over internal/domain; slow, read the survivors. DIFF=main for changed lines only
-make lint               # go vet, golangci-lint, buf, opa, and a generated-code check
+make lint               # go vet, golangci-lint, buf, opa, jactionlint over the workflows, and a generated-code check
+make release            # what a release uploads: archives, SBOMs and checksums, in dist/release/
 make generate           # buf and sqlc codegen; commit the output
 make db-up              # local PostgreSQL for interactive work
 ```

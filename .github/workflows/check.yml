@@ -55,7 +55,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@v3.6.3
       # The root specs run `make lint` in copies of the tree and give it
-      # two minutes, which holds only once the build and lint caches are
+      # four minutes, which holds only once the build and lint caches are
       # warm, as the check job's own lint leaves them.
       - run: make lint
       - run: make test-race
