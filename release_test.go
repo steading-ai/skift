@@ -23,6 +23,12 @@ import (
 // appear in asset names.
 var releasePlatforms = []string{"linux_amd64", "linux_arm64", "darwin_arm64"}
 
+// releaseVersion is the version the specs build a release as. A release
+// candidate's, so the names carry a prerelease part as a rehearsal's do,
+// and so the stamp can be found in a binary that cannot run here: no
+// dependency carries this string by chance, as several do "9.9.9".
+const releaseVersion = "9.9.9-rc.1"
+
 // archiveEntry is one member of a release archive: its header and bytes.
 type archiveEntry struct {
 	header *tar.Header
@@ -72,13 +78,22 @@ func sha256File(path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// archiveSums maps each release archive of a version to its sha256.
-func archiveSums(release, version string) map[string]string {
+// archiveName is the name of a platform's archive in a release.
+func archiveName(platform string) string {
+	return "skift_" + releaseVersion + "_" + platform + ".tar.gz"
+}
+
+// sbomName is the name of a platform's SBOM in a release.
+func sbomName(platform string) string {
+	return "skift_" + releaseVersion + "_" + platform + ".cdx.json"
+}
+
+// archiveSums maps each release archive to its sha256.
+func archiveSums(release string) map[string]string {
 	GinkgoHelper()
 	sums := map[string]string{}
 	for _, platform := range releasePlatforms {
-		name := "skift_" + version + "_" + platform + ".tar.gz"
-		sums[name] = sha256File(filepath.Join(release, name))
+		sums[archiveName(platform)] = sha256File(filepath.Join(release, archiveName(platform)))
 	}
 	return sums
 }
@@ -86,24 +101,28 @@ func archiveSums(release, version string) map[string]string {
 // What `make release` leaves in dist/release, which is what the release
 // workflow uploads. docs/adrs/011-releases-are-immutable-and-attested.md
 // fixes the names.
-var _ = Describe("The release", Label("unit", "slow"), Ordered, func() {
+//
+// Serial, because each build compiles for three platforms: beside the
+// suite's other specs it starves the ones that run `make lint` against a
+// two-minute budget.
+var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 	var dir, release string
 
 	// The copy gets a commit of its own: the archives take every mtime
-	// from it. One build serves the specs up to the two that rebuild.
+	// from it. One build serves every spec but the last, which rebuilds.
 	BeforeAll(func() {
 		dir = checkout()
 		git(dir, "init", "-q")
 		git(dir, "add", "-A")
 		git(dir, "commit", "-q", "--no-verify", "-m", "initial")
-		runIn(dir, 10*time.Minute, "make", "release", "VERSION=9.9.9")
+		runIn(dir, 10*time.Minute, "make", "release", "VERSION="+releaseVersion)
 		release = filepath.Join(dir, "dist", "release")
 	})
 
 	It("builds every platform's archive and SBOM, and nothing else", func() {
 		want := []string{"SHA256SUMS"}
 		for _, platform := range releasePlatforms {
-			want = append(want, "skift_9.9.9_"+platform+".tar.gz", "skift_9.9.9_"+platform+".cdx.json")
+			want = append(want, archiveName(platform), sbomName(platform))
 		}
 
 		entries, err := os.ReadDir(release)
@@ -118,7 +137,7 @@ var _ = Describe("The release", Label("unit", "slow"), Ordered, func() {
 	It("puts the binary, the readme and the licence in each archive, owned by root", func() {
 		for _, platform := range releasePlatforms {
 			var names []string
-			for _, e := range readArchive(filepath.Join(release, "skift_9.9.9_"+platform+".tar.gz")) {
+			for _, e := range readArchive(filepath.Join(release, archiveName(platform))) {
 				names = append(names, e.header.Name)
 				Expect(e.header.Uid).To(BeZero(), "%s in %s", e.header.Name, platform)
 				Expect(e.header.Gid).To(BeZero(), "%s in %s", e.header.Name, platform)
@@ -130,22 +149,29 @@ var _ = Describe("The release", Label("unit", "slow"), Ordered, func() {
 	It("stamps the archived binary with the version it was built as", func() {
 		bin := filepath.Join(GinkgoT().TempDir(), "skift")
 		Expect(os.WriteFile(bin,
-			archivedBinary(filepath.Join(release, "skift_9.9.9_linux_"+runtime.GOARCH+".tar.gz")), 0o755)).To(Succeed())
-		Expect(runIn(dir, time.Minute, bin, "version")).To(Equal("skift version 9.9.9"))
+			archivedBinary(filepath.Join(release, archiveName("linux_"+runtime.GOARCH))), 0o755)).To(Succeed())
+		Expect(runIn(dir, time.Minute, bin, "version")).To(Equal("skift version " + releaseVersion))
+	})
+
+	// The darwin binary cannot run here, so the stamp is looked for in
+	// its bytes.
+	It("stamps the darwin binary too", func() {
+		darwin := archivedBinary(filepath.Join(release, archiveName("darwin_arm64")))
+		Expect(bytes.Contains(darwin, []byte(releaseVersion))).To(BeTrue())
 	})
 
 	It("leaves the image the binaries that are in the linux archives", func() {
 		for _, arch := range []string{"amd64", "arm64"} {
 			staged, err := os.ReadFile(filepath.Join(dir, "dist", "skift-linux-"+arch))
 			Expect(err).NotTo(HaveOccurred())
-			archived := archivedBinary(filepath.Join(release, "skift_9.9.9_linux_"+arch+".tar.gz"))
+			archived := archivedBinary(filepath.Join(release, archiveName("linux_"+arch)))
 			Expect(bytes.Equal(staged, archived)).To(BeTrue(), arch)
 		}
 	})
 
 	It("catalogues each archive as a CycloneDX SBOM naming its modules", func() {
 		for _, platform := range releasePlatforms {
-			raw, err := os.ReadFile(filepath.Join(release, "skift_9.9.9_"+platform+".cdx.json"))
+			raw, err := os.ReadFile(filepath.Join(release, sbomName(platform)))
 			Expect(err).NotTo(HaveOccurred())
 			var bom struct {
 				BomFormat  string `json:"bomFormat"`
@@ -179,27 +205,17 @@ var _ = Describe("The release", Label("unit", "slow"), Ordered, func() {
 
 		var want []string
 		for _, platform := range releasePlatforms {
-			want = append(want, "skift_9.9.9_"+platform+".tar.gz", "skift_9.9.9_"+platform+".cdx.json")
+			want = append(want, archiveName(platform), sbomName(platform))
 		}
 		Expect(listed).To(ConsistOf(want))
 	})
 
 	It("builds the same archives from the same commit", func() {
-		before := archiveSums(release, "9.9.9")
+		before := archiveSums(release)
 
 		Expect(os.RemoveAll(filepath.Join(dir, "dist"))).To(Succeed())
-		runIn(dir, 10*time.Minute, "make", "release", "VERSION=9.9.9")
+		runIn(dir, 10*time.Minute, "make", "release", "VERSION="+releaseVersion)
 
-		Expect(archiveSums(release, "9.9.9")).To(Equal(before))
-	})
-
-	// The darwin binary cannot run here, so the stamp is looked for in
-	// its bytes, under a version no dependency could carry by chance.
-	It("stamps the darwin binary too", func() {
-		const version = "9.9.9-stamp.darwin"
-		runIn(dir, 10*time.Minute, "make", "release", "VERSION="+version)
-
-		darwin := archivedBinary(filepath.Join(release, "skift_"+version+"_darwin_arm64.tar.gz"))
-		Expect(bytes.Contains(darwin, []byte(version))).To(BeTrue())
+		Expect(archiveSums(release)).To(Equal(before))
 	})
 })
