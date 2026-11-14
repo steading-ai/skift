@@ -14,6 +14,8 @@ With [mise](https://mise.jdx.dev), which verifies the release's signature and pi
 mise use -g packslip:github.com/steading-ai/skift
 ```
 
+mise installs a release once it is a day old; add `@<version>` to install a newer one.
+
 Or download an archive from the [releases](https://github.com/steading-ai/skift/releases) and check that this repository's release workflow built it, as [How to verify a release](docs/verifying-a-release.md) describes:
 
 ```sh

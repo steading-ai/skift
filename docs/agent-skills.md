@@ -45,7 +45,7 @@ mise skills sync --dir .agents/skills
 
 A release of skift declares both skills in its [packslip](https://packslip.dev) manifest, as [ADR-011](adrs/011-releases-are-immutable-and-attested.md) records. `mise use` installs the `skift` binary and fetches the skills that belong to that version; `mise skills sync` links them into the directory `--dir` names, which is whichever one your harness reads. The links point into the installed version, so run the sync again after changing versions. mise documents the commands and their settings under [Man pages, completions, and skills](https://mise.jdx.dev/dev-tools/packslip-resources.html).
 
-A brand-new release can take a while to appear in mise's shared version cache. Until it does, `MISE_USE_VERSIONS_HOST=0 mise use packslip:github.com/steading-ai/skift` skips that cache, as mise's [troubleshooting page](https://mise.jdx.dev/troubleshooting.html#new-version-of-a-tool-is-not-available) describes.
+mise holds a release back until it is a day old, which is its [minimum release age](https://mise.jdx.dev/configuration/settings.html#minimum_release_age). `mise use packslip:github.com/steading-ai/skift@<version>` installs a newer one by name.
 
 This route installs skills only as well; the MCP server is registered separately.
 
