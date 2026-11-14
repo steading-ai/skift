@@ -14,10 +14,7 @@ before it is filed.
 
 ## Requirements
 
-`skift` must be on `PATH` and able to reach a running service. The plugin does not
-install or build it — see the repository root for that. If `skift` is missing, the
-MCP server fails to start and the skill still loads, teaching the CLI for a
-binary that is not there.
+`skift` must be on `PATH` and able to reach a running service. The plugin does not install or build it; [How to install skift](../../docs/install.md) covers the server and the CLI. If `skift` is missing, the MCP server fails to start and the skill still loads, teaching the CLI for a binary that is not there.
 
 Check before installing:
 
@@ -45,7 +42,7 @@ Keep one. The skills pre-approve the read-only tools under the plugin's names, s
 
 ## Install
 
-No checkout is needed. The marketplace manifest is at the root of the repository, so Claude Code reads it from GitHub:
+No checkout is needed. The marketplace manifest is at the root of the repository, so Claude Code reads it from GitHub. This is the agent step of [How to install skift](../../docs/install.md), which starts from a server:
 
 ```sh
 claude plugin marketplace add steading-ai/skift

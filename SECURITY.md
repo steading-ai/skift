@@ -14,7 +14,7 @@ Fixes go into the latest release. Skift is at 0.x, and earlier releases do not r
 
 A fix ships as a new release. A released `skift` embeds its dependencies, so a vulnerability in one of them is fixed the same way: Renovate proposes the patched version as soon as it exists, and a release follows once it has merged. [docs/ci.md](docs/ci.md#dependency-updates) describes that.
 
-Every release is immutable, and each archive carries an attestation naming the workflow and commit that built it, and an SBOM listing what is inside it. [Install](README.md#install) shows how to verify a download before you run it.
+Every release is immutable, and each archive carries an attestation naming the workflow and commit that built it, and an SBOM listing what is inside it. [How to verify a release](docs/verifying-a-release.md) shows how to check a download before you run it.
 
 ## What skift trusts
 

@@ -205,6 +205,6 @@ pairs:
     body: lets you talk an idea through with an agent and have it file the nodes.
 
 docs:
-  order: [vision, core-principles, domain-model, architecture, agent-skills, roadmap, ci]
+  order: [install, vision, core-principles, domain-model, architecture, agent-skills, deploying, verifying-a-release, developing, releasing, roadmap, ci]
   exclude:
     - docs/adrs/000-adr-template.md
