@@ -1,0 +1,83 @@
+# skift and the PostgreSQL it keeps its graph in, from the released image.
+#
+# Put the variables this file reads in an env file and start the stack:
+#
+#   docker compose --env-file skift.env up -d
+#
+# POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB are required. So is
+# SKIFT_IMAGE when this file comes from the repository; the copy attached to
+# a release names that release's image itself, pinned by digest. The
+# variables under "Network transports" below are optional.
+# contrib/skift.env.example in the repository is a template with a comment
+# on each.
+#
+# Callers reach skift over a network transport configured below, not over
+# its unix socket. The socket stays inside the container and is not to be
+# mounted on the host: skift identifies a socket caller by its uid, and a
+# uid does not survive the trip out of a container. It serves only
+# `docker compose exec skift skift ...`, which runs beside the service.
+#
+# The first principal is created once, after the first start:
+#
+#   docker compose --env-file skift.env run --rm skift \
+#     skift admin bootstrap 65532 <organization>
+#
+# 65532 is the uid skift runs as in the image, so that principal is who
+# `docker compose exec skift skift ...` acts as. Add
+# `--tailscale-node <stable id>` to make a tailnet node act as it too;
+# `skift admin bootstrap --help` says where the id comes from.
+name: skift
+
+services:
+  postgres:
+    # postgres:18, pinned to the multi-arch index digest.
+    image: docker.io/library/postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the env file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the env file}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in the env file}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # Over TCP on purpose: during first-run initialisation the server listens
+      # only on its Unix socket, and a socket probe would report ready too early.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    restart: unless-stopped
+
+  skift:
+    image: ${SKIFT_IMAGE:?set SKIFT_IMAGE in the env file to the skift image to run}
+    # The image has no entrypoint: the command names the binary.
+    command: ["skift", "serve"]
+    environment:
+      # The same three values the database is created with, required above.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+
+      # Network transports. skift serves on every transport configured
+      # here; each has its own block of variables.
+
+      # Tailscale. With SKIFT_TAILNET_HOSTNAME set, skift joins the tailnet
+      # as a node of that name; left empty, the transport is off.
+      # TS_AUTHKEY enrols the node on its first start, and
+      # SKIFT_TAILNET_TAGS is the comma-separated ACL tags it advertises.
+      # The node's state is kept in the state volume, so a restart does not
+      # enrol a second node.
+      SKIFT_TAILNET_HOSTNAME: ${SKIFT_TAILNET_HOSTNAME:-}
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      SKIFT_TAILNET_TAGS: ${SKIFT_TAILNET_TAGS:-}
+      SKIFT_TAILNET_STATE_DIR: /var/lib/skift/tailnet
+    volumes:
+      - run:/run/skift
+      - state:/var/lib/skift
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  run:
+  state:

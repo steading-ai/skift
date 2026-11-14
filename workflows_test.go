@@ -16,6 +16,7 @@ import (
 type workflow struct {
 	On          map[string]workflowTrigger `yaml:"on"`
 	Permissions map[string]string          `yaml:"permissions"`
+	Env         map[string]string          `yaml:"env"`
 	Jobs        map[string]workflowJob     `yaml:"jobs"`
 
 	// source is the file as written, for what the fields above leave out.
@@ -23,8 +24,9 @@ type workflow struct {
 }
 
 type workflowTrigger struct {
-	Inputs map[string]any `yaml:"inputs"`
-	Tags   []string       `yaml:"tags"`
+	Inputs  map[string]any `yaml:"inputs"`
+	Outputs map[string]any `yaml:"outputs"`
+	Tags    []string       `yaml:"tags"`
 }
 
 type workflowJob struct {
@@ -33,6 +35,7 @@ type workflowJob struct {
 	Uses        string            `yaml:"uses"`
 	Environment string            `yaml:"environment"`
 	Permissions map[string]string `yaml:"permissions"`
+	Outputs     map[string]string `yaml:"outputs"`
 	Strategy    struct {
 		Matrix struct {
 			Include []map[string]string `yaml:"include"`
@@ -42,10 +45,12 @@ type workflowJob struct {
 }
 
 type workflowStep struct {
-	Name string         `yaml:"name"`
-	Uses string         `yaml:"uses"`
-	Run  string         `yaml:"run"`
-	With map[string]any `yaml:"with"`
+	Name string            `yaml:"name"`
+	ID   string            `yaml:"id"`
+	Uses string            `yaml:"uses"`
+	Run  string            `yaml:"run"`
+	With map[string]any    `yaml:"with"`
+	Env  map[string]string `yaml:"env"`
 }
 
 // stringOrList reads a field GitHub lets be one name or a list of them.
@@ -110,6 +115,29 @@ func (w workflow) scripts() []string {
 		}
 	}
 	return scripts
+}
+
+// steps returns every step of every job using the named action, at any
+// version, in no particular order across jobs.
+func (w workflow) steps(action string) []workflowStep {
+	var steps []workflowStep
+	for _, job := range w.Jobs {
+		for _, step := range job.Steps {
+			if strings.HasPrefix(step.Uses, action+"@") {
+				steps = append(steps, step)
+			}
+		}
+	}
+	return steps
+}
+
+// text is everything a step says, as YAML: its action and inputs, its
+// script, and the environment it sets.
+func (s workflowStep) text() string {
+	GinkgoHelper()
+	raw, err := yaml.Marshal(s)
+	Expect(err).NotTo(HaveOccurred())
+	return string(raw)
 }
 
 // commands splits a run script into its commands, one per line once

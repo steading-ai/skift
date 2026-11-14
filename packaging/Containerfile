@@ -1,7 +1,8 @@
-# The distribution image: scratch, the skift binary, and nothing else. A
-# distribution of files, not a service definition — no ENTRYPOINT, so
-# `podman run --rm <image> skift version` runs skift as the container's command
-# rather than as an argument appended to a baked-in one.
+# The distribution image: scratch, the skift binary, and the two
+# directories `skift serve` writes to. A distribution of files, not a
+# service definition — no ENTRYPOINT, so
+# `podman run --rm <image> skift version` runs skift as the container's
+# command rather than as an argument appended to a baked-in one.
 #
 # The binary is cross-compiled by `make dist/skift-linux-%` before this
 # build starts (see Makefile), so VERSION/LDFLAGS is computed in exactly
@@ -10,8 +11,26 @@
 # needed to assemble an arm64 image on an amd64 builder.
 FROM scratch
 
+# The mode is set here, not taken from the file: a binary that reaches the
+# build as a workflow artifact has lost its executable bit.
 ARG TARGETARCH
-COPY dist/skift-linux-${TARGETARCH} /usr/local/bin/skift
+COPY --chmod=0755 dist/skift-linux-${TARGETARCH} /usr/local/bin/skift
+
+# /run/skift holds the socket and /var/lib/skift the tailnet node's state.
+# scratch has no mkdir to run, so both are copied from packaging/rootfs,
+# where a .gitkeep stands in each because git does not track an empty
+# directory; --exclude leaves it out of the image. The first COPY lays
+# down the whole tree as root's, so that no builder is left to create a
+# parent its own way, and the next two hand skift the directories it
+# owns. A new volume mounted over either starts out with that owner and
+# mode: https://docs.docker.com/engine/storage/volumes/#populate-a-volume-using-a-container
+COPY --chown=0:0 --chmod=0755 --exclude=**/.gitkeep packaging/rootfs/ /
+COPY --chown=65532:65532 --chmod=0750 --exclude=**/.gitkeep packaging/rootfs/run/ /run/
+COPY --chown=65532:65532 --chmod=0750 --exclude=**/.gitkeep packaging/rootfs/var/lib/ /var/lib/
+
+# Not root, and not a user the image has to name: there is no /etc/passwd
+# here to look one up in.
+USER 65532:65532
 
 ARG REVISION
 LABEL org.opencontainers.image.revision=${REVISION}

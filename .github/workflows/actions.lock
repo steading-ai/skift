@@ -15,6 +15,14 @@ workflows:
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.8.0'
         - 'docker/setup-buildx-action@v4.4.1'
+    '.github/workflows/release-image.yml':
+        - 'actions/attest@v4.2.2'
+        - 'actions/checkout@v7.0.1'
+        - 'actions/download-artifact@v8.0.2'
+        - 'docker/build-push-action@v7.4.0'
+        - 'docker/login-action@v4.8.0'
+        - 'docker/setup-buildx-action@v4.4.1'
+        - 'jdx/mise-action@v5.2.7'
     '.github/workflows/release-notes.yml':
         - 'actions/checkout@v7.0.1'
         - 'jdx/mise-action@v5.2.7'

@@ -13,7 +13,7 @@ import (
 // docs/ci.md, "Runners", has the reasons; check.yml is the one that does
 // not publish and runs elsewhere.
 var _ = Describe("The workflows that publish", Label("unit"), func() {
-	for _, name := range []string{"release.yml", "verify-release.yml", "release-notes.yml", "publish.yml"} {
+	for _, name := range []string{"release.yml", "release-image.yml", "verify-release.yml", "release-notes.yml", "publish.yml"} {
 		It("run "+name+" on GitHub-hosted runners", func() {
 			for job, definition := range loadWorkflow(name).Jobs {
 				Expect(fmt.Sprint(definition.RunsOn)).NotTo(ContainSubstring("blacksmith"), job)
