@@ -105,7 +105,7 @@ func writeError(w io.Writer, err error) {
 // field at fault, and the values or the fields the schema allows. The
 // codec does that for a proto message; the same is done here for the Go
 // structs the MCP tools decode their arguments into, so both doors answer
-// alike. AGENT_REVIEW.md §9.
+// alike. archive/AGENT_REVIEW.md §9.
 
 // decodeUsage reports a decode failure as a usage error. The codec's
 // message already carries the path and the legal values, so nothing is

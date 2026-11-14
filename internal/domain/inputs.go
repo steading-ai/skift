@@ -96,7 +96,7 @@ type InputState struct {
 // InputsHint is how much a node's inputs come to without carrying them.
 // Two integers are enough for a consumer to decide whether to ask for the
 // bodies; see the token cost of returning content unasked in
-// AGENT_REVIEW.md.
+// archive/AGENT_REVIEW.md.
 type InputsHint struct {
 	// Count is how many of the node's satisfied predecessors have a
 	// result.

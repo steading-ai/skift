@@ -22,15 +22,9 @@ gh attestation verify skift_*.tar.gz --repo steading-ai/skift --signer-workflow 
 
 ## Status
 
-Working service, CLI, and MCP server, built from the backlog below by an autonomous agent loop. Architecture decisions are recorded in [docs/adrs/](docs/adrs/); milestones in [docs/roadmap.md](docs/roadmap.md).
+Working service, CLI, and MCP server. Architecture decisions are recorded in [docs/adrs/](docs/adrs/); milestones in [docs/roadmap.md](docs/roadmap.md).
 
-Skift is built from its own backlog, in [backlog.toml](backlog.toml), expressed in skift's domain model. Each node is a self-contained work order with acceptance criteria and the scenarios its specs must cover.
-
-```
-scripts/ready.py            what can be worked now
-scripts/ready.py --all      what cannot, and why
-scripts/ready.py --show 18  the full work order for one node
-```
+Skift's own backlog is held in skift. Each node is a self-contained work order with acceptance criteria and the scenarios its specs must cover.
 
 An agent works one node at a time from an empty context window: read the work
 order, read the documents it references, build it, leave `make lint && make
@@ -110,9 +104,7 @@ Prerequisites:
   compose provider `podman compose` dispatches to is the `docker-compose`
   mise installs, so `podman compose version` prints one without further
   setup.
-- `make build` leaves the binary at `./skift`. The harness and the plugin's
-  MCP server run `skift` by name, so link it onto `PATH`, for example
-  `ln -sf "$PWD/skift" ~/.local/bin/skift`.
+- `make build` leaves the binary at `./skift`. The plugin's MCP server runs `skift` by name, so link it onto `PATH`, for example `ln -sf "$PWD/skift" ~/.local/bin/skift`.
 
 ### Bring the database up
 
@@ -252,9 +244,8 @@ marker such as `+dev.3.g1a2b3c4.dirty`.
 - [Domain model](docs/domain-model.md)
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
-- [Retrospectives](docs/retrospectives/)
-- [Current plan: prove the bet](docs/plans/2026-09-prove-the-bet.md)
 - [Architecture decision records](docs/adrs/)
+- [Archive](archive/README.md): retired machinery and dated records, unmaintained
 
 ## License
 

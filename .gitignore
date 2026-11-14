@@ -1,9 +1,3 @@
-# Harness runtime
-harness/.venv/
-harness/logs/
-harness/STOP
-harness/state.json
-
 # Local research checkouts
 /research/
 

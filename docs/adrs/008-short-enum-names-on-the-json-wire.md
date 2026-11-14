@@ -7,7 +7,7 @@ date: 2026-09-06
 
 ## Context and Problem Statement
 
-Proto enum values carry their enum's name as a prefix, so `Priority` holds `PRIORITY_P2`. protojson puts that spelling on the wire, and every other skift surface — the `--priority p2` flag, the display, `docs/domain-model.md`, the MCP tool schemas — says `p2`. An agent that read the CLI help and the domain model was taught the short form everywhere it looked, then had to write the long one in the one place it writes JSON by hand (`AGENT_REVIEW.md` §3). The same gap exists for `Status`, `AssigneeKind`, `EdgeKind`, `DropReason`, `ReleaseReason`, and for every enum added later.
+Proto enum values carry their enum's name as a prefix, so `Priority` holds `PRIORITY_P2`. protojson puts that spelling on the wire, and every other skift surface — the `--priority p2` flag, the display, `docs/domain-model.md`, the MCP tool schemas — says `p2`. An agent that read the CLI help and the domain model was taught the short form everywhere it looked, then had to write the long one in the one place it writes JSON by hand ([archive/AGENT_REVIEW.md](../../archive/AGENT_REVIEW.md) §3). The same gap exists for `Status`, `AssigneeKind`, `EdgeKind`, `DropReason`, `ReleaseReason`, and for every enum added later.
 
 ## Decision Drivers
 
@@ -60,4 +60,4 @@ Smaller and reversible, and it fixes it for the callers who suffer today.
 
 ## More Information
 
-Implemented in `internal/codec`; `AGENT_REVIEW.md` §3 carries the measurements and the decision to do this at the codec. Related: ADR-002 (Connect RPC is the only door).
+Implemented in `internal/codec`; [archive/AGENT_REVIEW.md](../../archive/AGENT_REVIEW.md) §3 carries the measurements and the decision to do this at the codec. Related: ADR-002 (Connect RPC is the only door).
