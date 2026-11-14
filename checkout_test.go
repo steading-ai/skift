@@ -1,6 +1,8 @@
 package skift_test
 
 import (
+	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -16,11 +18,29 @@ import (
 // on those files.
 func checkout() string {
 	dir := GinkgoT().TempDir()
-	cmd := exec.Command("sh", "-euc",
-		`git ls-files -z --cached --others --exclude-standard | tar --null --files-from - -cf - | tar -C "$0" -xf -`, dir)
-	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+	files, err := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--deduplicate").Output()
 	Expect(err).NotTo(HaveOccurred())
-	Expect(session.Wait(time.Minute)).To(gexec.Exit(0))
+	var present bytes.Buffer
+	for _, path := range bytes.Split(files, []byte{0}) {
+		if len(path) == 0 {
+			continue
+		}
+		_, err := os.Lstat(string(path))
+		if os.IsNotExist(err) {
+			continue // Tracked deletions are absent from a working-tree snapshot.
+		}
+		Expect(err).NotTo(HaveOccurred())
+		present.Write(path)
+		present.WriteByte(0)
+	}
+	archive := filepath.Join(GinkgoT().TempDir(), "checkout.tar")
+	pack := exec.Command("tar", "--null", "--files-from", "-", "-cf", archive)
+	pack.Stdin = &present
+	for _, cmd := range []*exec.Cmd{pack, exec.Command("tar", "-C", dir, "-xf", archive)} {
+		session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(session.Wait(time.Minute)).To(gexec.Exit(0))
+	}
 	trustConfig(filepath.Join(dir, "mise.toml"))
 	return dir
 }

@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
-	"strings"
-
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -48,36 +45,4 @@ func parseView(name, value string, def skiftv1.View) (skiftv1.View, error) {
 // viewName is the short name of a view: "summary" for VIEW_SUMMARY.
 func viewName(v skiftv1.View) string {
 	return codec.EnumName(v)
-}
-
-// viewProp is the MCP schema of a view argument defaulting to def.
-func viewProp(def skiftv1.View) map[string]any {
-	return enumProp(strings.ToUpper(viewHelp[:1])+viewHelp[1:]+". Defaults to "+viewName(def)+".", enumChoices[skiftv1.View]())
-}
-
-// splitView takes the view out of raw tool arguments that are otherwise a
-// proto message in JSON, so that an absent view takes the tool's default
-// rather than the message's zero value. The rest of the arguments are
-// returned for the codec to decode.
-func splitView(raw json.RawMessage, def skiftv1.View) (skiftv1.View, json.RawMessage, error) {
-	var args map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &args); err != nil {
-		return 0, nil, usage("arguments: %v", err)
-	}
-	value := ""
-	if v, ok := args["view"]; ok {
-		if err := json.Unmarshal(v, &value); err != nil {
-			return 0, nil, usage("view: %v", err)
-		}
-		delete(args, "view")
-	}
-	view, err := parseView("view", value, def)
-	if err != nil {
-		return 0, nil, err
-	}
-	rest, err := json.Marshal(args)
-	if err != nil {
-		return 0, nil, usage("arguments: %v", err)
-	}
-	return view, rest, nil
 }

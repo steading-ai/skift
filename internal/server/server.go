@@ -6,7 +6,8 @@
 // are injected, so the handlers stay unaware of where a request came from,
 // and the store is never reached from here. One mux carries every handler,
 // and every transport serves that mux, so a second way in cannot serve a
-// different set. See docs/architecture.md and
+// different set. An optional isolated transport handler serves native MCP on
+// its own TLS listener without mounting it on the Connect mux. See docs/architecture.md and
 // docs/adrs/002-connect-rpc-is-the-only-door.md.
 package server
 
@@ -59,10 +60,11 @@ type Config struct {
 	// resolution is the first of them; see [interceptor.NewPrincipal].
 	// The health check is outside the Connect namespace and not wrapped.
 	Interceptors []connect.Interceptor
-	// Transports are the ways into the handlers besides the unix socket,
-	// such as the tailnet. Each serves the same mux behind the same
-	// interceptors; what differs is what its connections carry, which is
-	// what its identity resolver reads.
+	// Transports are the ways in besides the unix socket, such as the
+	// tailnet. By default they serve the Connect mux. A transport implementing
+	// HTTPHandler() http.Handler instead serves only that isolated handler;
+	// it must arrange authentication before invoking application code.
+	// Every transport shares the service drain and shutdown deadline.
 	Transports []Transport
 }
 
@@ -101,6 +103,8 @@ type Server struct {
 	log *slog.Logger
 	db  Pinger
 	mux *http.ServeMux
+	// connectMux contains only the unary generated Graph and Work handlers.
+	connectMux *http.ServeMux
 	// http is the unix socket's server; it is the first of servers.
 	http *http.Server
 	// servers and listeners are paired by index: the socket first, then
@@ -135,17 +139,22 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 	}
 
 	s := &Server{
-		cfg:      cfg,
-		log:      cfg.Logger,
-		db:       db,
-		mux:      http.NewServeMux(),
-		draining: make(chan struct{}),
+		cfg:        cfg,
+		log:        cfg.Logger,
+		db:         db,
+		mux:        http.NewServeMux(),
+		connectMux: http.NewServeMux(),
+		draining:   make(chan struct{}),
 	}
 	// Every handler speaks skift's JSON, not protojson's: the one door
 	// says what every other surface says. See internal/codec.
 	opts := append([]connect.HandlerOption{connect.WithInterceptors(cfg.Interceptors...)}, codec.HandlerOptions()...)
-	s.mux.Handle(skiftv1connect.NewGraphServiceHandler(svc.Graph, opts...))
-	s.mux.Handle(skiftv1connect.NewWorkServiceHandler(svc.Work, opts...))
+	graphPath, graphHandler := skiftv1connect.NewGraphServiceHandler(svc.Graph, opts...)
+	workPath, workHandler := skiftv1connect.NewWorkServiceHandler(svc.Work, opts...)
+	s.connectMux.Handle(graphPath, graphHandler)
+	s.connectMux.Handle(workPath, workHandler)
+	s.mux.Handle(graphPath, graphHandler)
+	s.mux.Handle(workPath, workHandler)
 	s.mux.Handle(skiftv1connect.NewEventServiceHandler(svc.Events, opts...))
 	s.mux.HandleFunc("GET "+HealthPath, s.health)
 
@@ -154,13 +163,26 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 	s.http = s.newHTTPServer(interceptor.UnixConnContext)
 	s.servers = append(s.servers, s.http)
 	for _, t := range cfg.Transports {
-		s.servers = append(s.servers, s.newHTTPServer(t.ConnContext))
+		srv := s.newHTTPServer(t.ConnContext)
+		if isolated, ok := t.(interface{ HTTPHandler() http.Handler }); ok {
+			handler := isolated.HTTPHandler()
+			srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				select {
+				case <-s.draining:
+					http.Error(w, "server is draining", http.StatusServiceUnavailable)
+					return
+				default:
+				}
+				handler.ServeHTTP(w, r)
+			})
+		}
+		s.servers = append(s.servers, srv)
 	}
 	return s
 }
 
-// newHTTPServer is one HTTP server over the shared mux. Transports differ
-// only in what their connections carry.
+// newHTTPServer defaults to the shared Connect mux; isolated transports replace
+// its Handler while preserving connection context and the common drain signal.
 func (s *Server) newHTTPServer(connContext func(context.Context, net.Conn) context.Context) *http.Server {
 	return &http.Server{
 		Handler:           s.mux,

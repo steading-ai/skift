@@ -12,8 +12,14 @@ and the exit code is non-zero.
 The MCP tools are `ready`, `search`, `show_node`, `inputs`, `node_list`,
 `explain`, `claim`, `heartbeat`, `release`, `complete`, `comment`,
 `apply_patch`, `hold`, `focus`, `project_list`, `project_show`,
-`project_create`. A lease taken through them renews in the background and is
-released if the session ends, so a claim made there needs no `heartbeat`.
+`project_create`. The bundled `skift mcp` **stdio** process renews leases it
+claimed in the background and attempts bounded release on stdin EOF or handled
+signal; hard kill or failed cleanup leaves expiry. **Native HTTP** requires
+explicit heartbeat before expiry, explicit `lease_id` on holder writes, and
+complete/release when done. HTTP EOF, disconnect and service shutdown do not
+release committed claims. Successful holder writes may also renew under the
+existing domain rules; reads do not. CLI commands also require explicit lease
+care. Expired or stale fencing tokens cannot write after reclaim.
 `hold` and `focus` are there for a person working through the session; an agent
 principal is refused.
 
@@ -184,9 +190,14 @@ a `reopen_node` undoing the drop works from. `--cascade` takes the most nodes
 the cascade may drop, counting the node named; the service refuses the patch
 and names the real count when the subtree is larger.
 
-Every write takes `--request-id` as an idempotency key. Retrying with the same
-one returns the original response and writes no second set of events; retrying
-with the same id and *different* content is rejected as a conflict.
+Every write takes `--request-id` (MCP `request_id`) as an idempotency key.
+Persist a unique key before sending a mutation. Retrying the same arguments
+with the same key returns the original response and writes no second set of
+events; different content with that key conflicts. JSON-RPC `id` is not this
+key. Omitting it mints a fresh one per call, unsafe for blind retries. Use a
+fresh key for each new heartbeat interval, not a replay of an old heartbeat.
+Cancellation may race a committed mutation: retry with that key or inspect
+the graph; do not assume rollback.
 
 ## Parking work
 
@@ -243,6 +254,11 @@ never mistaken for a finished one.
 
 The current project comes from `--project` / `-p`, `$SKIFT_PROJECT`, or the config
 file. A bare `#7` with no current project is an error, so qualify it.
+Native HTTP has no server-global current project or session: supply `projects`
+or `project` where the schema offers it, and qualified references otherwise.
+The native endpoint is `https://<canonical-node-dns-name>[:port]/mcp`, not a
+Connect `--address`. For the verified modern client, protocol metadata and TLS
+checks see [native setup](../../../../../docs/native-mcp-https.md).
 
 | Setting | Resolution order |
 |---|---|
@@ -274,3 +290,10 @@ record who actually called.
 A caller whose identity maps to no principal is rejected as unauthenticated. If
 every call fails that way, the caller has no principal — an administrative fix
 on the service, not something to work around in the client.
+
+Tailnet identity uses the client machine's stable node ID. All its processes
+share the mapped principal; if user-mapped, agents inherit its gate/hold
+authority. MCP clientInfo, `harness`, `agent_ref`, `session_ref`, and proxy
+headers cannot select a principal. This is not per-agent isolation. Native
+HTTP is tailnet-only, not public OAuth; a hosted client needs actual private
+tailnet reachability and a mapped node, not just an HTTPS URL.

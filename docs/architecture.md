@@ -7,10 +7,15 @@ How the pieces fit. The decisions behind them are in [docs/adrs/](adrs/); this d
 ```
 skift              CLI. Connect client, JSON output
 skift mcp          stdio MCP server. The same client, wrapped for a harness
-skift serve        The service. Connect handlers over PostgreSQL
+skift serve        The service. Connect handlers over PostgreSQL; optional native HTTP MCP
 ```
 
-The CLI and the MCP server are the same client with different framing, so an agent reaching skift through Claude Code and an operator typing at a terminal exercise identical code. Which transport that client uses is configuration, not a code path.
+The CLI and stdio MCP server are the same client with different framing.
+Native HTTP MCP is a framing adapter over those same generated Connect
+services, dispatched in-process without a loopback connection. The shared
+tool adapter owns argument conversion and result rendering, not graph rules.
+[ADR-011](adrs/012-native-streamable-http-mcp.md) is the native HTTP contract;
+its implementation is separate from this architecture decision.
 
 ## Request path
 
@@ -18,16 +23,24 @@ The CLI and the MCP server are the same client with different framing, so an age
 agent / human / orchestrator
         │
         ├── skift, skift mcp                 (client)
-        │
-        ▼
-   Connect  ── unix socket │ tsnet │ HTTPS
+        │       │
+        │       ▼
+        │   Connect ── unix socket │ tsnet :80
+        │       │
+        └── native HTTP MCP ── tsnet TLS :443 /mcp (opt-in)
+                │ original transport context, shared tools
+                ▼
+            in-process generated Connect client/handler dispatch
+                │
+                ▼
+          same Connect services/interceptors
         │
         ▼
   ┌───────────────────────────────────────────┐
   │ interceptors                              │
   │   1. resolve principal from the transport │
-  │   2. coarse method-level authorization    │
-  │   3. rate limit  (deferred)               │
+  │   registered procedure dispatch          │
+  │   rate limit  (deferred)                 │
   └───────────────────────────────────────────┘
         │
         ▼
@@ -44,7 +57,20 @@ agent / human / orchestrator
     PostgreSQL       nodes, edges, leases, events, usage, comments
 ```
 
-Authorization happens twice, and the split matters. The interceptor knows who is calling and whether they may call this method at all. It cannot know which resources a patch touches, because aliases are unresolved and cascades unexpanded until the domain layer applies it. So the effective write set is authorized inside the writing transaction, against the snapshot it writes to, and one denial rolls back the patch.
+Authentication and resource authorization are separate. The principal
+interceptor resolves who is calling. All mapped principals may invoke the
+registered Connect procedures; there is no role-based method authorization
+interceptor in the current implementation. Earlier architecture/ADR wording
+that described such an interceptor was ahead of the code. Do not confuse the
+generated procedure router or identity lookup with a method policy gate.
+A future role-specific method policy needs its own explicit decision.
+
+The domain owns action/resource authorization. An interceptor cannot know
+which resources a patch touches: aliases are unresolved and cascades
+unexpanded until domain applies it. The effective write set is authorized
+inside the writing transaction, against the snapshot it writes to, and one
+denial rolls back the patch. Tenant scoping, policy decisions, and lease
+holder/fencing checks remain in that same path for native MCP and Connect.
 
 Handlers never see the transport, and never reach the store directly. The domain layer owns every rule that makes the graph a graph, which is what keeps a second storage backend possible and what makes the rules testable without a server.
 
@@ -59,6 +85,56 @@ One `Principal` type, several resolvers, added in this order:
 | HTTPS | Bearer token or OIDC | Other organizations, later |
 
 An identity is a row, not a principal, so one principal may hold several. Adding a transport inserts rows rather than migrating. See the Principal section of the [domain model](domain-model.md).
+
+## Native HTTP MCP contract
+
+The optional service endpoint is `https://<canonical-tailnet-name>/mcp`,
+using a second, tailnet-only TLS listener (default 443). Existing port-80
+Connect clients and unix-socket clients are unchanged; neither serves MCP.
+`--mcp-http` / `SKIFT_MCP_HTTP` opts in, with `--mcp-http-port` /
+`SKIFT_MCP_HTTP_PORT` selecting the TLS port. It requires the existing
+Tailscale node, MagicDNS and HTTPS certificate support; `tsnet.ListenTLS`
+uses that node's local certificate service. No public listener, Funnel,
+proxy-trusted identity, plaintext fallback, or public OAuth is added.
+
+The official Go SDK is pinned to `github.com/modelcontextprotocol/go-sdk
+v1.8.0`, targeting **only MCP 2026-07-28 on native HTTP**. It provides
+`server/discover`, per-request `_meta`, mirrored-header validation and
+request-scoped SSE. No initialize handshake, session ID, GET stream,
+legacy HTTP+SSE, change subscriptions or resumable streams are required or
+offered. Older HTTP revisions are explicitly rejected and tested; existing
+stdio revisions stay unchanged. Clients accept both JSON and SSE; normal
+success uses SSE and protocol validation errors may use JSON.
+
+Configure SDK stateless mode and request cancellation propagation explicitly;
+Origin checks are not enabled by the SDK by default. Outer middleware
+validates Host against the canonical tailnet name and accepts only an absent
+Origin or the exact canonical HTTPS Origin. Every request, including discovery
+and tool listing, uses the existing transport resolver/identity lookup,
+shared with `NewPrincipal`. Tool calls use generated Connect clients backed
+by a direct in-process HTTP handler dispatcher into the Connect-only mux.
+The original accepted peer context, cancellation/deadline, and drain signal
+survive dispatch; the same principal interceptor and domain policy run. Never
+use a localhost socket's service credentials or client-selected identity
+headers. There is no second domain API or policy store.
+
+v1.8.0 has a verified `Mcp-Name` Base64-decoding gap. ADR-011 permits only a
+small, cloned-header normalization for registered safe ASCII tool names;
+the SDK still validates name/body agreement. This is not a claim of arbitrary
+Unicode-name conformance. Its tests and exact limitations are part of the
+implementation contract, not grounds to write a custom protocol engine.
+
+HTTP lease lifetime is separate from connection lifetime. A claim survives
+its response until explicit completion/release or expiry. HTTP starts no
+per-client renewer and releases no client's leases at service shutdown.
+Clients use the shared `heartbeat`, `release`, and `complete` tools. Stdio
+retains automatic renewal and shutdown release. Disconnect cancels work but
+cannot undo an already committed claim; retry with the same domain request
+ID or inspect the graph. The TLS listener joins the existing readiness and
+bounded drain lifecycle; waiting claims receive the same drain signal.
+
+See ADR-011 for the HTTP response matrix, scoped SDK workaround, security
+boundaries, exact APIs, verification evidence, and required Ginkgo scenarios.
 
 ## Deployment
 

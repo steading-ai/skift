@@ -17,12 +17,11 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 	"github.com/steading-ai/skift/internal/client"
-	"github.com/steading-ai/skift/internal/codec"
 	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/mcptools"
 	"github.com/steading-ai/skift/internal/version"
 )
 
@@ -142,7 +141,7 @@ type mcpTool struct {
 	name        string
 	description string
 	schema      map[string]any
-	call        func(ctx context.Context, args json.RawMessage) (proto.Message, error)
+	invoke      func(ctx context.Context, args json.RawMessage) mcptools.Result
 }
 
 // leaseHold is a lease this process claimed and keeps alive.
@@ -370,6 +369,7 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 	}
 	if name := strings.TrimSpace(params.ClientInfo.Name); name != "" {
 		s.harness = name
+		s.tools = s.toolset()
 	}
 	protocol := mcpProtocolVersion
 	for _, v := range mcpProtocolVersions {
@@ -408,52 +408,18 @@ spike and chore the rest of the conventional vocabulary.`, project, s.sessionRef
 // callTool runs one tool. Every failure, whether a bad argument or the
 // service's answer, is a tool error the model reads and acts on.
 func (s *mcpServer) callTool(ctx context.Context, t *mcpTool, args json.RawMessage) mcpCallResult {
-	if len(args) == 0 {
-		args = json.RawMessage("{}")
+	result := t.invoke(ctx, args)
+	content := make([]mcpContent, 0, len(result.Content))
+	for _, c := range result.Content {
+		content = append(content, mcpContent{Type: c.Type, Text: c.Text})
 	}
-	msg, err := t.call(ctx, args)
-	if err != nil {
-		return mcpCallResult{IsError: true, Content: []mcpContent{{Type: "text", Text: toolErrorText(t.name, err)}}}
-	}
-	raw, err := codec.MarshalIndent(msg)
-	if err != nil {
-		return mcpCallResult{IsError: true, Content: []mcpContent{{Type: "text", Text: t.name + ": encode response: " + err.Error()}}}
-	}
-	return mcpCallResult{Content: []mcpContent{{Type: "text", Text: string(raw)}}}
+	return mcpCallResult{Content: content, IsError: result.IsError}
 }
 
-// toolErrorText renders an error for a model: the Connect code, the
-// message, and for the codes a caller can do something about, what to do.
+// toolErrorText retains CLI configuration error classification while sharing rendering.
 func toolErrorText(tool string, err error) string {
 	e := ToError(err)
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s failed (%s): %s", tool, e.Code, e.Message)
-	switch codeOf(e.Code) {
-	case connect.CodeInvalidArgument:
-		b.WriteString("\nCheck the arguments against the tool description and try again.")
-	case connect.CodeFailedPrecondition:
-		b.WriteString("\nThe graph or lease is not in the state this needs. Use show_node or explain to see its current state; a lease that is no longer live must be claimed again.")
-	case connect.CodeNotFound:
-		b.WriteString("\nNothing matched that reference. References are \"#7\", \"slug#7\", or \"org/slug#7\"; search finds nodes by text.")
-	case connect.CodePermissionDenied:
-		b.WriteString("\nThe caller is not allowed to do this; a person must grant access or do it themselves.")
-	case connect.CodeUnavailable, connect.CodeUnknown:
-		b.WriteString("\nThe service could not be reached. Check that it is running and that the transport (socket or address) is right.")
-	}
-	for _, d := range e.Details {
-		fmt.Fprintf(&b, "\ndetail: %s", d)
-	}
-	return b.String()
-}
-
-// codeOf maps a Connect code name back to the code; unknown names are
-// CodeUnknown.
-func codeOf(name string) connect.Code {
-	var c connect.Code
-	if err := c.UnmarshalText([]byte(name)); err != nil {
-		return connect.CodeUnknown
-	}
-	return c
+	return mcptools.ErrorText(tool, &mcptools.Error{Code: e.Code, Message: e.Message, Details: e.Details})
 }
 
 // Lease lifetime.
@@ -463,6 +429,11 @@ func (s *mcpServer) hold(lease *skiftv1.Lease, node *skiftv1.Node) {
 	ctx, stop := context.WithCancel(context.Background())
 	h := &leaseHold{id: lease.GetId(), ref: node.GetReference(), stop: stop}
 	s.holdMu.Lock()
+	if _, exists := s.held[h.id]; exists {
+		s.holdMu.Unlock()
+		stop()
+		return
+	}
 	s.held[h.id] = h
 	s.holdMu.Unlock()
 	s.heartbeats.Add(1)

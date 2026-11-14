@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,9 +18,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
+	"github.com/steading-ai/skift/internal/mcphttp"
+	"github.com/steading-ai/skift/internal/mcptools"
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/sdnotify"
 	"github.com/steading-ai/skift/internal/server"
@@ -41,6 +45,8 @@ const (
 	tailnetTagsEnv     = "SKIFT_TAILNET_TAGS"
 	tailnetStateDirEnv = "SKIFT_TAILNET_STATE_DIR"
 	tailnetAuthKeyEnv  = "TS_AUTHKEY"
+	mcpHTTPEnv         = "SKIFT_MCP_HTTP"
+	mcpHTTPPortEnv     = "SKIFT_MCP_HTTP_PORT"
 )
 
 // stateDirectoryEnv is what systemd sets under a StateDirectory=, colon
@@ -92,6 +98,8 @@ type serveOptions struct {
 	shutdownTimeout time.Duration
 	logLevel        string
 	tailnet         transport.TailnetConfig
+	mcpHTTP         bool
+	mcpHTTPPort     uint16
 }
 
 func newServeCommand() *cobra.Command {
@@ -135,12 +143,46 @@ process exits.`,
 	f.StringSliceVar(&opts.tailnet.Tags, "tailnet-tag", defaultTailnetTags(), "ACL tag the tailnet node advertises, as tag:name; repeatable (default: $"+tailnetTagsEnv+", comma separated)")
 	f.StringVar(&opts.tailnet.StateDir, "tailnet-state-dir", defaultTailnetStateDir(), "directory the tailnet node keeps its state in (default: $"+tailnetStateDirEnv+", else tailnet/ under the unit's $"+stateDirectoryEnv+", else tsnet's choice under the user config directory)")
 	f.Uint16Var(&opts.tailnet.Port, "tailnet-port", transport.DefaultTailnetPort, "tailnet port to serve on")
+	f.BoolVar(&opts.mcpHTTP, "mcp-http", false, "serve native MCP on tailnet HTTPS (default: $"+mcpHTTPEnv+")")
+	f.Uint16Var(&opts.mcpHTTPPort, "mcp-http-port", transport.DefaultMCPHTTPPort, "native MCP HTTPS port (default: $"+mcpHTTPPortEnv+")")
+	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		if !cmd.Flags().Changed("mcp-http") && os.Getenv(mcpHTTPEnv) != "" {
+			enabled, err := strconv.ParseBool(os.Getenv(mcpHTTPEnv))
+			if err != nil {
+				return fmt.Errorf("skift serve: %s: %w", mcpHTTPEnv, err)
+			}
+			opts.mcpHTTP = enabled
+		}
+		if !cmd.Flags().Changed("mcp-http-port") && os.Getenv(mcpHTTPPortEnv) != "" {
+			port, err := strconv.ParseUint(os.Getenv(mcpHTTPPortEnv), 10, 16)
+			if err != nil || port == 0 {
+				return fmt.Errorf("skift serve: %s must be a port from 1 to 65535", mcpHTTPPortEnv)
+			}
+			opts.mcpHTTPPort = uint16(port)
+		}
+		return nil
+	}
 	return cmd
 }
 
 // tailnetTransport builds the tailnet transport when one is configured, and
 // returns nil when the service is to listen on the socket alone.
 func tailnetTransport(opts serveOptions, log *slog.Logger) (*transport.Tailnet, error) {
+	if opts.mcpHTTP {
+		if opts.tailnet.Hostname == "" {
+			return nil, errors.New("skift serve: --mcp-http needs --tailnet-hostname")
+		}
+		if opts.mcpHTTPPort == 0 {
+			return nil, errors.New("skift serve: --mcp-http-port must be from 1 to 65535")
+		}
+		connectPort := opts.tailnet.Port
+		if connectPort == 0 {
+			connectPort = transport.DefaultTailnetPort
+		}
+		if opts.mcpHTTPPort == connectPort {
+			return nil, errors.New("skift serve: --mcp-http-port collides with --tailnet-port")
+		}
+	}
 	if opts.tailnet.Hostname == "" {
 		if len(opts.tailnet.Tags) > 0 {
 			return nil, errors.New("skift serve: --tailnet-tag needs --tailnet-hostname")
@@ -202,9 +244,17 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	svc := domain.NewService(pool, bundle)
 	resolvers := []interceptor.Resolver{interceptor.UnixResolver{}}
 	var transports []server.Transport
+	var nativeHandler http.Handler
 	if tailnet != nil {
 		resolvers = append(resolvers, tailnet.Resolver())
 		transports = append(transports, tailnet)
+		if opts.mcpHTTP {
+			tlsTransport, err := transport.NewTailnetTLS(tailnet, opts.mcpHTTPPort, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { nativeHandler.ServeHTTP(w, r) }))
+			if err != nil {
+				return fmt.Errorf("skift serve: %w", err)
+			}
+			transports = append(transports, tlsTransport)
+		}
 	}
 	srv := server.New(server.Config{
 		SocketPath:      opts.socket,
@@ -221,6 +271,10 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		Work:   server.NewWorkService(svc),
 		Events: server.NewEventService(svc),
 	}, pool)
+
+	if opts.mcpHTTP {
+		nativeHandler = newNativeMCPHandler(srv, interceptor.NewAuthenticator(server.NewIdentityLookup(svc), resolvers...))
+	}
 
 	log.Info("skift serve starting", "version", version.String(), "policy_version", bundle.Version())
 	if err := srv.Listen(); err != nil {
@@ -267,6 +321,17 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	default:
 		return nil
 	}
+}
+
+// newNativeMCPHandler is shared by the real TLS composition and its integration
+// specs. The dispatcher invokes the same generated handlers and interceptors.
+func newNativeMCPHandler(srv *server.Server, auth *interceptor.Authenticator) http.Handler {
+	client := srv.InProcessClient()
+	return auth.Middleware(mcphttp.New(mcptools.Execution{
+		Draining: server.Draining,
+		Graph:    skiftv1connect.NewGraphServiceClient(client, "http://skift.internal"),
+		Work:     skiftv1connect.NewWorkServiceClient(client, "http://skift.internal"),
+	}))
 }
 
 // schemaPreparer is what announceReady does to the schema once the
