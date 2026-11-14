@@ -62,7 +62,7 @@ claude plugin list                 # skift, enabled
 claude plugin details skift        # components and their token cost
 ```
 
-In a session, `/mcp` lists the `skift` server and its tools, among them `ready`, `claim`, `inputs`, `complete` and `apply_patch`. [skills/skift/references/commands.md](skills/skift/references/commands.md) names all of them.
+In a session, `/mcp` lists the `skift` server and its tools, among them `ready`, `claim`, `inputs`, `complete` and `apply_patch`. The skill's [command reference](skills/skift/references/commands.md) names all of them.
 
 ## Developing
 
