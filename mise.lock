@@ -2,6 +2,53 @@
 
 lockfile_version = 1
 
+[[tools.actionlint]]
+version = "1.7.12"
+backend = "aqua:rhysd/actionlint"
+specifiers = ["1.7.12"]
+
+[tools.actionlint."platforms.linux-arm64"]
+checksum = "sha256:325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924897"
+provenance = "github-attestations"
+
+[tools.actionlint."platforms.linux-arm64-musl"]
+checksum = "sha256:325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924897"
+provenance = "github-attestations"
+
+[tools.actionlint."platforms.linux-x64"]
+checksum = "sha256:8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924896"
+provenance = "github-attestations"
+
+[tools.actionlint."platforms.linux-x64-musl"]
+checksum = "sha256:8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924896"
+provenance = "github-attestations"
+
+[tools.actionlint."platforms.macos-arm64"]
+checksum = "sha256:aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924893"
+provenance = "github-attestations"
+
+[tools.actionlint."platforms.macos-x64"]
+checksum = "sha256:5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924880"
+provenance = "github-attestations"
+
+[tools.actionlint."platforms.windows-x64"]
+checksum = "sha256:6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip"
+url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924919"
+provenance = "github-attestations"
+
 [[tools."aqua:pressly/goose"]]
 version = "3.28.0"
 backend = "aqua:pressly/goose"
@@ -94,10 +141,46 @@ version = "5.5.1"
 backend = "github:docker/compose"
 specifiers = ["5.5.1"]
 
+[tools.docker-compose."platforms.linux-arm64"]
+checksum = "sha256:732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7"
+checksum_source = "mise-versions"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-aarch64"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966295"
+
+[tools.docker-compose."platforms.linux-arm64-musl"]
+checksum = "sha256:732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7"
+checksum_source = "mise-versions"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-aarch64"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966295"
+
 [tools.docker-compose."platforms.linux-x64"]
 checksum = "sha256:db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576"
 url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64"
 url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966285"
+
+[tools.docker-compose."platforms.linux-x64-musl"]
+checksum = "sha256:db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576"
+checksum_source = "mise-versions"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966285"
+
+[tools.docker-compose."platforms.macos-arm64"]
+checksum = "sha256:998735c9b6fe68a4f05895e6ea73d71ad06f9fc7046383ad89e47346781b6af5"
+checksum_source = "mise-versions"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-darwin-aarch64"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966325"
+
+[tools.docker-compose."platforms.macos-x64"]
+checksum = "sha256:a264d61e824bf08a78867e59cdf32eb09f0aee9ecdf9f6ebfa43f76dc52880f1"
+checksum_source = "mise-versions"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-darwin-x86_64"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966307"
+
+[tools.docker-compose."platforms.windows-x64"]
+checksum = "sha256:a3c0c73033eaede90210345d0cc2233edf4fab8fe0282a91dad8fd8436809d2f"
+checksum_source = "mise-versions"
+url = "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-windows-x86_64.exe"
+url_api = "https://api.github.com/repos/docker/compose/releases/assets/542966280"
 
 [[tools.go]]
 version = "1.26.10"
@@ -346,28 +429,129 @@ checksum = "sha256:57cc230da61d897e8e593511c9dac781491675a036cb727b7de5cb7a62cee
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.14.9+20261021-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
+[[tools.shellcheck]]
+version = "0.11.0"
+backend = "aqua:koalaman/shellcheck"
+specifiers = ["0.11.0"]
+
+[tools.shellcheck."platforms.linux-arm64"]
+checksum = "sha256:12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056934"
+
+[tools.shellcheck."platforms.linux-arm64-musl"]
+checksum = "sha256:12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056934"
+
+[tools.shellcheck."platforms.linux-x64"]
+checksum = "sha256:8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056942"
+
+[tools.shellcheck."platforms.linux-x64-musl"]
+checksum = "sha256:8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056942"
+
+[tools.shellcheck."platforms.macos-arm64"]
+checksum = "sha256:56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.xz"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056932"
+
+[tools.shellcheck."platforms.macos-x64"]
+checksum = "sha256:3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056930"
+
+[tools.shellcheck."platforms.windows-x64"]
+checksum = "sha256:8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e"
+checksum_source = "mise-versions"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip"
+url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056944"
+
 [[tools.sqlc]]
 version = "1.31.1"
 backend = "aqua:sqlc-dev/sqlc"
 specifiers = ["1.31.1"]
 
 [tools.sqlc."platforms.linux-arm64"]
+checksum = "sha256:b7cae247740d0c51a1e657479e5b2d21e6fef428f596682a01bc55bf4ab8a23d"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_linux_arm64.tar.gz"
 
 [tools.sqlc."platforms.linux-arm64-musl"]
+checksum = "sha256:b7cae247740d0c51a1e657479e5b2d21e6fef428f596682a01bc55bf4ab8a23d"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_linux_arm64.tar.gz"
 
 [tools.sqlc."platforms.linux-x64"]
+checksum = "sha256:497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_linux_amd64.tar.gz"
 
 [tools.sqlc."platforms.linux-x64-musl"]
+checksum = "sha256:497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_linux_amd64.tar.gz"
 
 [tools.sqlc."platforms.macos-arm64"]
+checksum = "sha256:21602158c99eb1f2bae197a66abfb1941d1e9e50b23125bb193349c6b1acc71e"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_darwin_arm64.tar.gz"
 
 [tools.sqlc."platforms.macos-x64"]
+checksum = "sha256:c5af76772e3785d21663a62697056b383f07629979b1bd25b93872e73dbd519b"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_darwin_amd64.tar.gz"
 
 [tools.sqlc."platforms.windows-x64"]
+checksum = "sha256:40d138ec18b1cc80d2be7305917fd4deceda4e0c32d78ba5d8faa4bfa3bc0fc0"
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_windows_amd64.tar.gz"
+
+[[tools.zizmor]]
+version = "1.32.0"
+backend = "aqua:zizmorcore/zizmor"
+specifiers = ["1.32.0"]
+
+[tools.zizmor."platforms.linux-arm64"]
+checksum = "sha256:cb152b207f815116d7fa1c1ee4614f61578803351395052908095e79adfd9fd0"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541931"
+provenance = "github-attestations"
+
+[tools.zizmor."platforms.linux-arm64-musl"]
+checksum = "sha256:cb152b207f815116d7fa1c1ee4614f61578803351395052908095e79adfd9fd0"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541931"
+provenance = "github-attestations"
+
+[tools.zizmor."platforms.linux-x64"]
+checksum = "sha256:bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541932"
+provenance = "github-attestations"
+
+[tools.zizmor."platforms.linux-x64-musl"]
+checksum = "sha256:bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541932"
+provenance = "github-attestations"
+
+[tools.zizmor."platforms.macos-arm64"]
+checksum = "sha256:6efed18c4539a663fd3c851a2be9533fd8456c4e646d9416206da059154a0d3c"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541933"
+provenance = "github-attestations"
+
+[tools.zizmor."platforms.macos-x64"]
+checksum = "sha256:6983143c719ada6845a69cc4dd2bacc215f971662fecd8bbd2678388e5ce5969"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541930"
+provenance = "github-attestations"
+
+[tools.zizmor."platforms.windows-x64"]
+checksum = "sha256:d284a16e09d9df4ce2c000357e7b59bd531be093bea5718a1ce225b449b59d49"
+url = "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/703541929"
+provenance = "github-attestations"

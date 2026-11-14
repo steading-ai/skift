@@ -14,6 +14,8 @@ it runs beside the first rather than after it. Tools come from
 `mise.toml` through `jdx/mise-action`, so the versions are the ones a
 developer runs.
 
+`make lint` reads the workflows too: actionlint checks their syntax, expressions and shell, and zizmor audits them for the mistakes that make a workflow exploitable, such as template injection, persisted credentials and over-broad permissions.
+
 [publish.yml](../.github/workflows/publish.yml) runs on every push to
 `main`: it cross-compiles `skift` for linux/amd64 and linux/arm64 (the same
 `dist/skift-linux-%` build the Makefile uses for the rpm) and pushes a

@@ -143,6 +143,8 @@ lint:
 	buf lint
 	opa check --strict policy
 	opa fmt --fail --list policy
+	actionlint .github/workflows/*.yml
+	zizmor --offline --quiet .github/workflows
 	$(MAKE) --no-print-directory check-generated
 
 # Generated code is committed, so a consumer needs no proto or SQL toolchain.

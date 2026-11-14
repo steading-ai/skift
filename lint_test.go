@@ -30,8 +30,12 @@ func appendToFile(root, rel, content string) {
 
 // makeLint runs `make lint` in the given checkout and waits for it to exit.
 // Every package compiles from the shared build cache, so a couple of
-// minutes covers a cold golangci-lint run with margin.
+// minutes covers a cold golangci-lint run with margin. The copy is made a
+// git repository first: zizmor honours .github/workflows/actions.lock only
+// inside one, and reports every action as unpinned otherwise.
 func makeLint(dir string) *gexec.Session {
+	GinkgoHelper()
+	git(dir, "init", "--quiet")
 	cmd := exec.Command("make", "lint")
 	cmd.Dir = dir
 	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
@@ -42,6 +46,28 @@ func makeLint(dir string) *gexec.Session {
 var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 	It("make lint passes on the current tree", func() {
 		Expect(makeLint(checkout())).To(gexec.Exit(0))
+	})
+
+	It("A template injection in a workflow fails lint", func() {
+		By("given a workflow whose run step interpolates the pull request's title")
+		dir := checkout()
+		writeFile(dir, ".github/workflows/injected.yml", `name: injected
+on: pull_request
+permissions: {}
+jobs:
+  echo:
+    name: echo
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.pull_request.title }}"
+`)
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then the build fails naming the workflow file")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(ContainSubstring(".github/workflows/injected.yml"))
 	})
 
 	It("Handlers may not reach the store directly", func() {
