@@ -47,7 +47,7 @@ Use the URL you put in `/etc/skift/env`. `skift migrate` applies every migration
 ## Create the first principal
 
 ```sh
-DATABASE_URL=postgres://skift:...@db.example/skift skift admin bootstrap "$(id -u)" homestead
+DATABASE_URL=postgres://skift:...@db.example/skift skift admin bootstrap "$(id -u)" <organization>
 ```
 
 `skift admin bootstrap <uid> <organization>` creates the organization and, in it, a `user` principal that a caller on the unix socket with that uid resolves to. It prints both. The uid is the one the `skift` CLI will run as; `$(id -u)` is the invoking user's.
@@ -85,7 +85,7 @@ To serve a tailnet alongside the socket, set `SKIFT_TAILNET_HOSTNAME` in `/etc/s
 Bind each calling node to a principal with `--tailscale-node`:
 
 ```sh
-DATABASE_URL=postgres://skift:...@db.example/skift skift admin bootstrap "$(id -u)" homestead --tailscale-node <stable id>
+DATABASE_URL=postgres://skift:...@db.example/skift skift admin bootstrap "$(id -u)" <organization> --tailscale-node <stable id>
 ```
 
 The stable id is what `tailscale status --json | jq -r .Self.ID` prints on the calling machine. A caller there reaches the service with `SKIFT_ADDRESS=http://<hostname>.<tailnet>.ts.net` and is identified by its own node. [Identity by transport](architecture.md#identity-by-transport) describes how each transport resolves a caller.

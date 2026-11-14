@@ -161,6 +161,7 @@ quickstart:
       body: >-
         Paste this into your agent. It reads how skift is installed and walks you through it: one
         binary, a PostgreSQL database, and a first project.
+        [How to install skift](/docs/install/) is the same path by hand.
       prompt: true
     - title: Install the plugin
       body: >-
