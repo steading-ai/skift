@@ -5,6 +5,9 @@ package main
 import (
 	"os"
 
+	// CA roots for TLS, consulted only when the host has no trust store.
+	_ "golang.org/x/crypto/x509roots/fallback"
+
 	"github.com/steading-ai/skift/internal/cli"
 )
 

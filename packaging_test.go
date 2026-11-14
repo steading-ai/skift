@@ -1,6 +1,9 @@
 package skift_test
 
 import (
+	"archive/tar"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +15,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
+
+	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // runIn executes a command in dir and returns what it wrote to stdout once
@@ -80,6 +85,51 @@ func rpmPaths(path string) []string {
 		paths = append(paths, f.Name())
 	}
 	return paths
+}
+
+// imageTree is every path in an image's filesystem with its tar header,
+// read from a container created from the image and never started.
+func imageTree(dir, image string) map[string]*tar.Header {
+	GinkgoHelper()
+	container := runIn(dir, time.Minute, "podman", "create", image, "skift", "version")
+	DeferCleanup(func() {
+		runIn(dir, time.Minute, "podman", "rm", "-f", container)
+	})
+	archive := filepath.Join(GinkgoT().TempDir(), "image.tar")
+	runIn(dir, time.Minute, "podman", "export", "-o", archive, container)
+
+	f, err := os.Open(archive)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { Expect(f.Close()).To(Succeed()) }()
+
+	tree := map[string]*tar.Header{}
+	for r := tar.NewReader(f); ; {
+		header, err := r.Next()
+		if errors.Is(err, io.EOF) {
+			return tree
+		}
+		Expect(err).NotTo(HaveOccurred())
+		tree[strings.TrimSuffix(header.Name, "/")] = header
+	}
+}
+
+// containerStat is the owner and type of a path inside a running
+// container, as "uid:gid type" in the container's own numbering, or the
+// reason it could not be read. The image holds no stat to exec, so the
+// container's filesystem is mounted and read from outside. Rootless podman
+// mounts it only inside its user namespace, which is also where the ids
+// read as the container's.
+func containerStat(container, path string) (string, error) {
+	const script = `root=$(podman mount "$0") && stat -c '%u:%g %F' "$root$1"`
+	args := []string{"sh", "-c", script, container, path}
+	if os.Geteuid() != 0 {
+		args = append([]string{"podman", "unshare"}, args...)
+	}
+	session := run(os.Environ(), args[0], args[1:]...)
+	if session.ExitCode() != 0 {
+		return "", errors.New(strings.TrimSpace(string(session.Err.Contents())))
+	}
+	return strings.TrimSpace(string(session.Out.Contents())), nil
 }
 
 var _ = Describe("Packaging", Label("unit", "slow"), func() {
@@ -201,8 +251,10 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 // The GHCR image built from packaging/Containerfile, published by
 // .github/workflows/publish.yml. Needs podman to build and run, like the
 // database specs, so it carries their "db" label and stays out of
-// `make test-unit`.
-var _ = Describe("The image", Label("db", "slow"), Ordered, func() {
+// `make test-unit`. Serial, because it compiles skift and builds an image:
+// beside the suite's other specs that starves the ones that run `make
+// lint` against a budget.
+var _ = Describe("The image", Label("db", "slow"), Serial, Ordered, func() {
 	var dir, image string
 
 	BeforeAll(func() {
@@ -234,5 +286,72 @@ var _ = Describe("The image", Label("db", "slow"), Ordered, func() {
 		Expect(runIn(dir, time.Minute, "podman", "inspect", "--format",
 			`{{ index .Config.Labels "org.opencontainers.image.revision" }}`, image)).
 			To(Equal("deadbeef"))
+	})
+
+	It("runs as uid and gid 65532, with no entrypoint and no command", func() {
+		Expect(runIn(dir, time.Minute, "podman", "inspect", "--format",
+			`{{ .Config.User }} {{ len .Config.Entrypoint }} {{ len .Config.Cmd }}`, image)).
+			To(Equal("65532:65532 0 0"))
+	})
+
+	It("gives skift an empty socket directory and state directory of its own, mode 0750", func() {
+		tree := imageTree(dir, image)
+
+		for _, path := range []string{"run/skift", "var/lib/skift"} {
+			Expect(tree).To(HaveKey(path))
+			header := tree[path]
+			Expect(header.Typeflag).To(BeEquivalentTo(tar.TypeDir), path)
+			Expect(header.Uid).To(Equal(65532), path)
+			Expect(header.Gid).To(Equal(65532), path)
+			Expect(header.Mode&0o7777).To(BeEquivalentTo(0o750), path)
+
+			for name := range tree {
+				Expect(name).NotTo(HavePrefix(path+"/"), "the directory is empty")
+			}
+		}
+		for _, path := range []string{"run", "var", "var/lib"} {
+			Expect(tree).To(HaveKey(path))
+			Expect(tree[path].Uid).To(BeZero(), path)
+			Expect(tree[path].Mode&0o7777).To(BeEquivalentTo(0o755), path)
+		}
+	})
+
+	It("The image serves as an unprivileged user", func(ctx SpecContext) {
+		By("given the image built from packaging/Containerfile, and a PostgreSQL the container can reach")
+		postgres, err := testsupport.Start(ctx, nil)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func(ctx SpecContext) error { return postgres.Stop(ctx) })
+		databaseURL := postgres.EmptyDatabase(ctx)
+
+		By("when the container runs skift serve with that database URL")
+		// The host's network, so the URL that reaches PostgreSQL from here
+		// reaches it from the container too.
+		container := image + "-serve"
+		runIn(dir, time.Minute, "podman", "run", "--detach", "--name", container, "--network", "host",
+			image, "skift", "serve", "--database-url", databaseURL)
+		DeferCleanup(func() {
+			runIn(dir, time.Minute, "podman", "rm", "-f", container)
+		})
+
+		By(`then its log contains "skift serve starting"`)
+		Eventually(func() string {
+			logs := run(os.Environ(), "podman", "logs", container)
+			return string(logs.Out.Contents()) + string(logs.Err.Contents())
+		}).WithTimeout(time.Minute).WithPolling(250 * time.Millisecond).
+			Should(ContainSubstring("skift serve starting"))
+
+		By("and /run/skift/skift.sock exists inside the container, owned by uid 65532")
+		Eventually(func() (string, error) {
+			return containerStat(container, "/run/skift/skift.sock")
+		}).WithTimeout(time.Minute).WithPolling(250 * time.Millisecond).
+			Should(Equal("65532:65532 socket"))
+	})
+
+	It("The binary carries its own trust roots", func() {
+		By("given the cmd/skift package, when its dependencies are listed")
+		deps := strings.Fields(runIn(dir, time.Minute, "go", "list", "-deps", "./cmd/skift"))
+
+		By("then golang.org/x/crypto/x509roots/fallback is among them")
+		Expect(deps).To(ContainElement("golang.org/x/crypto/x509roots/fallback"))
 	})
 })

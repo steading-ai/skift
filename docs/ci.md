@@ -61,10 +61,9 @@ Every other workflow runs on GitHub's own runners, and for `release.yml`, `verif
 - **Name:** `ghcr.io/steading-ai/skift`
 - **Tags:** the full commit SHA, one per push — immutable, pinnable — and
   `main`, which moves to whatever the latest push produced.
-- **Contents:** `skift` at `/usr/local/bin/skift`, on a `scratch` base. Nothing
-  else — no shell, no entrypoint. `podman run --rm
-  ghcr.io/steading-ai/skift:<sha> skift version` runs the binary itself as
-  the container's command.
+- **Contents:** `skift` at `/usr/local/bin/skift`, on a `scratch` base, and two empty directories it owns: `/run/skift`, where `skift serve` binds its socket, and `/var/lib/skift`, for the tailnet node's state. Nothing else — no shell, no entrypoint, no command. `podman run --rm ghcr.io/steading-ai/skift:<sha> skift version` runs the binary itself as the container's command.
+- **User:** uid and gid 65532, by number; the image has no `/etc/passwd`. Both directories are that user's, mode 0750, and a new volume mounted over either starts out the same way.
+- **TLS:** the image has no CA bundle. The binary carries Mozilla's roots from [`golang.org/x/crypto/x509roots/fallback`](https://pkg.go.dev/golang.org/x/crypto/x509roots/fallback) and uses them only where the system has none, as here.
 - **Auth to build and push:** the workflow's own `GITHUB_TOKEN`, granted
   `packages: write`. No other secret is involved.
 

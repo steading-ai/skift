@@ -14,6 +14,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/testcontainers/testcontainers-go v0.44.0
 	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261113174652-9ccaac6145fb
 	google.golang.org/protobuf v1.36.12
 	pgregory.net/rapid v1.2.0
 	tailscale.com v1.94.2
