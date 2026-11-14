@@ -285,25 +285,24 @@ var _ = Describe("Documentation commands", Label("unit"), Serial, Ordered, func(
 		Expect(err).NotTo(HaveOccurred(), "go build: %s", out)
 	})
 
-	It("The guide's skift commands exist", func() {
-		By("given the skift binary built from this tree")
-		Expect(helpOf().subcommands).To(HaveKey("ready"))
-		Expect(helpOf().flags).To(HaveKeyWithValue("--project", true))
-
-		By("and every line beginning with skift in the sh code blocks of the guide, and of every other page")
+	// documented reads the skift commands every current page shows.
+	documented := func() []docCommand {
+		GinkgoHelper()
 		var commands []docCommand
 		for _, page := range markdown(current(trackedFiles())) {
 			raw, err := os.ReadFile(page)
 			Expect(err).NotTo(HaveOccurred())
 			commands = append(commands, skiftCommands(page, string(raw))...)
 		}
-		var pages []string
-		for _, c := range commands {
-			pages = append(pages, c.file)
-		}
-		Expect(pages).To(ContainElement(installGuide), "the guide shows skift commands")
+		return commands
+	}
 
-		By("when each command's subcommand and flags are looked up in its --help")
+	// expectFound looks each command's subcommand and flags up in the
+	// binary's help, and fails naming every one the binary lacks by its
+	// file, its line and what is missing. A command in notShipped is not
+	// looked up.
+	expectFound := func(commands []docCommand) {
+		GinkgoHelper()
 		var missing []string
 		for _, c := range commands {
 			path, problems := missingFrom(c, helpOf)
@@ -314,9 +313,56 @@ var _ = Describe("Documentation commands", Label("unit"), Serial, Ordered, func(
 				missing = append(missing, fmt.Sprintf("%s: %s", c, problem))
 			}
 		}
-
-		By("then all of them are found")
 		Expect(missing).To(BeEmpty(), "documented commands the binary does not have")
+	}
+
+	It("The guide's skift commands exist", func() {
+		By("given the skift binary built from this tree")
+		Expect(helpOf().subcommands).To(HaveKey("ready"))
+		Expect(helpOf().flags).To(HaveKeyWithValue("--project", true))
+
+		By("and every line beginning with skift in the sh code blocks of the guide, and of every other page")
+		commands := documented()
+		var pages []string
+		for _, c := range commands {
+			pages = append(pages, c.file)
+		}
+		Expect(pages).To(ContainElement(installGuide), "the guide shows skift commands")
+
+		By("when each command's subcommand and flags are looked up in its --help")
+		By("then all of them are found")
+		expectFound(commands)
+	})
+
+	It("Every documented skift command exists", func() {
+		By("given the skift binary built from this tree")
+		Expect(helpOf().subcommands).To(HaveKey("ready"))
+
+		By("and every line beginning with skift in sh and bash code blocks of tracked Markdown outside archive")
+		commands := documented()
+		Expect(commands).NotTo(BeEmpty())
+		for _, c := range commands {
+			Expect(c.file).NotTo(HavePrefix(archiveDir))
+		}
+
+		By("when each command's subcommand and flags are looked up in its --help")
+		By("then all of them are found")
+		expectFound(commands)
+	})
+
+	It("A documented flag that does not exist is caught", func() {
+		By("given a Markdown file whose sh block runs skift ready --no-such-flag")
+		const page = "docs/example.md"
+		commands := skiftCommands(page, "# Example\n\n```sh\nskift ready --no-such-flag\n```\n")
+		Expect(commands).To(HaveLen(1))
+
+		By("when the command spec runs over it")
+		failures := InterceptGomegaFailures(func() { expectFound(commands) })
+
+		By("then it fails naming the file and the flag")
+		Expect(failures).To(HaveLen(1))
+		Expect(failures[0]).To(ContainSubstring(page + ":4:"))
+		Expect(failures[0]).To(ContainSubstring("no flag --no-such-flag"))
 	})
 
 	It("counts as not shipped only what the binary lacks", func() {
