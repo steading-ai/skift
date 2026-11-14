@@ -17,7 +17,7 @@ curl -fsSLO https://github.com/steading-ai/skift/releases/download/v<version>/do
 curl -fsSL -o skift.env https://raw.githubusercontent.com/steading-ai/skift/v<version>/contrib/skift.env.example
 ```
 
-The compose file pins the release's image as `<version>@sha256:<digest>`. Renovate and similar tools update that pair.
+The compose file pins the release's image as `<version>@sha256:<digest>`. Renovate and similar tools update that pair. To check the file and the image before running them, see [How to verify a release](verifying-a-release.md#check-the-image).
 
 Fill in `skift.env`:
 

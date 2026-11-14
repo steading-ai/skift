@@ -25,11 +25,11 @@ README documents `site.yaml`.
 
 [actions-lock.yml](../.github/workflows/actions-lock.yml) runs on every pull request and every push to `main`: `gh actions-lock --verify` fails when [actions.lock](../.github/workflows/actions.lock), which pins the commit behind every action the workflows use, no longer matches them or pins a commit that no longer verifies upstream. `gh actions-lock` rewrites it, and Renovate regenerates it with each action it updates.
 
-[release.yml](../.github/workflows/release.yml) runs when a `v*` tag is pushed. It builds the archives, SBOMs and checksums with `make release` and attests each archive; has `release-image.yml` push the image by digest; renders `docker-compose.yaml` pinned to that digest; puts every file on a draft release; signs a packslip manifest for it; and only then publishes, because a published release is immutable. After publication it tags the image with what `make image-tags` prints, has `release-notes.yml` write the notes, and has `verify-release.yml` check the result. [ADR-011](adrs/011-releases-are-immutable-and-attested.md) has the reasons for that order.
+[release.yml](../.github/workflows/release.yml) runs when a `v*` tag is pushed. It builds the archives, SBOMs and checksums with `make release` and attests each archive; has `release-image.yml` push the image by digest; renders `docker-compose.yaml` pinned to that digest; puts every file on a draft release; signs a packslip manifest for it; and only then publishes, because a published release is immutable. After publication it tags the image with what `make image-tags` prints, has `release-notes.yml` write the notes, and has `verify-release.yml` check the result. [ADR-011](adrs/011-releases-are-immutable-and-attested.md) has the reasons for that order, and [How to cut a release](releasing.md) is the maintainer's guide to running it.
 
 [release-image.yml](../.github/workflows/release-image.yml) runs only when `release.yml` calls it, with a version and the name of a workflow artifact holding the linux binaries `make release` built. It assembles the multi-arch image from them without compiling anything, pushes it to GHCR by digest and under no tag, checks that the pushed image reports the version, attests its provenance and its CycloneDX SBOM against the index digest, in the registry as well, and hands the digest back. Tagging is its caller's, after the release is published.
 
-[verify-release.yml](../.github/workflows/verify-release.yml) checks a published release from the outside: GitHub's attestation of the release, the checksums, each archive's provenance and SBOM attestations, the image's attestations and that the compose file pins the digest the image's tags resolve to, and an install with mise on linux/amd64, linux/arm64 and darwin/arm64. A release from before the image was released has no compose file, and its image checks are skipped. `release.yml` calls it last, and it can be dispatched for any tag.
+[verify-release.yml](../.github/workflows/verify-release.yml) checks a published release from the outside: GitHub's attestation of the release, the checksums, each archive's provenance and SBOM attestations, the image's attestations and that the compose file pins the digest the image's tags resolve to, and an install with mise on linux/amd64, linux/arm64 and darwin/arm64. A release from before the image was released has no compose file, and its image checks are skipped. `release.yml` calls it last, and it can be dispatched for any tag. [How to verify a release](verifying-a-release.md) shows the same checks by hand.
 
 [release-notes.yml](../.github/workflows/release-notes.yml) writes a published release's notes with [communiqué](https://communique.jdx.dev), configured by [communique.toml](../communique.toml). The repository stores no model credential: the job exchanges its GitHub identity for a short-lived Anthropic token by [workload identity federation](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation), naming the identifiers the `release` environment holds as variables. `release.yml` calls it with the tag it published, and it can be dispatched for any release; with `dry_run` it writes the notes to the job summary and leaves the release as it is.
 
@@ -61,8 +61,14 @@ Every other workflow runs on GitHub's own runners, and for `release.yml`, `relea
 ## The image
 
 - **Name:** `ghcr.io/steading-ai/skift`
-- **Tags:** the full commit SHA, one per push — immutable, pinnable — and
-  `main`, which moves to whatever the latest push produced.
+- **Edge tags**, from `publish.yml`: the full commit SHA, one per push to `main`, which never moves, and `main`, which moves to whatever the latest push produced. An edge image is not attested.
+- **Release tags**, from `release.yml`: `X.Y.Z`, which never moves, because the workflow refuses a version that is already tagged. A stable release also moves `X.Y`, `X` from 1.0 on, and `latest`, each only forward, so a patch to an older line moves its own `X.Y` and nothing else. A prerelease such as `X.Y.Z-rc.1` gets its exact tag alone. `make image-tags VERSION=X.Y.Z` prints the tags a version takes. A release's image is attested, and [How to verify a release](verifying-a-release.md#check-the-image) checks it.
+- **Digest pin:** a reference that carries a digest names one image whatever its tags do afterwards. The compose file a release carries pins its image this way:
+
+  ```yaml
+  image: ghcr.io/steading-ai/skift:<version>@sha256:<digest>
+  ```
+
 - **Contents:** `skift` at `/usr/local/bin/skift`, on a `scratch` base, and two empty directories it owns: `/run/skift`, where `skift serve` binds its socket, and `/var/lib/skift`, for the tailnet node's state. Nothing else — no shell, no entrypoint, no command. `podman run --rm ghcr.io/steading-ai/skift:<sha> skift version` runs the binary itself as the container's command.
 - **User:** uid and gid 65532, by number; the image has no `/etc/passwd`. Both directories are that user's, mode 0750, and a new volume mounted over either starts out the same way.
 - **TLS:** the image has no CA bundle. The binary carries Mozilla's roots from [`golang.org/x/crypto/x509roots/fallback`](https://pkg.go.dev/golang.org/x/crypto/x509roots/fallback) and uses them only where the system has none, as here.
@@ -75,4 +81,4 @@ The package is public, as the repository is, so any workflow or machine pulls `g
 
 ## Releases
 
-What a release contains, who builds each part, and how it is signed and verified are governed by [ADR-011](adrs/011-releases-are-immutable-and-attested.md). The image this page describes is the edge feed built from `main`; release artifacts are a separate matter decided there.
+What a release contains, who builds each part, and how it is signed are governed by [ADR-011](adrs/011-releases-are-immutable-and-attested.md). [How to cut a release](releasing.md) is for a maintainer, [How to verify a release](verifying-a-release.md) for anyone checking what they downloaded, and [How to install skift](install.md) for running one.

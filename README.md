@@ -14,7 +14,7 @@ With [mise](https://mise.jdx.dev), which verifies the release's signature and pi
 mise use -g packslip:github.com/steading-ai/skift
 ```
 
-Or download an archive from the [releases](https://github.com/steading-ai/skift/releases) and check that this repository's release workflow built it:
+Or download an archive from the [releases](https://github.com/steading-ai/skift/releases) and check that this repository's release workflow built it, as [How to verify a release](docs/verifying-a-release.md) describes:
 
 ```sh
 gh attestation verify skift_*.tar.gz --repo steading-ai/skift --signer-workflow steading-ai/skift/.github/workflows/release.yml
@@ -34,7 +34,9 @@ To get something done:
 
 - [How to install skift](docs/install.md): a server, the CLI, and a working agent
 - [How to deploy skift from the rpm](docs/deploying.md)
+- [How to verify a release](docs/verifying-a-release.md)
 - [How to develop skift](docs/developing.md)
+- [How to cut a release](docs/releasing.md)
 
 To look something up:
 
@@ -50,7 +52,7 @@ To understand why:
 - [Architecture decision records](docs/adrs/)
 - [Roadmap](docs/roadmap.md)
 
-[Archive](archive/README.md) holds retired machinery and dated records, unmaintained.
+[SECURITY.md](SECURITY.md) says how to report a vulnerability and which releases get fixes. [Archive](archive/README.md) holds retired machinery and dated records, unmaintained.
 
 ## License
 
