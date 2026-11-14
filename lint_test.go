@@ -31,8 +31,8 @@ func appendToFile(root, rel, content string) {
 // makeLint runs `make lint` in the given checkout and waits for it to exit.
 // Every package compiles from the shared build cache, so a couple of
 // minutes covers a cold golangci-lint run with margin. The copy is made a
-// git repository first: zizmor honours .github/workflows/actions.lock only
-// inside one, and reports every action as unpinned otherwise.
+// git repository first: jactionlint finds the workflows, and the lockfile
+// that pins their actions, only inside one.
 func makeLint(dir string) *gexec.Session {
 	GinkgoHelper()
 	git(dir, "init", "--quiet")

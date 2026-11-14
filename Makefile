@@ -138,8 +138,7 @@ mutate: db-up
 	  gremlins unleash $(MUTATE_FLAGS) ./internal/domain
 
 lint:
-	actionlint .github/workflows/*.yml
-	zizmor --offline --quiet .github/workflows
+	jactionlint
 	go vet ./...
 	golangci-lint run ./...
 	buf lint

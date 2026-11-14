@@ -10,13 +10,21 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
+
+# One push of the image at a time: a newer run waits for the one in flight
+# rather than cancelling it part way.
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # push the image
     steps:
       - uses: actions/checkout@v7.0.1
         with:
