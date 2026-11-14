@@ -1,6 +1,6 @@
 # CI
 
-Seven workflows live here.
+Eight workflows live here.
 
 [check.yml](../.github/workflows/check.yml) runs on every pull request and every push to `main`, as three jobs side by side. `check` runs `make lint`, then `make cover`: every spec, including the ones that need PostgreSQL (through testcontainers on the runner's Docker) and the acceptance scenarios against the built binary, with the floor in `coverage.baseline` enforced. It is the gate the pre-commit hook applies locally, plus what the hook leaves out for speed. `race` runs `make test-race`, every spec under the race detector. `fuzz` runs `make fuzz`, each fuzz target for a short while. Tools come from `mise.toml` through `jdx/mise-action`, so the versions are the ones a developer runs.
 
@@ -26,6 +26,8 @@ README documents `site.yaml`.
 [actions-lock.yml](../.github/workflows/actions-lock.yml) runs on every pull request and every push to `main`: `gh actions-lock --verify` fails when [actions.lock](../.github/workflows/actions.lock), which pins the commit behind every action the workflows use, no longer matches them or pins a commit that no longer verifies upstream. `gh actions-lock` rewrites it, and Renovate regenerates it with each action it updates.
 
 [release.yml](../.github/workflows/release.yml) runs when a `v*` tag is pushed. It builds the archives, SBOMs and checksums with `make release`, attests each archive, puts every file on a draft release, signs a packslip manifest for it, and only then publishes, because a published release is immutable. [ADR-011](adrs/011-releases-are-immutable-and-attested.md) has the reasons for that order.
+
+[release-image.yml](../.github/workflows/release-image.yml) runs only when another workflow calls it, with a version and the name of a workflow artifact holding the linux binaries `make release` built. It assembles the multi-arch image from them without compiling anything, pushes it to GHCR by digest and under no tag, checks that the pushed image reports the version, attests its provenance and its CycloneDX SBOM against the index digest, in the registry as well, and hands the digest back. Tagging is its caller's, after the release is published.
 
 [verify-release.yml](../.github/workflows/verify-release.yml) checks a published release from the outside: GitHub's attestation of the release, the checksums, each archive's provenance and SBOM attestations, and an install with mise on linux/amd64, linux/arm64 and darwin/arm64. `release.yml` calls it last, and it can be dispatched for any tag.
 
@@ -54,7 +56,7 @@ A release from the Go module proxy or from GitHub is proposed three days after i
 
 Blacksmith keeps the Go build cache and the container images a job pulls between runs. The workflow adds its cached checkout and [sticky disks](https://docs.blacksmith.sh/blacksmith-caching/dependencies-sticky-disks) for the mise tools, the Go module cache and golangci-lint's cache. Go's test result cache stays off: the database specs are not hermetic.
 
-Every other workflow runs on GitHub's own runners, and for `release.yml`, `verify-release.yml`, `release-notes.yml` and `publish.yml` that is deliberate. What they build is published, so it is built from no cache another run could have written, and an attestation of a release then says it was built on a GitHub-hosted runner. A spec holds them there.
+Every other workflow runs on GitHub's own runners, and for `release.yml`, `release-image.yml`, `verify-release.yml`, `release-notes.yml` and `publish.yml` that is deliberate. What they build is published, so it is built from no cache another run could have written, and an attestation of a release then says it was built on a GitHub-hosted runner. A spec holds them there.
 
 ## The image
 

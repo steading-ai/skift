@@ -380,6 +380,9 @@ var _ = Describe("The image", Label("db", "slow"), Serial, Ordered, func() {
 		// build cache holds nothing this compile can use, and it runs
 		// beside every other spec in the suite.
 		runIn(dir, 10*time.Minute, "make", "dist/skift-linux-"+runtime.GOARCH, "VERSION=9.9.9")
+		// As the release's image build receives it: a workflow artifact
+		// does not keep the executable bit.
+		Expect(os.Chmod(filepath.Join(dir, "dist", "skift-linux-"+runtime.GOARCH), 0o644)).To(Succeed())
 
 		// Scoped to the checkout so two parallel Ginkgo processes building
 		// this spec at once don't collide on the same image tag.

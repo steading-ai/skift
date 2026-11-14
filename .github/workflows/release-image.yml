@@ -1,0 +1,131 @@
+# Pushes a release's image by digest and attests it, for a workflow that
+# calls it with the binaries it built. The image gets no tag here: a tag
+# follows the release's publication, and the release's docker-compose.yaml
+# needs the digest before that. The image is assembled from the binaries
+# inside the release's archives, so nothing here compiles. The decisions
+# are in docs/adrs/011-releases-are-immutable-and-attested.md, and
+# docs/ci.md says what each workflow does.
+name: release-image
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version being released, as `make version` prints it, such as 0.2.0.
+        required: true
+        type: string
+      binaries:
+        description: The workflow artifact holding skift-linux-amd64 and skift-linux-arm64.
+        required: true
+        type: string
+    outputs:
+      digest:
+        description: The digest of the multi-arch image index, as sha256 and 64 hex digits.
+        value: ${{ jobs.image.outputs.digest }}
+
+permissions: {}
+
+# One push per version, never cancelled part way: an attestation cannot be
+# taken back.
+concurrency:
+  group: release-image-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/steading-ai/skift
+
+jobs:
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # push the image, and its attestations beside it
+      id-token: write # sign the attestations as this workflow
+      attestations: write # record them against the repository
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      # The calling ref: the Containerfile and the tool versions are the
+      # release's own.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # Where packaging/Containerfile reads them. An artifact does not keep
+      # a file's mode; the Containerfile sets the binary's as it copies it.
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ${{ inputs.binaries }}
+          path: dist
+
+      - uses: docker/setup-buildx-action@v4.4.1
+
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # By digest and under no tag. For a build of several platforms the
+      # digest output is the index's.
+      # https://docs.docker.com/build/exporters/image-registry/
+      - uses: docker/build-push-action@v7.4.0
+        id: push
+        with:
+          context: .
+          file: packaging/Containerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.licenses=ISC
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      # Before anything is attested: the image runs, and it is the version
+      # it is about to be attested as. Only the runner's own platform can
+      # be run here.
+      - name: The pushed image reports the version being released
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          reported="$(docker run --rm "$IMAGE@$DIGEST" skift version)"
+          test "$reported" = "skift version $VERSION" ||
+            { echo "::error::the image reports '$reported', not 'skift version $VERSION'"; exit 1; }
+
+      # syft alone, at the version mise.toml pins. No cache: what this job
+      # attests is published, so it restores nothing an earlier run could
+      # have written.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          install_args: syft
+          cache: false
+
+      # One SBOM for the index, read from the linux/amd64 image: the two
+      # platforms hold the same modules, compiled for each.
+      - name: Catalogue the image as a CycloneDX SBOM
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          syft scan "registry:$IMAGE@$DIGEST" --platform linux/amd64 \
+            --output cyclonedx-json=image.cdx.json
+
+      # Twice, against the index: who built it, and what is in it. Each is
+      # also pushed to the registry, beside the image.
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: image.cdx.json
+          push-to-registry: true
+          create-storage-record: false
