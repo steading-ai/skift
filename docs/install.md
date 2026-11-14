@@ -71,7 +71,13 @@ On each workstation:
 mise use -g packslip:github.com/steading-ai/skift
 ```
 
-mise's [packslip backend](https://mise.jdx.dev/dev-tools/backends/packslip.html) verifies the release's signed manifest and pins who signed it. `mise use -g github:steading-ai/skift` installs the same archive through its [github backend](https://mise.jdx.dev/dev-tools/backends/github.html). If mise reports no such version for a release published minutes ago, prefix the command with `MISE_USE_VERSIONS_HOST=0`, as its [troubleshooting page](https://mise.jdx.dev/troubleshooting.html#new-version-of-a-tool-is-not-available) describes.
+mise's [packslip backend](https://mise.jdx.dev/dev-tools/backends/packslip.html) verifies the release's signed manifest and pins who signed it. `mise use -g github:steading-ai/skift` installs the same archive through its [github backend](https://mise.jdx.dev/dev-tools/backends/github.html).
+
+mise holds a release back until it is a day old, which is its [minimum release age](https://mise.jdx.dev/configuration/settings.html#minimum_release_age), so on the day of a release this command installs the one before it, or fails if there is none. To install a release sooner, name it:
+
+```sh
+mise use -g packslip:github.com/steading-ai/skift@<version>
+```
 
 Point the CLI at the server, in your shell's profile:
 
