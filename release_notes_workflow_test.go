@@ -96,15 +96,14 @@ var _ = Describe("The release-notes workflow", Label("unit"), func() {
 		}
 		Expect(publishing).To(HaveLen(1))
 
-		// The flag is added in the branch a dry run does not take.
+		// The flag appears once, on the line a dry run's guard governs.
+		Expect(strings.Count(publishing[0], "--github-release")).To(Equal(1))
 		at := map[string]int{}
 		for i, command := range commands(publishing[0]) {
 			at[strings.TrimSpace(command)] = i + 1
 		}
-		dryRun, otherwise, publish := at[`if test "$DRY_RUN" = true; then`], at["else"], at["flags+=(--github-release)"]
-		Expect(dryRun).To(BeNumerically(">", 0))
-		Expect(otherwise).To(BeNumerically(">", dryRun))
-		Expect(publish).To(BeNumerically(">", otherwise))
-		Expect(strings.Count(publishing[0], "--github-release")).To(Equal(1))
+		guard, publish := at[`if test "$DRY_RUN" != true; then`], at["flags+=(--github-release)"]
+		Expect(guard).To(BeNumerically(">", 0))
+		Expect(publish).To(Equal(guard + 1))
 	})
 })

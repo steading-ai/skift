@@ -151,8 +151,9 @@ jobs:
       # A stable release is compared with the stable release before it, so
       # its notes cover what its release candidates brought; a prerelease
       # is compared with whichever tag came before it. A dry run asks the
-      # model for exactly what a real run does and writes the answer to a
-      # file. https://communique.jdx.dev/cli/generate
+      # model for exactly what a real run does, and differs only in not
+      # publishing the answer. The notes go to a file, not the log: they
+      # are a model's words. https://communique.jdx.dev/cli/generate
       - name: Write the notes
         env:
           OPENAI_API_KEY: ${{ steps.token.outputs.access_token }}
@@ -160,10 +161,8 @@ jobs:
           EXPIRES_IN: ${{ steps.token.outputs.expires_in }}
         run: |
           case "$TAG" in *-*) channel=all ;; *) channel=stable ;; esac
-          flags=(--channel "$channel" --verbose)
-          if test "$DRY_RUN" = true; then
-            flags+=(--output "$RUNNER_TEMP/notes.md")
-          else
+          flags=(--channel "$channel" --verbose --output "$RUNNER_TEMP/notes.md")
+          if test "$DRY_RUN" != true; then
             flags+=(--github-release)
           fi
 
@@ -172,21 +171,37 @@ jobs:
           echo "communiqué ran for ${SECONDS}s; the model token was good for ${EXPIRES_IN}s."
           exit "$status"
 
-      - name: Show the notes, and that the release is as it was
-        if: inputs.dry_run
+      # In the job summary, and in the log with workflow commands stopped,
+      # so that no line of the notes is read as one.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#stopping-and-starting-workflow-commands
+      - name: Show the notes, and on a dry run that the release is as it was
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/body.after"
-          cmp "$RUNNER_TEMP/body.before" "$RUNNER_TEMP/body.after" ||
-            { echo "::error::the notes of release $TAG changed during a dry run"; exit 1; }
+          if test "$DRY_RUN" = true; then
+            gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/body.after"
+            cmp "$RUNNER_TEMP/body.before" "$RUNNER_TEMP/body.after" ||
+              { echo "::error::the notes of release $TAG changed during a dry run"; exit 1; }
+            heading="Dry run: notes for $TAG"
+            outcome="Nothing was published: the release's notes are byte for byte what they were before this run. Below the line is what a run without dry_run would write."
+          else
+            heading="Notes for $TAG"
+            outcome="Below the line is what this run wrote to the release."
+          fi
 
           {
-            echo "## Dry run: notes for $TAG"
+            echo "## $heading"
             echo
-            echo "Nothing was published: the release's notes are byte for byte what they were before this run. Below the line is what a run without dry_run would write."
+            echo "$outcome"
             echo
             echo "---"
             echo
             cat "$RUNNER_TEMP/notes.md"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$heading. $outcome"
+          resume="$(cat /proc/sys/kernel/random/uuid)"
+          echo "::stop-commands::$resume"
+          cat "$RUNNER_TEMP/notes.md"
+          echo
+          echo "::$resume::"
