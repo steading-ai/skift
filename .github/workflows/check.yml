@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
         with:
           # Full history: the Makefile's VERSION reads tags, and the root
           # specs copy the checkout to lint it.
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
