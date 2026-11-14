@@ -6,7 +6,7 @@ Skift is an agent-first project management system built on directed acyclic grap
 
 - **Design is frontloaded and authoritative.** `docs/` settles the decisions; code follows it, not the other way round.
 - **The backlog lives in skift.** The work on this repository is a graph in a running skift service, and each node is a work order.
-- **Success** is an orchestrator completing a dependency chain end to end, with every step in the event log.
+- **Success is what the roadmap's milestones name.** `docs/roadmap.md` defines each by what becomes possible, not by a date.
 
 ## If you are working a node
 
@@ -29,9 +29,12 @@ cmd/skift/       binary entrypoint; one binary, three faces (CLI, MCP server, se
 internal/        application code; only internal/domain may import internal/store
 proto/, gen/     the wire contract and its generated Go. The proto is the domain model
 policy/          the default authorization bundle, in Rego, with its own spec suite
-docs/            the design. Authoritative
+docs/            the design, which is authoritative, and the guides
   adrs/          decisions and their rationale
-plugin/          the skift Claude Code plugin: the skill agents read, and the MCP server
+plugin/          the skift Claude Code plugin: the skills agents read, and the MCP server
+.claude-plugin/  the marketplace manifest that offers the plugin from the repository root
+packaging/       the rpm and the image: nfpm configuration, scriptlets, and the Containerfile
+contrib/         what a deployment copies: the compose file, its settings template, and the systemd units
 tests/acceptance end-to-end scenarios against the built binary and a real database
 compose.yaml     PostgreSQL for local development
 archive/         retired machinery and dated records. Unmaintained, not authoritative
@@ -82,4 +85,7 @@ Specs are Ginkgo and Gomega. Two lint rules carry design decisions rather than s
 - **How the pieces fit** — `docs/architecture.md` for the request path, transports, and trust boundaries.
 - **Why something is the way it is** — `docs/adrs/`. Check here before changing a decision.
 - **What is planned and deliberately deferred** — `docs/roadmap.md`.
+- **How to build, test and run it from a checkout** — `docs/developing.md`.
+- **How it is installed** — `docs/install.md` for a server in containers, the CLI and an agent; `docs/deploying.md` for the rpm under systemd; `docs/agent-skills.md` for the skills and the MCP server.
+- **How it is checked and released** — `docs/ci.md` for the workflows, `docs/releasing.md` to cut a release, `docs/verifying-a-release.md` to check one.
 - **What used to be here** — `archive/README.md`. The loop that built the first version, the first backlog, and dated plans and notes. Records, not guidance.
