@@ -223,6 +223,24 @@ release:
 	  chmod 0755 dist/skift-linux-$$arch || exit 1; \
 	done
 
+# The compose file a release carries: contrib/docker-compose.yaml with the
+# skift service's image line naming IMAGE, the released image as
+# <version>@sha256:<digest>, and every other line as it is. IMAGE is known
+# only once the image has been pushed, so this is not part of `make
+# release`, which also empties the directory: render it afterwards.
+# FORCE, because a file left by an earlier IMAGE is not this one's.
+$(RELEASE_DIR)/docker-compose.yaml: IMAGE ?=
+$(RELEASE_DIR)/docker-compose.yaml: contrib/docker-compose.yaml FORCE
+	@printf '%s\n' '$(IMAGE)' | \
+	  grep -Eqx 'ghcr\.io/steading-ai/skift:[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?@sha256:[0-9a-f]{64}' || \
+	  { echo "$@: IMAGE must be ghcr.io/steading-ai/skift:<version>@sha256:<64 hex>, not '$(IMAGE)'" >&2; exit 1; }
+	@mkdir -p $(@D)
+	@awk -v image='$(IMAGE)' ' \
+	  /^ *image: *[$$][{]SKIFT_IMAGE/ { sub(/image:.*/, "image: " image); pinned++ } \
+	  { print } \
+	  END { if (pinned != 1) { print "$@: $< has " (pinned + 0) " image lines reading SKIFT_IMAGE, not one" > "/dev/stderr"; exit 1 } }' \
+	  $< > $@ || { rm -f $@; exit 1; }
+
 # The image tags a release of VERSION owns, one per line, given the v*
 # tags in the repository. Always the version itself, which never moves.
 # A stable release also takes the moving tags, each only forward: X.Y
