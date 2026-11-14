@@ -28,8 +28,11 @@ concurrency:
 
 env:
   REPO: steading-ai/skift
-  # The only workflow whose attestations count.
+  IMAGE: ghcr.io/steading-ai/skift
+  # The only workflows whose attestations count: the archives are attested
+  # where they are built, the image by the workflow that pushes it.
   SIGNER: steading-ai/skift/.github/workflows/release.yml
+  IMAGE_SIGNER: steading-ai/skift/.github/workflows/release-image.yml
   TAG: ${{ inputs.tag }}
 
 jobs:
@@ -84,6 +87,58 @@ jobs:
               --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
               --predicate-type https://cyclonedx.org/bom
           done
+
+      # A release from before the image was released has no compose file,
+      # and nothing more to check.
+      - name: Does this release carry an image?
+        id: image
+        run: |
+          if test -f assets/docker-compose.yaml; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "$TAG has no docker-compose.yaml asset: it predates the released image, so the image checks are skipped."
+          fi
+
+      - name: Verify the image's provenance and SBOM attestations
+        if: steps.image.outputs.released == 'true'
+        run: |
+          version="${TAG#v}"
+          gh attestation verify "oci://$IMAGE:$version" --repo "$REPO" --signer-workflow "$IMAGE_SIGNER" --source-ref "refs/tags/$TAG"
+          gh attestation verify "oci://$IMAGE:$version" --repo "$REPO" --signer-workflow "$IMAGE_SIGNER" --source-ref "refs/tags/$TAG" --predicate-type https://cyclonedx.org/bom
+
+      # Read from the registry as anyone can, with no login.
+      # https://distribution.github.io/distribution/spec/api/
+      - name: The compose file pins the image the tags resolve to
+        if: steps.image.outputs.released == 'true'
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+
+          digest_of() {
+            local token headers
+            token="$(curl -fsS "https://ghcr.io/token?scope=repository:$REPO:pull" | jq -r .token)"
+            headers="$(curl -fsS -o /dev/null -D - \
+              -H "Authorization: Bearer $token" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              "https://ghcr.io/v2/$REPO/manifests/$1")"
+            awk 'tolower($1) == "docker-content-digest:" { print $2 }' <<<"$headers" | tr -d '\r'
+          }
+
+          digest="$(digest_of "$version")"
+          pinned="$(awk -v image="$IMAGE:" '$1 == "image:" && index($2, image) == 1 { print $2 }' assets/docker-compose.yaml)"
+          test "$pinned" = "$IMAGE:$version@$digest" ||
+            { echo "::error::docker-compose.yaml pins $pinned, but $IMAGE:$version is $digest"; exit 1; }
+          echo "docker-compose.yaml pins $pinned"
+
+          # The moving tags belong to the newest stable release.
+          if test "$(gh release view --repo "$REPO" --json tagName --jq .tagName)" = "$TAG"; then
+            for tag in "${version%.*}" latest; do
+              test "$(digest_of "$tag")" = "$digest" ||
+                { echo "::error::$IMAGE:$tag does not resolve to $digest"; exit 1; }
+              echo "$IMAGE:$tag -> $digest"
+            done
+          fi
 
   install:
     name: install (${{ matrix.platform }})

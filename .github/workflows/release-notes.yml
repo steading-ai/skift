@@ -2,8 +2,8 @@
 # is immutable but its title and notes stay editable, so this runs after
 # publication, and a failure here costs the release nothing but its notes.
 # The repository stores no model credential: the job exchanges its GitHub
-# identity for an Anthropic token that lasts minutes. Another workflow can
-# call this with the tag it published; a person can dispatch it for any
+# identity for an Anthropic token that lasts minutes. release.yml calls
+# this with the tag it published; a person can dispatch it for any
 # release, with dry_run to read the notes before they replace anything.
 # See docs/adrs/011-releases-are-immutable-and-attested.md, decision 8.
 name: release-notes

@@ -53,6 +53,19 @@ var _ = Describe("The verify-release workflow", Label("unit"), func() {
 		Expect(checks).To(BeNumerically(">=", 2), "provenance and SBOM are each verified")
 	})
 
+	It("checks the image only for a release that carries one", func() {
+		const carriesImage = "steps.image.outputs.released == 'true'"
+
+		checks := 0
+		for _, step := range w.Jobs["verify"].Steps {
+			if strings.Contains(step.Run, "oci://") || strings.Contains(step.Run, "digest_of") {
+				checks++
+				Expect(step.If).To(Equal(carriesImage), step.Name)
+			}
+		}
+		Expect(checks).To(Equal(2), "the image's attestations, and the digest the compose file pins")
+	})
+
 	It("installs every released platform with mise, by manifest and by asset name", func() {
 		install := w.Jobs["install"]
 
