@@ -1,10 +1,84 @@
-// Renovate manages only the GitHub Actions in .github/workflows, their lockfile
-// actions.lock, and the gh-actions-lock release the actions-lock workflow installs.
+// Renovate keeps every dependency this repository pins current: the Go modules
+// in go.mod, the tools in mise.toml with their lockfile mise.lock, the images in
+// compose files and Containerfiles, the PostgreSQL image the database specs
+// start, the hk release hk.pkl names, the GitHub Actions in .github/workflows
+// with their lockfile actions.lock, and the gh-actions-lock release the
+// actions-lock workflow installs. No manager is switched off, so a new kind of
+// manifest is managed from the day it is added. The preset merges an update
+// once its pull request's checks pass; docs/ci.md says which those are.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["github>ivy/renovate-config"],
-  enabledManagers: ["github-actions", "custom.regex"],
-  // archive/ holds retired material, which takes no updates.
+  extends: [
+    "github>ivy/renovate-config",
+    // An image reference carries its digest, here and wherever one is added.
+    // https://docs.renovatebot.com/presets-docker/#dockerpindigests
+    "docker:pinDigests",
+  ],
+
+  // archive/ holds retired material, which takes no updates. This list
+  // replaces the one the preset inherits; it does not add to it.
   // https://docs.renovatebot.com/configuration-options/#ignorepaths
   ignorePaths: ["archive/**"],
+
+  // https://docs.renovatebot.com/configuration-options/#postupdateoptions
+  postUpdateOptions: ["gomodTidy"],
+
+  // https://docs.renovatebot.com/modules/manager/regex/
+  customManagers: [
+    {
+      description: "The PostgreSQL image the database specs start, which is the one compose.yaml runs",
+      customType: "regex",
+      managerFilePatterns: ["/^internal/testsupport/postgres\\.go$/"],
+      matchStrings: [
+        'postgresImage = "(?<depName>[^:"]+):(?<currentValue>[^@"]+)@(?<currentDigest>sha256:[0-9a-f]+)"',
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      description: "The hk release hk.pkl takes its schema from, which is the one mise.toml installs",
+      customType: "regex",
+      managerFilePatterns: ["/^hk\\.pkl$/"],
+      matchStrings: [
+        "package://github\\.com/jdx/hk/releases/download/v(?<currentValue>[^/]+)/",
+        "/hk@(?<currentValue>[^#]+)#/",
+      ],
+      depNameTemplate: "hk",
+      packageNameTemplate: "jdx/hk",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+  ],
+
+  packageRules: [
+    {
+      description: "The Go toolchain is one version: mise.toml installs it, and go.mod's go directive is what actions/setup-go reads. Both move in one pull request, after the cooldown the preset gives GitHub tags.",
+      matchManagers: ["gomod", "mise"],
+      matchDepNames: ["go"],
+      groupName: "Go toolchain",
+      // The go directive is a minimum, which Renovate raises only when told to.
+      // https://docs.renovatebot.com/modules/manager/gomod/
+      rangeStrategy: "bump",
+      // https://docs.renovatebot.com/configuration-options/#minimumreleaseage
+      minimumReleaseAge: "3 days",
+    },
+    {
+      description: "compose.yaml and the database specs run one PostgreSQL image, so both references move in one pull request",
+      matchDepNames: ["docker.io/library/postgres"],
+      groupName: "PostgreSQL image",
+    },
+    {
+      description: "mise.toml writes a version without the v its GitHub tag carries. Go's tags are go1.2.3, which the mise manager reads by itself.",
+      matchManagers: ["mise"],
+      matchDatasources: ["github-releases", "github-tags"],
+      matchDepNames: ["!go"],
+      // https://docs.renovatebot.com/configuration-options/#extractversion
+      extractVersion: "^v?(?<version>.+)$",
+    },
+    {
+      description: "No check runs hk, which is the git hooks, or gremlins, which is make mutate, so a person merges their updates. The preset's README gives the rule under Adding an exception.",
+      matchDepNames: ["hk", "go:github.com/go-gremlins/gremlins/cmd/gremlins"],
+      // https://docs.renovatebot.com/configuration-options/#automerge
+      automerge: false,
+    },
+  ],
 }
