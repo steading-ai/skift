@@ -143,6 +143,14 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			}
 		})
 
+		It("declares the ISC license in its header", func() {
+			for _, name := range []string{"skift-9.9.9-1.x86_64.rpm", "skift-9.9.9-1.aarch64.rpm"} {
+				pkg, err := rpm.Open(filepath.Join(dir, "dist", name))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pkg.License()).To(Equal("ISC"), name)
+			}
+		})
+
 		It("runs the service as the skift system user, not a login account", func() {
 			unit, err := os.ReadFile(filepath.Join(dir, "contrib/systemd/skift.service"))
 			Expect(err).NotTo(HaveOccurred())
