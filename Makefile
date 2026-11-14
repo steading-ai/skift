@@ -146,6 +146,7 @@ lint:
 	opa check --strict policy
 	opa fmt --fail --list policy
 	goreleaser check --quiet
+	hk validate
 	$(MAKE) --no-print-directory check-generated
 
 # Generated code is committed, so a consumer needs no proto or SQL toolchain.

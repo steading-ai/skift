@@ -46,7 +46,7 @@ Renovate ([renovate.json5](../renovate.json5)) opens a pull request when somethi
 
 It reads nothing under `archive/`.
 
-An update merges by itself once every check on its pull request has passed. That is `check.yml` and `actions-lock.yml`, and `site.yml` when the change touches what the site is built from. An update that fails a check waits for a person: a buf or sqlc release that changes the generated code fails `make lint` until someone runs `make generate` on the branch. Updates to hk and to gremlins always wait for a person, because no check runs the git hooks or `make mutate`.
+An update merges by itself once every check on its pull request has passed. That is `check.yml` and `actions-lock.yml`, and `site.yml` when the change touches what the site is built from. An update that fails a check waits for a person: a buf or sqlc release that changes the generated code fails `make lint` until someone runs `make generate` on the branch. `make lint` validates `hk.pkl` against the hk that is installed, so an hk release that no longer reads the hook configuration fails its pull request too. Nothing runs gremlins in a check: a release of it that breaks `make mutate` merges, and shows the next time someone runs it.
 
 A release from the Go module proxy or from GitHub is proposed three days after it is published. A new image digest and a vulnerability fix are proposed at once. The cooldown and the merge rule come from the preset the configuration extends, [ivy/renovate-config](https://github.com/ivy/renovate-config).
 
