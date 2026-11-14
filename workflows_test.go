@@ -28,6 +28,7 @@ type workflowTrigger struct {
 }
 
 type workflowJob struct {
+	RunsOn      any               `yaml:"runs-on"`
 	Needs       stringOrList      `yaml:"needs"`
 	Uses        string            `yaml:"uses"`
 	Environment string            `yaml:"environment"`

@@ -2,17 +2,7 @@
 
 Seven workflows live here.
 
-[check.yml](../.github/workflows/check.yml) runs on every pull request and
-every push to `main`: `make lint`, then `make cover`. That is every spec,
-including the ones that need PostgreSQL (through testcontainers on the
-runner's Docker) and the acceptance scenarios against the built binary,
-with the floor in `coverage.baseline` enforced. It is the gate the
-pre-commit hook applies locally, plus what the hook leaves out for speed.
-A second job in the same workflow runs `make test-race`, every spec under
-the race detector, and `make fuzz`, each fuzz target for a short while;
-it runs beside the first rather than after it. Tools come from
-`mise.toml` through `jdx/mise-action`, so the versions are the ones a
-developer runs.
+[check.yml](../.github/workflows/check.yml) runs on every pull request and every push to `main`, as three jobs side by side. `check` runs `make lint`, then `make cover`: every spec, including the ones that need PostgreSQL (through testcontainers on the runner's Docker) and the acceptance scenarios against the built binary, with the floor in `coverage.baseline` enforced. It is the gate the pre-commit hook applies locally, plus what the hook leaves out for speed. `race` runs `make test-race`, every spec under the race detector. `fuzz` runs `make fuzz`, each fuzz target for a short while. Tools come from `mise.toml` through `jdx/mise-action`, so the versions are the ones a developer runs.
 
 `make lint` reads the workflows too, with [jactionlint](https://jactionlint.jdx.dev): their syntax, expressions and shell, and the mistakes that make a workflow exploitable, such as template injection, persisted credentials and over-broad permissions. It checks `actions.lock` against the actions the workflows use as well.
 
@@ -57,6 +47,14 @@ It reads nothing under `archive/`.
 An update merges by itself once every check on its pull request has passed. That is `check.yml` and `actions-lock.yml`, and `site.yml` when the change touches what the site is built from. An update that fails a check waits for a person: a buf or sqlc release that changes the generated code fails `make lint` until someone runs `make generate` on the branch. Updates to hk and to gremlins always wait for a person, because no check runs the git hooks or `make mutate`.
 
 A release from the Go module proxy or from GitHub is proposed three days after it is published. A new image digest and a vulnerability fix are proposed at once. The cooldown and the merge rule come from the preset the configuration extends, [ivy/renovate-config](https://github.com/ivy/renovate-config).
+
+## Runners
+
+`check.yml` runs on [Blacksmith](https://docs.blacksmith.sh) runners: `check` and `race` on 8 vCPUs, `fuzz` on 4. Measured on this repository, `check` takes about 5m45s, 3m40s and 3m15s on 4, 8 and 16 vCPUs, and `race` with the fuzz targets about 8m45s, 7m15s and 6m; on GitHub's runners they took about 10 and 13 to 20 minutes. Past 8 vCPUs a job costs twice as much for under a minute less, because the time goes on running the specs against PostgreSQL, not on compiling. The fuzz targets run for a fixed time on any machine, so they have a small runner to themselves.
+
+Blacksmith keeps the Go build cache and the container images a job pulls between runs. The workflow adds its cached checkout and [sticky disks](https://docs.blacksmith.sh/blacksmith-caching/dependencies-sticky-disks) for the mise tools, the Go module cache and golangci-lint's cache. Go's test result cache stays off: the database specs are not hermetic.
+
+Every other workflow runs on GitHub's own runners, and for `release.yml`, `verify-release.yml`, `release-notes.yml` and `publish.yml` that is deliberate. What they build is published, so it is built from no cache another run could have written, and an attestation of a release then says it was built on a GitHub-hosted runner. A spec holds them there.
 
 ## The image
 
