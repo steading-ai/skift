@@ -27,21 +27,52 @@ var _ = Describe("The release workflow", Label("unit"), func() {
 		Expect(w.Jobs["draft"].Needs).To(ContainElement("build"))
 		Expect(w.Jobs["sign"].Needs).To(ContainElement("draft"))
 		Expect(w.Jobs["publish"].Needs).To(ContainElement("sign"))
-		Expect(w.Jobs["verify"].Needs).To(ContainElement("publish"))
+	})
+
+	It("puts the compose file in the draft before it is signed", func() {
+		Expect(w.Jobs["image"].Needs).To(ContainElement("build"))
+		Expect(w.Jobs["compose"].Needs).To(ContainElement("image"))
+		Expect(w.Jobs["draft"].Needs).To(ContainElements("image", "compose"))
+		Expect(w.Jobs["sign"].Needs).To(ContainElement("draft"))
+	})
+
+	It("tags the image only after the release is published", func() {
+		Expect(w.Jobs["tag-image"].Needs).To(ContainElements("publish", "image"))
+		Expect(w.Jobs["verify"].Needs).To(ContainElement("tag-image"))
+	})
+
+	It("lets nothing wait on the notes", func() {
+		Expect(w.Jobs["notes"].Needs).To(ContainElement("publish"))
+		for name, job := range w.Jobs {
+			Expect(job.Needs).NotTo(ContainElement("notes"), name)
+		}
 	})
 
 	It("confines write access to the jobs that need it", func() {
 		Expect(w.Permissions).To(BeEmpty(), "top-level permissions are empty; each job states its own")
 
-		var writers []string
+		var releaseWriters, packageWriters []string
 		for name, job := range w.Jobs {
 			Expect(job.Permissions).NotTo(BeEmpty(), name)
-			Expect(job.Permissions).NotTo(HaveKeyWithValue("packages", "write"), name)
 			if job.Permissions["contents"] == "write" {
-				writers = append(writers, name)
+				releaseWriters = append(releaseWriters, name)
+			}
+			if job.Permissions["packages"] == "write" {
+				packageWriters = append(packageWriters, name)
 			}
 		}
-		Expect(writers).To(ConsistOf("draft", "publish"))
+		// notes grants it to the workflow it calls, which edits the
+		// release's title and notes; image, likewise, to the one that pushes.
+		Expect(releaseWriters).To(ConsistOf("draft", "publish", "notes"))
+		Expect(packageWriters).To(ConsistOf("image", "tag-image"))
+	})
+
+	It("lets only the tagging job, of those that run here, write packages", func() {
+		for name, job := range w.Jobs {
+			if job.Uses == "" && job.Permissions["packages"] == "write" {
+				Expect(name).To(Equal("tag-image"))
+			}
+		}
 	})
 
 	It("lets the jobs that can write the release run nothing but gh", func() {

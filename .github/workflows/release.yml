@@ -1,7 +1,8 @@
 # A pushed v* tag becomes a release: built, attested, drafted, signed, and
 # only then published, because a published release is immutable and nothing
-# can be added to it. Each job holds the least it needs; the two that can
-# write to the release run nothing but gh. The decisions are in
+# can be added to it. The image is pushed before the draft and tagged after
+# publication. Each job holds the least it needs; the two here that write
+# the release's assets run nothing but gh. The decisions are in
 # docs/adrs/011-releases-are-immutable-and-attested.md, and docs/ci.md says
 # what each workflow does.
 name: release
@@ -93,12 +94,75 @@ jobs:
           path: dist/release/
           if-no-files-found: error
 
+      # The linux binaries that are inside the archives, for the image.
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: binaries
+          path: |
+            dist/skift-linux-amd64
+            dist/skift-linux-arm64
+          if-no-files-found: error
+
+  # Assembles the image from those binaries, pushes it by digest with no
+  # tag, and attests it. The release names the digest, so this comes
+  # before the draft; the tags come after publication.
+  image:
+    name: image
+    needs: build
+    permissions:
+      contents: read
+      packages: write # push the image, untagged
+      id-token: write # sign its attestations
+      attestations: write # record them
+    uses: ./.github/workflows/release-image.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      binaries: binaries
+
+  # Renders the compose file with the image pinned by tag and digest, and
+  # adds it to the checksums. A job of its own because it runs make from a
+  # checkout, and the jobs that can write the release run nothing but gh.
+  compose:
+    name: compose
+    needs: [build, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      DIGEST: ${{ needs.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: release
+          path: dist/release
+
+      - name: Render docker-compose.yaml and add it to SHA256SUMS
+        run: |
+          make dist/release/docker-compose.yaml IMAGE="ghcr.io/steading-ai/skift:$VERSION@$DIGEST"
+          cd dist/release
+          sha256sum docker-compose.yaml >> SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: compose
+          path: |
+            dist/release/docker-compose.yaml
+            dist/release/SHA256SUMS
+          if-no-files-found: error
+
   # Refuses an incomplete release, then puts every file on a draft. Assets
   # reach later jobs as workflow artifacts: a job with contents: read
   # cannot download a draft's.
   draft:
     name: draft
-    needs: build
+    needs: [build, image, compose]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -114,10 +178,20 @@ jobs:
           name: release
           path: release
 
+      # The compose file, and the checksums that now cover it.
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: compose
+          path: release
+
       - name: Every archive has its SBOM, its checksum and both attestations
         working-directory: release
         run: |
           sha256sum --check --strict SHA256SUMS
+          test -f docker-compose.yaml ||
+            { echo "::error::the release has no docker-compose.yaml"; exit 1; }
+          grep -q "  docker-compose.yaml\$" SHA256SUMS ||
+            { echo "::error::docker-compose.yaml is not in SHA256SUMS"; exit 1; }
           archives=0
           for archive in *.tar.gz; do
             archives=$((archives + 1))
@@ -213,11 +287,77 @@ jobs:
           gh release upload "$TAG" packslip/packslip.sigstore.json
           gh release edit "$TAG" --draft=false
 
+  # Tags follow publication and never lead it, so no tag ever names an
+  # image whose release did not publish. The full version is refused if it
+  # exists; `make image-tags` decides which moving tags this release owns.
+  tag-image:
+    name: tag-image
+    needs: [build, image, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write # add tags to the pushed image
+    env:
+      IMAGE: ghcr.io/steading-ai/skift
+      VERSION: ${{ needs.build.outputs.version }}
+      DIGEST: ${{ needs.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # Every version tag: `make image-tags` compares against them.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          install_args: crane
+          cache: false
+
+      - name: Log in to the registry
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$REGISTRY_TOKEN" | crane auth login ghcr.io --username "$ACTOR" --password-stdin
+
+      - name: Refuse a version that is already tagged
+        run: |
+          tags="$(crane ls "$IMAGE")"
+          if grep -qxF "$VERSION" <<<"$tags"; then
+            echo "::error::$IMAGE:$VERSION already exists; a version tag is never moved"
+            exit 1
+          fi
+
+      # crane tag adds a name to the manifest that is there; it rewrites
+      # nothing, so the digest the attestations name is the one tagged.
+      - name: Tag the attested image
+        run: |
+          tags="$(make -s image-tags VERSION="$VERSION")"
+          for tag in $tags; do
+            crane tag "$IMAGE@$DIGEST" "$tag"
+            test "$(crane digest "$IMAGE:$tag")" = "$DIGEST" ||
+              { echo "::error::$IMAGE:$tag does not resolve to $DIGEST"; exit 1; }
+            echo "$IMAGE:$tag -> $DIGEST"
+          done
+
+  # Rewrites the release's notes. Nothing waits on it: the release is
+  # published and verified whether or not a model answers.
+  notes:
+    name: notes
+    needs: publish
+    permissions:
+      id-token: write # exchange this job's identity for a model token
+      contents: write # edit the release's title and notes
+      pull-requests: read # read the pull requests the notes cite
+    uses: ./.github/workflows/release-notes.yml
+    with:
+      tag: ${{ github.ref_name }}
+
   # Checks the published release from outside and installs it with mise
   # on every platform.
   verify:
     name: verify
-    needs: publish
+    needs: tag-image
     permissions:
       contents: read
       attestations: read
