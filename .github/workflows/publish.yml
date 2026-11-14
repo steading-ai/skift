@@ -10,13 +10,21 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
+
+# One push of the image at a time: a newer run waits for the one in flight
+# rather than cancelling it part way.
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # push the image
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -24,11 +32,14 @@ jobs:
           # commits and finding tags with git, both of which need it. A
           # shallow clone would stamp a version a local build wouldn't.
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          # What this job builds is published, so it restores no cache an
+          # earlier run could have written.
+          cache: false
 
       - name: Cross-compile skift
         run: |

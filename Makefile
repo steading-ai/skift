@@ -138,6 +138,7 @@ mutate: db-up
 	  gremlins unleash $(MUTATE_FLAGS) ./internal/domain
 
 lint:
+	jactionlint
 	go vet ./...
 	golangci-lint run ./...
 	buf lint

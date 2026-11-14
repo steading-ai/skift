@@ -118,7 +118,7 @@ Rejected: an API key in a repository or environment secret. A long-lived credent
 
 ### 9. Hygiene
 
-Every action is pinned by commit in `.github/workflows/actions.lock`. `make lint` runs actionlint and zizmor over the workflows. Each job declares the least permission its work needs, and `contents: write` appears only in the jobs that create, publish or annotate the release. Renovate manages everything the repository pins, Go modules, mise tools, image digests and actions alike, because a released binary embeds its dependencies, its CA roots among them.
+Every action is pinned by commit in `.github/workflows/actions.lock`. `make lint` runs [jactionlint](https://jactionlint.jdx.dev) over the workflows. Each job declares the least permission its work needs, and `contents: write` appears only in the jobs that create, publish or annotate the release. Renovate manages everything the repository pins, Go modules, mise tools, image digests and actions alike, because a released binary embeds its dependencies, its CA roots among them.
 
 Rejected: bumping dependencies by hand. That is how a distrusted CA or a vulnerable module stays in a released binary until someone happens to notice.
 
