@@ -53,7 +53,7 @@ jobs:
 
       # No cache: what this job builds is published, so it restores
       # nothing an earlier run could have written.
-      - uses: jdx/mise-action@v3.6.3
+      - uses: jdx/mise-action@v5.2.7
         with:
           cache: false
 

@@ -7,7 +7,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
     '.github/workflows/check.yml':
         - 'actions/checkout@v7.0.1'
-        - 'jdx/mise-action@v3.6.3'
+        - 'jdx/mise-action@v5.2.7'
     '.github/workflows/publish.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-go@v7.0.0'
@@ -19,13 +19,13 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/download-artifact@v8.0.2'
         - 'actions/upload-artifact@v7.0.2'
-        - 'jdx/mise-action@v3.6.3'
+        - 'jdx/mise-action@v5.2.7'
         - 'jdx/packslip@v1.11.3'
     '.github/workflows/site.yml':
         - 'actions/checkout@v7.0.1'
         - 'steading-ai/stead.ing@main'
     '.github/workflows/verify-release.yml':
-        - 'jdx/mise-action@v3.6.3'
+        - 'jdx/mise-action@v5.2.7'
 dependencies:
     'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8':
         ref: 'v4.2.2'
@@ -101,9 +101,9 @@ dependencies:
         commit: 'sha1-b44d12e7d0d8ee7461bb893e1b1993500433185b'
         owner_id: 216188
         repo_id: 738284564
-    'jdx/mise-action@v3.6.3':
-        ref: 'v3.6.3'
-        commit: 'sha1-5228313ee0372e111a38da051671ca30fc5a96db'
+    'jdx/mise-action@v5.2.7':
+        ref: 'v5.2.7'
+        commit: 'sha1-b44d12e7d0d8ee7461bb893e1b1993500433185b'
         owner_id: 216188
         repo_id: 738284564
     'jdx/packslip@v1.11.3':
