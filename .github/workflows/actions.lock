@@ -16,7 +16,7 @@ workflows:
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/release-notes.yml':
         - 'actions/checkout@v7.0.1'
-        - 'jdx/mise-action@v3.6.3'
+        - 'jdx/mise-action@v5.2.7'
     '.github/workflows/release.yml':
         - 'actions/attest@v4.2.2'
         - 'actions/checkout@v7.0.1'

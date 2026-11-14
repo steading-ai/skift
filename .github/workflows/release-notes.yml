@@ -68,7 +68,7 @@ jobs:
 
       # communiqué alone, and from no cache another run could have written:
       # this job can write to releases.
-      - uses: jdx/mise-action@v3.6.3
+      - uses: jdx/mise-action@v5.2.7
         with:
           install_args: communique
           cache: false
