@@ -3,7 +3,7 @@ module github.com/steading-ai/skift
 go 1.26.10
 
 require (
-	connectrpc.com/connect v1.20.0
+	connectrpc.com/connect v1.21.1
 	github.com/cavaliergopher/rpm v1.3.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/onsi/ginkgo/v2 v2.32.1
