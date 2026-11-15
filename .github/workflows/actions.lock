@@ -122,7 +122,7 @@ dependencies:
             - 'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8'
     'steading-ai/stead.ing@main':
         ref: 'main'
-        commit: 'sha1-148f8bd861feda91cf6c9ce8b7b243f880435a7f'
+        commit: 'sha1-76ad51fec7423ddd12bc2d7ada93e80b579c2727'
         owner_id: 329382687
         repo_id: 1455013143
         uses:
