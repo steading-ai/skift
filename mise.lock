@@ -485,51 +485,51 @@ url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/63462983
 provenance = "cosign"
 
 [[tools.opa]]
-version = "1.22.3"
+version = "1.22.4"
 backend = "aqua:open-policy-agent/opa"
-specifiers = ["1.22.3"]
+specifiers = ["1.22.4"]
 
 [tools.opa."platforms.linux-arm64"]
-checksum = "sha256:4c1be43eb34a8c253c369e4236ec5436e2e0dd19b97efb875cc756bcc75ddf6c"
+checksum = "sha256:9e9afee01319a5044790e59b1a2ece39a943f9b6059b97bd86c7aab88830d833"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_linux_arm64_static"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439870"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_linux_arm64_static"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019607"
 
 [tools.opa."platforms.linux-arm64-musl"]
-checksum = "sha256:4c1be43eb34a8c253c369e4236ec5436e2e0dd19b97efb875cc756bcc75ddf6c"
+checksum = "sha256:9e9afee01319a5044790e59b1a2ece39a943f9b6059b97bd86c7aab88830d833"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_linux_arm64_static"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439870"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_linux_arm64_static"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019607"
 
 [tools.opa."platforms.linux-x64"]
-checksum = "sha256:26f04bc50983ac67db9dea2fd28c1670c74ac22639a2f4408a7e16d488898e5f"
+checksum = "sha256:35e3b352e715e80624ead6c89930d8585f6f7d94cdc409eb2a9fe36620dcccba"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_linux_amd64_static"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439715"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_linux_amd64_static"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019430"
 
 [tools.opa."platforms.linux-x64-musl"]
-checksum = "sha256:26f04bc50983ac67db9dea2fd28c1670c74ac22639a2f4408a7e16d488898e5f"
+checksum = "sha256:35e3b352e715e80624ead6c89930d8585f6f7d94cdc409eb2a9fe36620dcccba"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_linux_amd64_static"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439715"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_linux_amd64_static"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019430"
 
 [tools.opa."platforms.macos-arm64"]
-checksum = "sha256:3776eae11d2daa1aadf1e5e6fe9202eca90b260ac3da4f1f980f75c74ce23366"
+checksum = "sha256:e6dfa065844e3a1553d665ccc4a2c0a25d1ca3925f6ed8fbaf0fa1ec2060d2a5"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_darwin_arm64_static"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439613"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_darwin_arm64_static"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019317"
 
 [tools.opa."platforms.macos-x64"]
-checksum = "sha256:503013bf75950c938c4df74b1efd77697e73b6ad5b8f19ba93399dee6431dd2a"
+checksum = "sha256:b49637ad3606644ca7052611daf9672aa436428f5dc0e22c7cc28ba8c64c8cd7"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_darwin_amd64"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439610"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_darwin_amd64"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019314"
 
 [tools.opa."platforms.windows-x64"]
-checksum = "sha256:01fb91eedf7cfd53ffc308d828af19c86dc1f3e4f0b86c69fe8f3ce2699a7d83"
+checksum = "sha256:4cd179b95041aa50c44241324da3becf35d0b28dca92bf10a07f32d002724d5e"
 checksum_source = "mise-versions"
-url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.3/opa_windows_amd64.exe"
-url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/731439898"
+url = "https://github.com/open-policy-agent/opa/releases/download/v1.22.4/opa_windows_amd64.exe"
+url_api = "https://api.github.com/repos/open-policy-agent/opa/releases/assets/739019622"
 
 [[tools.shellcheck]]
 version = "0.11.0"
