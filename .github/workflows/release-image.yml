@@ -99,7 +99,7 @@ jobs:
       # syft alone, at the version mise.toml pins. No cache: what this job
       # attests is published, so it restores nothing an earlier run could
       # have written.
-      - uses: jdx/mise-action@v5.2.7
+      - uses: jdx/mise-action@v5.2.8
         with:
           install_args: syft
           cache: false
