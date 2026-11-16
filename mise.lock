@@ -438,50 +438,50 @@ url = "https://github.com/jdx/jactionlint/releases/download/v2.5.0/jactionlint_2
 signer = "sigstore-oidc:https://github.com/jdx/jactionlint/.github/workflows/release.yaml"
 
 [[tools.nfpm]]
-version = "2.48.0"
+version = "2.49.0"
 backend = "aqua:goreleaser/nfpm"
-specifiers = ["2.48.0"]
+specifiers = ["2.49.0"]
 
 [tools.nfpm."platforms.linux-arm64"]
-checksum = "sha256:a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629836"
+checksum = "sha256:d4eee71839e92c68cbd3b101640bad32d2856fc551acae0635be9118e48c9d9c"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715189"
 provenance = "cosign"
 
 [tools.nfpm."platforms.linux-arm64-musl"]
-checksum = "sha256:a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629836"
+checksum = "sha256:d4eee71839e92c68cbd3b101640bad32d2856fc551acae0635be9118e48c9d9c"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715189"
 provenance = "cosign"
 
 [tools.nfpm."platforms.linux-x64"]
-checksum = "sha256:6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629876"
+checksum = "sha256:2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715191"
 provenance = "cosign"
 
 [tools.nfpm."platforms.linux-x64-musl"]
-checksum = "sha256:6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629876"
+checksum = "sha256:2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715191"
 provenance = "cosign"
 
 [tools.nfpm."platforms.macos-arm64"]
-checksum = "sha256:ae23377895437b18d4727b362e7ec4c2d38295eb9adf96008e0cbc813038df81"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629842"
+checksum = "sha256:27728af45782962ab59a8ff13ae041c7d955fe51dd94ab7883d9c5966a233f5d"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715239"
 provenance = "cosign"
 
 [tools.nfpm."platforms.macos-x64"]
-checksum = "sha256:be3bdff94bae08638da0f7a3cc4b4ea3f381fa3f10560fcf81ec2e8fea625b49"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Darwin_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629841"
+checksum = "sha256:182ba6c5ded85c87bf276dd80c0ecfd8a2f8b25f7db6ac5fb999557c5b4258ce"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Darwin_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715192"
 provenance = "cosign"
 
 [tools.nfpm."platforms.windows-x64"]
-checksum = "sha256:8ce12620212f5db557e370e35e2279ac7b106ea51e6a546a2be37a1a5d5bd8de"
-url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Windows_x86_64.zip"
-url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629837"
+checksum = "sha256:e410472f50b580c05087acc9a8e62bbe617a9e17226aff274f207c3b1bd31c5f"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Windows_x86_64.zip"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/737715267"
 provenance = "cosign"
 
 [[tools.opa]]
