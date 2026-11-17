@@ -17,7 +17,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261113174652-9ccaac6145fb
 	google.golang.org/protobuf v1.36.12
-	pgregory.net/rapid v1.2.0
+	pgregory.net/rapid v1.3.0
 	tailscale.com v1.94.2
 )
 
