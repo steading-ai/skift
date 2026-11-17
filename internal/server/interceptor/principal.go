@@ -9,9 +9,10 @@
 // Resolver, and no handler changes. See the Principal section of
 // docs/domain-model.md and docs/adrs/002-connect-rpc-is-the-only-door.md.
 //
-// Interceptors authenticate and check what a principal may call, and
-// nothing finer. Which resources a request touches is unknown here: a
-// patch's aliases resolve and its cascades expand only when the domain
+// Interceptors authenticate callers. All mapped principals may enter
+// registered procedures; resource and action policy remains in the domain.
+// Which resources a request touches is unknown here: a patch's aliases
+// resolve and its cascades expand only when the domain
 // applies it, so resource-level authorization is the domain's, inside the
 // writing transaction. See the request path in docs/architecture.md.
 package interceptor
@@ -139,8 +140,35 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 
 // principalInterceptor is the resolution step of the request path.
 type principalInterceptor struct {
+	auth *Authenticator
+}
+
+// Authenticator shares transport identity resolution between Connect and HTTP.
+// It never accepts an identity from a request's application metadata.
+type Authenticator struct {
 	lookup    Lookup
 	resolvers []Resolver
+}
+
+// NewAuthenticator uses the same ordered resolvers and principal lookup as Connect.
+func NewAuthenticator(lookup Lookup, resolvers ...Resolver) *Authenticator {
+	return &Authenticator{lookup: lookup, resolvers: resolvers}
+}
+
+// Middleware authenticates every HTTP request, including discovery and listing.
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, err := a.Authenticate(r.Context(), connect.Peer{Addr: r.RemoteAddr}, r.Header)
+		if err != nil {
+			status := http.StatusUnauthorized
+			if connect.CodeOf(err) == connect.CodeInternal {
+				status = http.StatusInternalServerError
+			}
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // NewPrincipal returns the interceptor that attributes every request to a
@@ -149,12 +177,12 @@ type principalInterceptor struct {
 // identity no principal holds, fails with [connect.CodeUnauthenticated]
 // before reaching a handler.
 func NewPrincipal(lookup Lookup, resolvers ...Resolver) connect.Interceptor {
-	return &principalInterceptor{lookup: lookup, resolvers: resolvers}
+	return &principalInterceptor{auth: NewAuthenticator(lookup, resolvers...)}
 }
 
-// resolve runs the resolvers and the lookup and returns the attributed
-// context.
-func (p *principalInterceptor) resolve(ctx context.Context, peer connect.Peer, header http.Header) (context.Context, error) {
+// Authenticate runs the resolvers and lookup and returns the attributed context.
+// Existing caller attribution is not trusted: Connect rechecks the transport.
+func (p *Authenticator) Authenticate(ctx context.Context, peer connect.Peer, header http.Header) (context.Context, error) {
 	for _, r := range p.resolvers {
 		id, err := r.Resolve(ctx, peer, header)
 		if errors.Is(err, ErrNoIdentity) {
@@ -182,7 +210,7 @@ func (p *principalInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFu
 		if req.Spec().IsClient {
 			return next(ctx, req)
 		}
-		ctx, err := p.resolve(ctx, req.Peer(), req.Header())
+		ctx, err := p.auth.Authenticate(ctx, req.Peer(), req.Header())
 		if err != nil {
 			return nil, err
 		}
@@ -199,7 +227,7 @@ func (p *principalInterceptor) WrapStreamingClient(next connect.StreamingClientF
 // WrapStreamingHandler implements [connect.Interceptor].
 func (p *principalInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		ctx, err := p.resolve(ctx, conn.Peer(), conn.RequestHeader())
+		ctx, err := p.auth.Authenticate(ctx, conn.Peer(), conn.RequestHeader())
 		if err != nil {
 			return err
 		}

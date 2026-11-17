@@ -213,23 +213,6 @@ func parseEnum[E protoEnum](name, value string) (E, error) {
 	return E(v.Number()), nil
 }
 
-// enumChoices lists the short names of an enum's non-zero values, sorted:
-// the legal values of a flag or of a tool schema.
-func enumChoices[E protoEnum]() []string {
-	var zero E
-	return codec.EnumNames(zero.Descriptor())
-}
-
-// shortNames is the short name of each of a chosen few enum values, in the
-// order given, for a schema that offers a subset.
-func shortNames[E protoreflect.Enum](values ...E) []string {
-	names := make([]string, 0, len(values))
-	for _, v := range values {
-		names = append(names, codec.EnumName(v))
-	}
-	return names
-}
-
 // send runs one RPC and prints its response.
 func send[Res proto.Message](a *app, cmd *cobra.Command, call func() (Res, error)) error {
 	p, err := a.printer(cmd)

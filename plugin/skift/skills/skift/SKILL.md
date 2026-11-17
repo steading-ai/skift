@@ -97,7 +97,28 @@ dropped gate still blocks, so an agent cannot drop its own gate and proceed.
 
 ## Which interface
 
-The tools of the skift MCP server are the default wherever the server is registered: a lease taken through them renews in the background and is released if the session ends, so a claim made there needs no `heartbeat`. They are named here as the server names them — `ready`, `claim`, `show_node` — and a harness may list them under a prefix of its own. Reach for the `skift` CLI when the server is not registered, and for shell pipelines, hooks, and a scripted `skift claim --wait`. Each MCP tool is the same command with the same arguments and the same JSON response, so translating either way is mechanical; [references/commands.md](references/commands.md) carries the inventory, the response views, and the enum spellings.
+MCP tools are the default, but **check the transport before claiming**.
+The bundled `skift mcp` stdio process renews leases it claimed in the background
+and attempts bounded release on stdin EOF or a handled signal; hard kill or
+failed cleanup leaves expiry. Native HTTP has no process-held lease map:
+heartbeat explicitly before expiry, pass the returned `lease_id` on holder
+writes, then complete with a result or release with a reason. POST EOF,
+disconnect and service shutdown do not release HTTP claims. Existing successful
+holder writes may renew a live lease; reads do not. Expired fencing tokens
+cannot write after reclaim.
+
+Native HTTP has no current project: supply explicit project arguments or
+qualified references. Persist a unique domain `request_id` for each mutation;
+after a lost response retry the same arguments with that same key, not a new
+one. Use a new key for the next heartbeat interval. JSON-RPC IDs are not
+idempotency keys, and cancellation does not prove a write rolled back.
+All processes on a mapped tailnet node share its principal, including user
+gate/hold authority if user-mapped; the transport is not per-agent isolation.
+
+Reach for the `skift` CLI for shell pipelines, hooks, and a scripted
+`skift claim --wait`. Each MCP tool maps to the same command and JSON result;
+[references/commands.md](references/commands.md) carries the inventory, the
+response views, and the enum spellings.
 
 Three reads are easy to confuse. `ready` is what could be worked and claims
 nothing. `node_list` is everything else — what is open, what is done, what a

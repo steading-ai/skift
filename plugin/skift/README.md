@@ -12,7 +12,29 @@ before it is filed.
 | Skill | `skills/skift/SKILL.md` | `skift:skift`, model-invoked when the conversation touches a skift graph |
 | Skill | `skills/epic/SKILL.md` | `skift:epic`, model-invoked when work is planned as an epic before it is filed |
 
-## Requirements
+## Native HTTP instead of a subprocess
+
+The bundled `.mcp.json` stays **stdio** (`skift mcp`); installing this plugin
+never silently changes transport. To use native HTTP without a local Skift
+binary, register a separate `2026-07-28`-capable client against
+`https://<canonical-node-dns-name>/mcp` using the
+[verified client setup](../../docs/native-mcp-https.md). Do not assume that a
+client's “HTTP MCP” setting supports this revision, or that a hosted client
+can reach a private tailnet. Keep only one MCP registration to avoid duplicate
+tools; the bundled stdio registration still requires the local binary.
+
+Native HTTP requires explicit heartbeat, complete/release and `lease_id`;
+a closed response, disconnect or service shutdown does not release a claim.
+Stdio renews process-held leases and attempts release on stdin EOF/handled
+signal; a hard kill leaves expiry. Both keep domain holder-write renewal and
+fencing. Use stable domain `request_id` values for retries, not JSON-RPC IDs.
+
+Clients must run on a registered, mapped tailnet node. All processes on that
+node share its principal; a user mapping gives agents user gate/hold authority.
+This is not per-agent isolation or public OAuth access. See the setup guide
+for certificate prerequisites, modern metadata and deployment checks.
+
+## Requirements (bundled stdio server)
 
 `skift` must be on `PATH` and able to reach a running service. The plugin does not install or build it; [How to install skift](../../docs/install.md) covers the server and the CLI. If `skift` is missing, the MCP server fails to start and the skill still loads, teaching the CLI for a binary that is not there.
 

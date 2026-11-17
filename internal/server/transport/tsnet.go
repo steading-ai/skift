@@ -65,10 +65,11 @@ type TailnetConfig struct {
 // Tailnet serves the handlers as a node on a tailnet, through tsnet, and
 // identifies callers with WhoIs.
 type Tailnet struct {
-	cfg TailnetConfig
-	log *slog.Logger
-	ts  *tsnet.Server
-	lc  *local.Client
+	cfg            TailnetConfig
+	log            *slog.Logger
+	ts             *tsnet.Server
+	lc             *local.Client
+	certificateDNS string
 }
 
 // NewTailnet prepares a tailnet transport. Nothing touches the network until
@@ -128,6 +129,9 @@ func (t *Tailnet) Listen() (net.Listener, error) {
 		return nil, errors.Join(fmt.Errorf("transport: tailnet local client: %w", err), t.ts.Close())
 	}
 	t.lc = lc
+	if len(status.CertDomains) > 0 {
+		t.certificateDNS = strings.TrimSuffix(status.CertDomains[0], ".")
+	}
 	l, err := t.ts.Listen("tcp", fmt.Sprintf(":%d", t.cfg.Port))
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("transport: listen on tailnet port %d: %w", t.cfg.Port, err), t.ts.Close())

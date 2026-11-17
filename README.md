@@ -59,3 +59,8 @@ The [security policy](SECURITY.md) says how to report a vulnerability and which 
 ## License
 
 Skift is released under the [ISC license](LICENSE.md).
+
+## Native MCP over HTTPS
+
+The optional [native tailnet HTTPS MCP endpoint](docs/native-mcp-https.md) uses
+the existing enrolled node and mapped caller identity. The stdio plugin remains supported.

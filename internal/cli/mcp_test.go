@@ -269,6 +269,32 @@ var _ = Describe("skift mcp", Label("unit"), func() {
 		socket = serve(s)
 	})
 
+	It("keeps concurrent stdio registry requests race-free", func() {
+		m := startMCP("--socket", socket, "--project", "platform")
+		m.initialize()
+		var calls sync.WaitGroup
+		for _, method := range []string{"initialize", "tools/list", "tools/call"} {
+			calls.Add(1)
+			go func() {
+				defer GinkgoRecover()
+				defer calls.Done()
+				for range 20 {
+					switch method {
+					case "initialize":
+						m.initialize()
+					case "tools/list":
+						Expect(m.tools()).To(HaveKey("heartbeat"))
+					case "tools/call":
+						result := m.call("heartbeat", map[string]any{})
+						Expect(result.isError).To(BeTrue(), "no lease is held")
+					}
+				}
+			}()
+		}
+		calls.Wait()
+		Expect(m.closeStdin()).To(Equal(0))
+	})
+
 	Describe("Scenario: A session claims and releases", func() {
 		It("A session claims and releases", func() {
 			By("given the MCP server started with a configured transport")
