@@ -165,7 +165,8 @@ type mcpServer struct {
 	// outMu serialises responses; tool calls run concurrently.
 	outMu sync.Mutex
 
-	tools []*mcpTool
+	toolsMu sync.RWMutex
+	tools   []*mcpTool
 
 	// sessionRef is minted here, once per process, because the harness
 	// never tells the server its own session id. Every lease this process
@@ -339,8 +340,9 @@ func (s *mcpServer) handle(ctx context.Context, req jsonrpcRequest) (any, *jsonr
 	case "ping":
 		return struct{}{}, nil
 	case "tools/list":
-		infos := make([]mcpToolInfo, 0, len(s.tools))
-		for _, t := range s.tools {
+		tools := s.toolSnapshot()
+		infos := make([]mcpToolInfo, 0, len(tools))
+		for _, t := range tools {
 			infos = append(infos, mcpToolInfo{Name: t.name, Description: t.description, InputSchema: t.schema})
 		}
 		return map[string]any{"tools": infos}, nil
@@ -349,7 +351,7 @@ func (s *mcpServer) handle(ctx context.Context, req jsonrpcRequest) (any, *jsonr
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return nil, rpcError(jsonrpcInvalidParams, "tools/call: %v", err)
 		}
-		for _, t := range s.tools {
+		for _, t := range s.toolSnapshot() {
 			if t.name == params.Name {
 				return s.callTool(ctx, t, params.Arguments), nil
 			}
@@ -360,6 +362,13 @@ func (s *mcpServer) handle(ctx context.Context, req jsonrpcRequest) (any, *jsonr
 	}
 }
 
+// toolSnapshot returns an immutable inventory without holding a lock during calls.
+func (s *mcpServer) toolSnapshot() []*mcpTool {
+	s.toolsMu.RLock()
+	defer s.toolsMu.RUnlock()
+	return s.tools
+}
+
 func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 	var params mcpInitializeParams
 	if len(raw) > 0 {
@@ -368,8 +377,10 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 		}
 	}
 	if name := strings.TrimSpace(params.ClientInfo.Name); name != "" {
+		s.toolsMu.Lock()
 		s.harness = name
 		s.tools = s.toolset()
+		s.toolsMu.Unlock()
 	}
 	protocol := mcpProtocolVersion
 	for _, v := range mcpProtocolVersions {
