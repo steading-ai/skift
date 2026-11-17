@@ -7,7 +7,7 @@ require (
 	github.com/cavaliergopher/rpm v1.3.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/onsi/ginkgo/v2 v2.34.0
-	github.com/onsi/gomega v1.43.0
+	github.com/onsi/gomega v1.44.0
 	github.com/open-policy-agent/opa v1.19.1
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/spf13/cobra v1.10.2
