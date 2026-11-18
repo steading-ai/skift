@@ -53,7 +53,7 @@ jobs:
 
       # Every tool comes from mise.toml, at the version a developer runs.
       # The tools are on a sticky disk, so the action caches nothing itself.
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           cache: false
 
@@ -87,7 +87,7 @@ jobs:
         with:
           key: ${{ github.repository }}-golangci-lint-race
           path: ~/.cache/golangci-lint
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           cache: false
       # The root specs run `make lint` in copies of the tree and give it
@@ -115,7 +115,7 @@ jobs:
         with:
           key: ${{ github.repository }}-go-mod
           path: ~/go/pkg/mod
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           cache: false
       - run: make fuzz
