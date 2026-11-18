@@ -4,6 +4,7 @@ go 1.26.10
 
 require (
 	connectrpc.com/connect v1.21.1
+	connectrpc.com/connect/v2 v2.0.2
 	github.com/cavaliergopher/rpm v1.3.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
