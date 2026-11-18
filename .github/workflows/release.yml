@@ -54,7 +54,7 @@ jobs:
 
       # No cache: what this job builds is published, so it restores
       # nothing an earlier run could have written.
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           cache: false
 
@@ -309,7 +309,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           install_args: crane
           cache: false
