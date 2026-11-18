@@ -21,8 +21,10 @@
   // https://docs.renovatebot.com/configuration-options/#ignorepaths
   ignorePaths: ["archive/**"],
 
+  // A major Go module update changes the import path, so the imports are
+  // rewritten with it; otherwise the new path is required but unused.
   // https://docs.renovatebot.com/configuration-options/#postupdateoptions
-  postUpdateOptions: ["gomodTidy"],
+  postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
 
   // https://docs.renovatebot.com/modules/manager/regex/
   customManagers: [

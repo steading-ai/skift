@@ -37,7 +37,7 @@ README documents `site.yaml`.
 
 Renovate ([renovate.json5](../renovate.json5)) opens a pull request when something the repository pins has a newer release:
 
-- the Go modules `go.mod` requires directly. A module marked `// indirect` moves when a direct one needs a newer version of it, or when a fix for a published vulnerability in it exists. `go mod tidy` runs on every such update;
+- the Go modules `go.mod` requires directly. A module marked `// indirect` moves when a direct one needs a newer version of it, or when a fix for a published vulnerability in it exists. `go mod tidy` runs on every such update, and a major update rewrites the imports to the module's new path, so one whose API changed fails its checks until someone adapts the code;
 - the tools in `mise.toml`, with `mise.lock`;
 - the Go toolchain, which is pinned twice: in `mise.toml`, and as the `go` directive of `go.mod`, which `publish.yml` builds with. One pull request moves both;
 - the PostgreSQL image, also pinned twice: in `compose.yaml` and in `internal/testsupport/postgres.go`. One pull request moves both, and the digest stays;
