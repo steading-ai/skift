@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -55,7 +54,7 @@ var _ = Describe("Isolated MCP listener lifecycle", Label("unit"), func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.StatusCode).To(Equal(http.StatusNoContent))
 		Expect(res.Body.Close()).To(Succeed())
-		_, err = r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "test"}))
+		_, err = r.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "test"})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("unwinds earlier listeners and closes the shared transport exactly once after TLS startup failure", func() {

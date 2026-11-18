@@ -1,7 +1,7 @@
 package server_test
 
 import (
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -78,14 +78,14 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			lease := f.claimAsUser(ctx, "platform").GetLease()
 
 			By("when it reports what the attempt has cost")
-			res, err := f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
+			res, err := f.work().ReportUsage(ctx, &skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", LeaseId: lease.GetId(), Node: "#1",
 				Model: "claude-opus-5", InputTokens: 1200, OutputTokens: 340, CacheReadTokens: 60, CacheWriteTokens: 20,
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("then the record it stored is attributed to that attempt")
-			stored := res.Msg.GetUsage()
+			stored := res.GetUsage()
 			Expect(stored.GetKind()).To(Equal(skiftv1.UsageKind_USAGE_KIND_ACTUAL))
 			Expect(stored.GetLeaseId()).To(Equal(lease.GetId()))
 			Expect(stored.GetPrincipal()).To(Equal(f.user.ID))
@@ -102,10 +102,10 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			Expect(actual[0].GetCacheWriteTokens()).To(Equal(int64(20)))
 
 			By("and reporting again adds to the attempt rather than replacing it")
-			_, err = f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
+			_, err = f.work().ReportUsage(ctx, &skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", LeaseId: lease.GetId(), Node: "#1",
 				Model: "claude-opus-5", InputTokens: 800,
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
 			actual = f.getNode(ctx, "platform", "#1").GetUsage().GetActual()
 			Expect(actual).To(HaveLen(1))
@@ -121,9 +121,9 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 			By("when the agent reports what its own attempt cost")
 			f.as(f.agent)
 			defer f.as(f.user)
-			_, err := f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
+			_, err := f.work().ReportUsage(ctx, &skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", LeaseId: lease.GetId(), Node: "#1", InputTokens: 1200,
-			}))
+			})
 
 			By("then it is refused, and told what it may do instead")
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied))
@@ -139,9 +139,9 @@ var _ = Describe("Estimates and usage", Label(testsupport.DBLabel), func() {
 
 		It("refuses a report carrying no lease", func(ctx SpecContext) {
 			f.mustApply(ctx, createOp("work", "Do the work"))
-			_, err := f.work().ReportUsage(ctx, connect.NewRequest(&skiftv1.ReportUsageRequest{
+			_, err := f.work().ReportUsage(ctx, &skiftv1.ReportUsageRequest{
 				RequestId: newID(), Project: "platform", Node: "#1", InputTokens: 1200,
-			}))
+			})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 			Expect(err.Error()).To(ContainSubstring("lease"))
 		})

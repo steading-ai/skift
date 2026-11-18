@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 
-	"connectrpc.com/connect"
-
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 	"github.com/steading-ai/skift/internal/domain"
@@ -29,21 +27,21 @@ func NewGraphService(svc *domain.Service) *GraphService {
 }
 
 // ApplyPatch implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) ApplyPatch(ctx context.Context, req *connect.Request[skiftv1.ApplyPatchRequest]) (*connect.Response[skiftv1.ApplyPatchResponse], error) {
+func (g *GraphService) ApplyPatch(ctx context.Context, req *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out, err := g.svc.Apply(ctx, orgID, actor, fromPatch(req.Msg))
+	out, err := g.svc.Apply(ctx, orgID, actor, fromPatch(req))
 	if err != nil {
 		return nil, connectError(err)
 	}
-	view := viewOr(req.Msg.GetView(), skiftv1.View_VIEW_REFS)
+	view := viewOr(req.GetView(), skiftv1.View_VIEW_REFS)
 	res := &skiftv1.ApplyPatchResponse{
 		Nodes:      toNodes(out.States, view),
 		Aliases:    out.Aliases,
 		EventCount: int32(len(out.Events)), //nolint:gosec // bounded by the patch's operation ceiling
-		RequestId:  req.Msg.GetRequestId(),
+		RequestId:  req.GetRequestId(),
 		// The undo list of a drop, cheap enough to carry under every
 		// view: without it the caller cannot reopen what a cascade took.
 		Dropped: out.Dropped,
@@ -55,20 +53,20 @@ func (g *GraphService) ApplyPatch(ctx context.Context, req *connect.Request[skif
 			return nil, connectError(err)
 		}
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // GetNode implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[skiftv1.GetNodeRequest]) (*connect.Response[skiftv1.GetNodeResponse], error) {
+func (g *GraphService) GetNode(ctx context.Context, req *skiftv1.GetNodeRequest) (*skiftv1.GetNodeResponse, error) {
 	orgID, _, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	node, err := g.svc.GetNode(ctx, orgID, req.Msg.GetProject(), req.Msg.GetNode())
+	node, err := g.svc.GetNode(ctx, orgID, req.GetProject(), req.GetNode())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	view := viewOr(req.Msg.GetView(), skiftv1.View_VIEW_FULL)
+	view := viewOr(req.GetView(), skiftv1.View_VIEW_FULL)
 	res := &skiftv1.GetNodeResponse{Node: projectNode(toNode(node.NodeState), view), Inputs: toInputsHint(node.Inputs), CommentsHint: toCommentsHint(node.CommentsHint)}
 	for _, e := range node.Edges {
 		res.Edges = append(res.Edges, toEdge(e))
@@ -79,7 +77,7 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[skiftv1
 	// The result, artifacts, and comments are content, like the body:
 	// only the full view carries them.
 	if view != skiftv1.View_VIEW_FULL {
-		return connect.NewResponse(res), nil
+		return res, nil
 	}
 	if res.Result, err = toResult(node.Result, node.Artifacts); err != nil {
 		return nil, connectError(err)
@@ -97,20 +95,20 @@ func (g *GraphService) GetNode(ctx context.Context, req *connect.Request[skiftv1
 		res.Estimate = toUsage(*node.Estimate)
 	}
 	res.Usage = toRollup(node.Usage)
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // GetInputs implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) GetInputs(ctx context.Context, req *connect.Request[skiftv1.GetInputsRequest]) (*connect.Response[skiftv1.GetInputsResponse], error) {
+func (g *GraphService) GetInputs(ctx context.Context, req *skiftv1.GetInputsRequest) (*skiftv1.GetInputsResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	inputs, err := g.svc.GetInputs(ctx, orgID, actor, req.Msg.GetProject(), req.Msg.GetNode())
+	inputs, err := g.svc.GetInputs(ctx, orgID, actor, req.GetProject(), req.GetNode())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	view := viewOr(req.Msg.GetView(), skiftv1.View_VIEW_FULL)
+	view := viewOr(req.GetView(), skiftv1.View_VIEW_FULL)
 	res := &skiftv1.GetInputsResponse{Inputs: make([]*skiftv1.Input, 0, len(inputs))}
 	for _, in := range inputs {
 		wire := &skiftv1.Input{Node: projectNode(toNode(in.NodeState), view), Bytes: resultBytes(in.Result)}
@@ -123,21 +121,21 @@ func (g *GraphService) GetInputs(ctx context.Context, req *connect.Request[skift
 		}
 		res.Inputs = append(res.Inputs, wire)
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // ListNodes implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) ListNodes(ctx context.Context, req *connect.Request[skiftv1.ListNodesRequest]) (*connect.Response[skiftv1.ListNodesResponse], error) {
+func (g *GraphService) ListNodes(ctx context.Context, req *skiftv1.ListNodesRequest) (*skiftv1.ListNodesResponse, error) {
 	orgID, _, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	offset, err := decodePageToken(req.Msg.GetPageToken())
+	offset, err := decodePageToken(req.GetPageToken())
 	if err != nil {
 		return nil, err
 	}
-	size := pageSize(req.Msg.GetPageSize())
-	f := req.Msg.GetFilter()
+	size := pageSize(req.GetPageSize())
+	f := req.GetFilter()
 	nodes, err := g.svc.ListNodes(ctx, orgID, domain.NodeListQuery{
 		Projects:     f.GetProjects(),
 		Status:       statuses.str(f.GetStatus()),
@@ -154,19 +152,19 @@ func (g *GraphService) ListNodes(ctx context.Context, req *connect.Request[skift
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.ListNodesResponse{
-		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), skiftv1.View_VIEW_SUMMARY)),
+	return &skiftv1.ListNodesResponse{
+		Nodes:         toNodes(nodes, viewOr(req.GetView(), skiftv1.View_VIEW_SUMMARY)),
 		NextPageToken: nextPageToken(offset, size, len(nodes)),
-	}), nil
+	}, nil
 }
 
 // Explain implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) Explain(ctx context.Context, req *connect.Request[skiftv1.ExplainRequest]) (*connect.Response[skiftv1.ExplainResponse], error) {
+func (g *GraphService) Explain(ctx context.Context, req *skiftv1.ExplainRequest) (*skiftv1.ExplainResponse, error) {
 	orgID, _, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	explained, err := g.svc.Explain(ctx, orgID, req.Msg.GetProject(), req.Msg.GetNode())
+	explained, err := g.svc.Explain(ctx, orgID, req.GetProject(), req.GetNode())
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -174,24 +172,24 @@ func (g *GraphService) Explain(ctx context.Context, req *connect.Request[skiftv1
 	for _, r := range explained.Reasons {
 		res.Reasons = append(res.Reasons, toReason(r, explained.Derived))
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // Search implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) Search(ctx context.Context, req *connect.Request[skiftv1.SearchRequest]) (*connect.Response[skiftv1.SearchResponse], error) {
+func (g *GraphService) Search(ctx context.Context, req *skiftv1.SearchRequest) (*skiftv1.SearchResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	offset, err := decodePageToken(req.Msg.GetPageToken())
+	offset, err := decodePageToken(req.GetPageToken())
 	if err != nil {
 		return nil, err
 	}
-	size := pageSize(req.Msg.GetPageSize())
+	size := pageSize(req.GetPageSize())
 	hits, err := g.svc.Search(ctx, orgID, actor, domain.SearchQuery{
-		Query:           req.Msg.GetQuery(),
-		Project:         req.Msg.GetProject(),
-		IncludeArchived: req.Msg.GetIncludeArchived(),
+		Query:           req.GetQuery(),
+		Project:         req.GetProject(),
+		IncludeArchived: req.GetIncludeArchived(),
 		Limit:           size,
 		Offset:          offset,
 	})
@@ -199,7 +197,7 @@ func (g *GraphService) Search(ctx context.Context, req *connect.Request[skiftv1.
 		return nil, connectError(err)
 	}
 	res := &skiftv1.SearchResponse{}
-	view := viewOr(req.Msg.GetView(), skiftv1.View_VIEW_SUMMARY)
+	view := viewOr(req.GetView(), skiftv1.View_VIEW_SUMMARY)
 	for _, h := range hits {
 		res.Hits = append(res.Hits, toHit(h, view))
 	}
@@ -208,54 +206,54 @@ func (g *GraphService) Search(ctx context.Context, req *connect.Request[skiftv1.
 	if len(hits) > 0 {
 		res.NextPageToken = encodePageToken(offset + size)
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // CreateProject implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) CreateProject(ctx context.Context, req *connect.Request[skiftv1.CreateProjectRequest]) (*connect.Response[skiftv1.CreateProjectResponse], error) {
+func (g *GraphService) CreateProject(ctx context.Context, req *skiftv1.CreateProjectRequest) (*skiftv1.CreateProjectResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 	project, err := g.svc.CreateProject(ctx, orgID, actor, domain.NewProject{
-		RequestID: req.Msg.GetRequestId(),
-		Title:     req.Msg.GetTitle(),
-		Slug:      req.Msg.GetSlug(),
-		Priority:  priorities.str(req.Msg.GetPriority()),
-		VCSURL:    req.Msg.GetVcsUrl(),
+		RequestID: req.GetRequestId(),
+		Title:     req.GetTitle(),
+		Slug:      req.GetSlug(),
+		Priority:  priorities.str(req.GetPriority()),
+		VCSURL:    req.GetVcsUrl(),
 	})
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.CreateProjectResponse{Project: toProject(*project)}), nil
+	return &skiftv1.CreateProjectResponse{Project: toProject(*project)}, nil
 }
 
 // GetProject implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) GetProject(ctx context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
+func (g *GraphService) GetProject(ctx context.Context, req *skiftv1.GetProjectRequest) (*skiftv1.GetProjectResponse, error) {
 	orgID, _, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	project, err := g.svc.GetProject(ctx, orgID, req.Msg.GetProject())
+	project, err := g.svc.GetProject(ctx, orgID, req.GetProject())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.GetProjectResponse{Project: toProject(*project)}), nil
+	return &skiftv1.GetProjectResponse{Project: toProject(*project)}, nil
 }
 
 // ListProjects implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) ListProjects(ctx context.Context, req *connect.Request[skiftv1.ListProjectsRequest]) (*connect.Response[skiftv1.ListProjectsResponse], error) {
+func (g *GraphService) ListProjects(ctx context.Context, req *skiftv1.ListProjectsRequest) (*skiftv1.ListProjectsResponse, error) {
 	orgID, _, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	offset, err := decodePageToken(req.Msg.GetPageToken())
+	offset, err := decodePageToken(req.GetPageToken())
 	if err != nil {
 		return nil, err
 	}
-	size := pageSize(req.Msg.GetPageSize())
+	size := pageSize(req.GetPageSize())
 	projects, err := g.svc.ListProjects(ctx, orgID, domain.ProjectListQuery{
-		IncludeArchived: req.Msg.GetIncludeArchived(),
+		IncludeArchived: req.GetIncludeArchived(),
 		Limit:           size,
 		Offset:          offset,
 	})
@@ -266,93 +264,93 @@ func (g *GraphService) ListProjects(ctx context.Context, req *connect.Request[sk
 	for _, p := range projects {
 		res.Projects = append(res.Projects, toProject(p))
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // UpdateProject implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) UpdateProject(ctx context.Context, req *connect.Request[skiftv1.UpdateProjectRequest]) (*connect.Response[skiftv1.UpdateProjectResponse], error) {
+func (g *GraphService) UpdateProject(ctx context.Context, req *skiftv1.UpdateProjectRequest) (*skiftv1.UpdateProjectResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 	project, err := g.svc.UpdateProject(ctx, orgID, actor, domain.UpdateProject{
-		RequestID: req.Msg.GetRequestId(),
-		Project:   req.Msg.GetProject(),
-		VCSURL:    req.Msg.VcsUrl,
+		RequestID: req.GetRequestId(),
+		Project:   req.GetProject(),
+		VCSURL:    req.VcsUrl,
 	})
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.UpdateProjectResponse{Project: toProject(*project)}), nil
+	return &skiftv1.UpdateProjectResponse{Project: toProject(*project)}, nil
 }
 
 // ArchiveProject implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) ArchiveProject(ctx context.Context, req *connect.Request[skiftv1.ArchiveProjectRequest]) (*connect.Response[skiftv1.ArchiveProjectResponse], error) {
+func (g *GraphService) ArchiveProject(ctx context.Context, req *skiftv1.ArchiveProjectRequest) (*skiftv1.ArchiveProjectResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	project, err := g.svc.ArchiveProject(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject())
+	project, err := g.svc.ArchiveProject(ctx, orgID, actor, req.GetRequestId(), req.GetProject())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.ArchiveProjectResponse{Project: toProject(*project)}), nil
+	return &skiftv1.ArchiveProjectResponse{Project: toProject(*project)}, nil
 }
 
 // HoldProject implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) HoldProject(ctx context.Context, req *connect.Request[skiftv1.HoldProjectRequest]) (*connect.Response[skiftv1.HoldProjectResponse], error) {
+func (g *GraphService) HoldProject(ctx context.Context, req *skiftv1.HoldProjectRequest) (*skiftv1.HoldProjectResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	project, held, err := g.svc.HoldProject(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetReason())
+	project, held, err := g.svc.HoldProject(ctx, orgID, actor, req.GetRequestId(), req.GetProject(), req.GetReason())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.HoldProjectResponse{
-		Project: toProject(*project), HeldCount: int32(held), //nolint:gosec // a project's open nodes
-	}), nil
+	return &skiftv1.HoldProjectResponse{
+		Project: toProject(*project), HeldCount: int32(held),
+	}, nil
 }
 
 // UnholdProject implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) UnholdProject(ctx context.Context, req *connect.Request[skiftv1.UnholdProjectRequest]) (*connect.Response[skiftv1.UnholdProjectResponse], error) {
+func (g *GraphService) UnholdProject(ctx context.Context, req *skiftv1.UnholdProjectRequest) (*skiftv1.UnholdProjectResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	project, err := g.svc.UnholdProject(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetReason())
+	project, err := g.svc.UnholdProject(ctx, orgID, actor, req.GetRequestId(), req.GetProject(), req.GetReason())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.UnholdProjectResponse{Project: toProject(*project)}), nil
+	return &skiftv1.UnholdProjectResponse{Project: toProject(*project)}, nil
 }
 
 // Focus implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) Focus(ctx context.Context, req *connect.Request[skiftv1.FocusRequest]) (*connect.Response[skiftv1.FocusResponse], error) {
+func (g *GraphService) Focus(ctx context.Context, req *skiftv1.FocusRequest) (*skiftv1.FocusResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	result, err := g.svc.Focus(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetKeep(), req.Msg.GetReason())
+	result, err := g.svc.Focus(ctx, orgID, actor, req.GetRequestId(), req.GetProject(), req.GetKeep(), req.GetReason())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.FocusResponse{
+	return &skiftv1.FocusResponse{
 		Group:         result.Group,
-		HeldCount:     int32(result.Held),     //nolint:gosec // bounded by the organization's projects or a project's nodes
-		ReleasedCount: int32(result.Released), //nolint:gosec // same
-	}), nil
+		HeldCount:     int32(result.Held),
+		ReleasedCount: int32(result.Released),
+	}, nil
 }
 
 // ClearFocus implements skiftv1connect.GraphServiceHandler.
-func (g *GraphService) ClearFocus(ctx context.Context, req *connect.Request[skiftv1.ClearFocusRequest]) (*connect.Response[skiftv1.ClearFocusResponse], error) {
+func (g *GraphService) ClearFocus(ctx context.Context, req *skiftv1.ClearFocusRequest) (*skiftv1.ClearFocusResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	released, err := g.svc.ClearFocus(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetProject(), req.Msg.GetGroup(), req.Msg.GetReason())
+	released, err := g.svc.ClearFocus(ctx, orgID, actor, req.GetRequestId(), req.GetProject(), req.GetGroup(), req.GetReason())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.ClearFocusResponse{ReleasedCount: int32(released)}), nil //nolint:gosec // bounded as above
+	return &skiftv1.ClearFocusResponse{ReleasedCount: int32(released)}, nil //nolint:gosec // bounded as above
 }

@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -40,17 +41,18 @@ func serveUnix(handler http.Handler) func(context.Context, string, string) (net.
 var _ = Describe("Generated Connect client", Label("unit"), func() {
 	It("compiles against a unix socket transport", func() {
 		By("given a GraphService handler listening on a unix socket")
-		path, handler := skiftv1connect.NewGraphServiceHandler(skiftv1connect.UnimplementedGraphServiceHandler{})
+		server := connect.NewServer()
+		skiftv1connect.RegisterGraphServiceHandler(server, skiftv1connect.UnimplementedGraphServiceHandler{})
 		mux := http.NewServeMux()
-		mux.Handle(path, handler)
+		connecthttp.Mount(mux, server)
 		dial := serveUnix(mux)
 
 		By("when a client built over that socket calls an RPC")
 		// The URL's host is a placeholder: every connection goes through
 		// the unix dialer, so the name never resolves.
 		httpClient := &http.Client{Transport: &http.Transport{DialContext: dial}}
-		client := skiftv1connect.NewGraphServiceClient(httpClient, "http://skift")
-		_, err := client.GetProject(context.Background(), connect.NewRequest(&skiftv1.GetProjectRequest{}))
+		client := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(httpClient, "http://skift")))
+		_, err := client.GetProject(context.Background(), &skiftv1.GetProjectRequest{})
 
 		By("then the call reaches the handler and comes back as a Connect error")
 		Expect(err).To(HaveOccurred())

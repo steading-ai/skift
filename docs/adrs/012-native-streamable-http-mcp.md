@@ -130,7 +130,7 @@ references or supply the existing project arguments. Its instructions must
 explain explicit heartbeat/release instead of promising automatic renewal.
 
 For native HTTP, the generated Connect clients use an in-process
-`connect.HTTPClient` implementation (`Do(*http.Request)`), dispatched into a
+`connecthttp.HTTPClient` implementation (`Do(*http.Request)`), dispatched into a
 **Connect-only** mux containing the same generated service handlers,
 `codec.HandlerOptions`, and configured interceptors as network Connect.
 This is direct HTTP handler invocation, not an HTTP request to localhost or
@@ -142,9 +142,9 @@ Pass the SDK tool callback's original context into the generated client;
 preserve the accepted connection's tailnet peer, cancellation, deadline and
 `server.Draining` signal through dispatch. Never replace it with a background
 context. In-process requests must retain server-side interceptor behavior:
-the generated handler creates a server request (`Spec().IsClient == false`)
-and runs `NewPrincipal` before the service. Do not call service methods
-or client-side `WrapUnary` directly and assume authentication occurred.
+the request reaches the mounted `connect.Server`, whose server interceptor
+chain runs `NewPrincipal` before the service. Do not call service methods
+or a client-side interceptor directly and assume authentication occurred.
 
 Authenticate **every** native HTTP request, including discovery and tool
 listing, with the existing principal resolver/identity lookup. Extract the

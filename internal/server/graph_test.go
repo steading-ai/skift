@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -49,7 +49,7 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			))
 
 			By("and nothing of the patch was kept")
-			_, err = f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: "platform", Node: "#1"}))
+			_, err = f.graph().GetNode(ctx, &skiftv1.GetNodeRequest{Project: "platform", Node: "#1"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
 		})
 
@@ -241,9 +241,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.project(ctx, "Platform")
 			f.mustApply(ctx, createOpWith(&skiftv1.CreateNodeOp{Alias: "a", Title: "Choose me", Kind: "bug", Body: "the body", Priority: skiftv1.Priority_PRIORITY_P1, Labels: []string{"infra"}}))
 
-			list, err := f.graph().ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+			list, err := f.graph().ListNodes(ctx, &skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 			Expect(err).NotTo(HaveOccurred())
-			n := list.Msg.GetNodes()[0]
+			n := list.GetNodes()[0]
 			Expect(n.GetTitle()).To(Equal("Choose me"))
 			Expect(n.GetKind()).To(Equal("bug"))
 			Expect(n.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P1))
@@ -251,18 +251,18 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(n.GetLabels()).To(Equal([]string{"infra"}))
 			Expect(n.GetReference()).To(Equal("platform#1"))
 			Expect(n.GetReady()).To(BeTrue())
-			Expect(wireJSON(list.Msg)).NotTo(ContainSubstring(`"body"`))
+			Expect(wireJSON(list)).NotTo(ContainSubstring(`"body"`))
 
-			hits, err := f.graph().Search(ctx, connect.NewRequest(&skiftv1.SearchRequest{Query: "choose"}))
+			hits, err := f.graph().Search(ctx, &skiftv1.SearchRequest{Query: "choose"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(hits.Msg.GetHits()).To(HaveLen(1))
-			Expect(hits.Msg.GetHits()[0].GetNode().GetReference()).To(Equal("platform#1"))
-			Expect(hits.Msg.GetHits()[0].GetNode().GetTitle()).To(Equal("Choose me"))
-			Expect(wireJSON(hits.Msg)).NotTo(ContainSubstring(`"body"`))
+			Expect(hits.GetHits()).To(HaveLen(1))
+			Expect(hits.GetHits()[0].GetNode().GetReference()).To(Equal("platform#1"))
+			Expect(hits.GetHits()[0].GetNode().GetTitle()).To(Equal("Choose me"))
+			Expect(wireJSON(hits)).NotTo(ContainSubstring(`"body"`))
 
-			full, err := f.graph().Search(ctx, connect.NewRequest(&skiftv1.SearchRequest{Query: "choose", View: skiftv1.View_VIEW_FULL}))
+			full, err := f.graph().Search(ctx, &skiftv1.SearchRequest{Query: "choose", View: skiftv1.View_VIEW_FULL})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(full.Msg.GetHits()[0].GetNode().GetBody()).To(Equal("the body"))
+			Expect(full.GetHits()[0].GetNode().GetBody()).To(Equal("the body"))
 		})
 	})
 
@@ -276,12 +276,12 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(shown.GetNode().GetReference()).To(Equal("platform#1"))
 			Expect(shown.GetComments()).To(HaveLen(1))
 
-			res, err := f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: "platform", Node: "#1", View: skiftv1.View_VIEW_SUMMARY}))
+			res, err := f.graph().GetNode(ctx, &skiftv1.GetNodeRequest{Project: "platform", Node: "#1", View: skiftv1.View_VIEW_SUMMARY})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetNode().GetTitle()).To(Equal("Read me"))
-			Expect(res.Msg.GetNode().GetProjectId()).To(Equal(project.GetId()), "a summary says which project the node is in; search crosses them")
-			Expect(res.Msg.GetNode().GetBody()).To(BeEmpty())
-			Expect(res.Msg.GetComments()).To(BeEmpty())
+			Expect(res.GetNode().GetTitle()).To(Equal("Read me"))
+			Expect(res.GetNode().GetProjectId()).To(Equal(project.GetId()), "a summary says which project the node is in; search crosses them")
+			Expect(res.GetNode().GetBody()).To(BeEmpty())
+			Expect(res.GetComments()).To(BeEmpty())
 		})
 
 		It("returns a node with its edges, result, artifacts, comments, and lease", func(ctx SpecContext) {
@@ -315,9 +315,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 
 		It("reports a missing node as not found and an unresolvable reference as invalid", func(ctx SpecContext) {
 			f.project(ctx, "Platform")
-			_, err := f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: "platform", Node: "#9"}))
+			_, err := f.graph().GetNode(ctx, &skiftv1.GetNodeRequest{Project: "platform", Node: "#9"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
-			_, err = f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Node: "#1"}))
+			_, err = f.graph().GetNode(ctx, &skiftv1.GetNodeRequest{Node: "#1"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a bare number needs a project")
 		})
 	})
@@ -354,15 +354,15 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 				Expect(claimed.GetNode().GetReference()).To(Equal("platform#3"))
 				f.as(f.agent)
 				defer f.as(f.user)
-				res, err := f.graph().GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{Project: "platform", Node: "#3"}))
+				res, err := f.graph().GetInputs(ctx, &skiftv1.GetInputsRequest{Project: "platform", Node: "#3"})
 				Expect(err).NotTo(HaveOccurred())
 
 				By("then it receives both results with the references they came from")
-				Expect(res.Msg.GetInputs()).To(HaveLen(2))
-				Expect(res.Msg.GetInputs()[0].GetNode().GetReference()).To(Equal("platform#1"))
-				Expect(res.Msg.GetInputs()[0].GetResult().GetBody()).To(Equal("alpha"))
-				Expect(res.Msg.GetInputs()[1].GetNode().GetReference()).To(Equal("platform#2"))
-				Expect(res.Msg.GetInputs()[1].GetResult().GetBody()).To(Equal("beta"))
+				Expect(res.GetInputs()).To(HaveLen(2))
+				Expect(res.GetInputs()[0].GetNode().GetReference()).To(Equal("platform#1"))
+				Expect(res.GetInputs()[0].GetResult().GetBody()).To(Equal("alpha"))
+				Expect(res.GetInputs()[1].GetNode().GetReference()).To(Equal("platform#2"))
+				Expect(res.GetInputs()[1].GetResult().GetBody()).To(Equal("beta"))
 
 				By("and the claim that handed C over said the inputs were there")
 				Expect(claimed.GetInputs().GetCount()).To(Equal(int32(2)))
@@ -425,18 +425,18 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 				f.mustApply(ctx, commentOp("#1", "use the staging bucket, not prod"))
 
 				By("when show_node is called with the summary view")
-				res, err := f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{
+				res, err := f.graph().GetNode(ctx, &skiftv1.GetNodeRequest{
 					Project: "platform", Node: "#1", View: skiftv1.View_VIEW_SUMMARY,
-				}))
+				})
 				Expect(err).NotTo(HaveOccurred())
 
 				By("then the response counts the comment")
-				Expect(res.Msg.GetCommentsHint().GetUnresolved()).To(Equal(int32(1)))
-				Expect(res.Msg.GetCommentsHint().GetLatestAt()).NotTo(BeNil())
+				Expect(res.GetCommentsHint().GetUnresolved()).To(Equal(int32(1)))
+				Expect(res.GetCommentsHint().GetLatestAt()).NotTo(BeNil())
 
 				By("and does not contain its body")
-				Expect(res.Msg.GetComments()).To(BeEmpty())
-				raw, err := protojson.Marshal(res.Msg)
+				Expect(res.GetComments()).To(BeEmpty())
+				raw, err := protojson.Marshal(res)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(raw)).NotTo(ContainSubstring("staging bucket"))
 			})
@@ -453,9 +453,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 				id := f.getNode(ctx, "platform", "#1").GetComments()[0].GetId()
 				f.mustApply(ctx, &skiftv1.PatchOp{Op: &skiftv1.PatchOp_ResolveComment{ResolveComment: &skiftv1.ResolveCommentOp{CommentId: id}}})
 				f.as(f.agent)
-				_, err := f.work().Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
+				_, err := f.work().Release(ctx, &skiftv1.ReleaseRequest{
 					RequestId: newID(), LeaseId: claimed.GetLease().GetId(), Reason: skiftv1.ReleaseReason_RELEASE_REASON_PREEMPTED,
-				}))
+				})
 				f.as(f.user)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -476,12 +476,12 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 				Expect(f.getNode(ctx, "platform", "#3").GetNode().GetStatus()).To(Equal(skiftv1.Status_STATUS_OPEN))
 
 				By("when inputs is called on C")
-				res, err := f.graph().GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{Project: "platform", Node: node}))
+				res, err := f.graph().GetInputs(ctx, &skiftv1.GetInputsRequest{Project: "platform", Node: node})
 				Expect(err).NotTo(HaveOccurred())
 
 				By("then D is not in the response")
-				refs := make([]string, 0, len(res.Msg.GetInputs()))
-				for _, in := range res.Msg.GetInputs() {
+				refs := make([]string, 0, len(res.GetInputs()))
+				for _, in := range res.GetInputs() {
 					refs = append(refs, in.GetNode().GetReference())
 				}
 				Expect(refs).NotTo(ContainElement("platform#3"))
@@ -491,9 +491,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 
 		It("lists a dropped predecessor with no result", func(ctx SpecContext) {
 			node := handoff(ctx)
-			res, err := f.graph().GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{Project: "platform", Node: node}))
+			res, err := f.graph().GetInputs(ctx, &skiftv1.GetInputsRequest{Project: "platform", Node: node})
 			Expect(err).NotTo(HaveOccurred())
-			dropped := res.Msg.GetInputs()[2]
+			dropped := res.GetInputs()[2]
 			Expect(dropped.GetNode().GetReference()).To(Equal("platform#4"))
 			Expect(dropped.GetNode().GetStatus()).To(Equal(skiftv1.Status_STATUS_DROPPED))
 			Expect(dropped.GetResult()).To(BeNil())
@@ -502,26 +502,26 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 
 		It("returns references, titles and sizes without bodies in the summary view", func(ctx SpecContext) {
 			node := handoff(ctx)
-			res, err := f.graph().GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{
+			res, err := f.graph().GetInputs(ctx, &skiftv1.GetInputsRequest{
 				Project: "platform", Node: node, View: skiftv1.View_VIEW_SUMMARY,
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetInputs()).To(HaveLen(3))
+			Expect(res.GetInputs()).To(HaveLen(3))
 			for i, title := range []string{"Alpha", "Beta", "Epsilon"} {
-				Expect(res.Msg.GetInputs()[i].GetNode().GetTitle()).To(Equal(title))
-				Expect(res.Msg.GetInputs()[i].GetNode().GetReference()).NotTo(BeEmpty())
-				Expect(res.Msg.GetInputs()[i].GetResult()).To(BeNil())
+				Expect(res.GetInputs()[i].GetNode().GetTitle()).To(Equal(title))
+				Expect(res.GetInputs()[i].GetNode().GetReference()).NotTo(BeEmpty())
+				Expect(res.GetInputs()[i].GetResult()).To(BeNil())
 			}
-			Expect(res.Msg.GetInputs()[0].GetBytes()).To(Equal(int64(len("alpha"))))
-			Expect(res.Msg.GetInputs()[1].GetBytes()).To(Equal(int64(len("beta"))))
-			raw, err := protojson.Marshal(res.Msg)
+			Expect(res.GetInputs()[0].GetBytes()).To(Equal(int64(len("alpha"))))
+			Expect(res.GetInputs()[1].GetBytes()).To(Equal(int64(len("beta"))))
+			raw, err := protojson.Marshal(res)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(raw)).NotTo(ContainSubstring("alpha"))
 		})
 
 		It("reports a missing node as not found", func(ctx SpecContext) {
 			f.project(ctx, "Platform")
-			_, err := f.graph().GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{Project: "platform", Node: "#9"}))
+			_, err := f.graph().GetInputs(ctx, &skiftv1.GetInputsRequest{Project: "platform", Node: "#9"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
 		})
 	})
@@ -541,9 +541,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 					req.Filter = &skiftv1.NodeFilter{}
 				}
 				req.Filter.Projects = []string{"platform"}
-				res, err := f.graph().ListNodes(ctx, connect.NewRequest(req))
+				res, err := f.graph().ListNodes(ctx, req)
 				Expect(err).NotTo(HaveOccurred())
-				return res.Msg
+				return res
 			}
 
 			Expect(numbers(list(&skiftv1.ListNodesRequest{}).GetNodes())).To(Equal([]int64{1, 2, 3}))
@@ -559,9 +559,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(numbers(last.GetNodes())).To(Equal([]int64{3}))
 			Expect(last.GetNextPageToken()).To(BeEmpty())
 
-			_, err := f.graph().ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, PageToken: "garbage"}))
+			_, err := f.graph().ListNodes(ctx, &skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, PageToken: "garbage"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
-			_, err = f.graph().ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, PageSize: 5000}))
+			_, err = f.graph().ListNodes(ctx, &skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, PageSize: 5000})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeResourceExhausted))
 		})
 	})
@@ -571,20 +571,20 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.project(ctx, "Platform")
 			f.mustApply(ctx, createOp("a", "First"), createOp("b", "Second"), edgeOp("a", "b"))
 
-			res, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			res, err := f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#2"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetNode().GetBlocked()).To(BeTrue())
-			Expect(res.Msg.GetReasons()).To(HaveLen(1))
-			blocked := res.Msg.GetReasons()[0].GetBlocked()
+			Expect(res.GetNode().GetBlocked()).To(BeTrue())
+			Expect(res.GetReasons()).To(HaveLen(1))
+			blocked := res.GetReasons()[0].GetBlocked()
 			Expect(blocked.GetBlocker().GetNumber()).To(BeEquivalentTo(1))
 			Expect(blocked.GetBlocker().GetReady()).To(BeTrue(), "the blocker itself is ready")
 			Expect(blocked.GetGate()).To(BeFalse())
 
 			f.mustApply(ctx, completeOp("#1", "done"))
-			res, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			res, err = f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#2"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetReasons()).To(BeEmpty())
-			Expect(res.Msg.GetNode().GetReady()).To(BeTrue())
+			Expect(res.GetReasons()).To(BeEmpty())
+			Expect(res.GetNode().GetReady()).To(BeTrue())
 		})
 	})
 
@@ -593,14 +593,14 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.project(ctx, "Platform")
 			f.mustApply(ctx, createOp("a", "Rotate the token store"), createOp("b", "Unrelated"))
 
-			res, err := f.graph().Search(ctx, connect.NewRequest(&skiftv1.SearchRequest{Query: "token"}))
+			res, err := f.graph().Search(ctx, &skiftv1.SearchRequest{Query: "token"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetHits()).To(HaveLen(1))
-			Expect(res.Msg.GetHits()[0].GetNode().GetNumber()).To(BeEquivalentTo(1))
-			Expect(res.Msg.GetHits()[0].GetSnippet()).To(ContainSubstring("<b>token</b>"))
-			Expect(res.Msg.GetNextPageToken()).NotTo(BeEmpty(), "a caller pages until a page is empty")
+			Expect(res.GetHits()).To(HaveLen(1))
+			Expect(res.GetHits()[0].GetNode().GetNumber()).To(BeEquivalentTo(1))
+			Expect(res.GetHits()[0].GetSnippet()).To(ContainSubstring("<b>token</b>"))
+			Expect(res.GetNextPageToken()).NotTo(BeEmpty(), "a caller pages until a page is empty")
 
-			_, err = f.graph().Search(ctx, connect.NewRequest(&skiftv1.SearchRequest{Query: " "}))
+			_, err = f.graph().Search(ctx, &skiftv1.SearchRequest{Query: " "})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 		})
 	})
@@ -618,43 +618,43 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(second.GetSlug()).To(Equal("oauth-spike-2"))
 			Expect(second.GetId()).NotTo(Equal(first.GetId()))
 
-			res, err := f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Third", Slug: "My Slug/Here"}))
+			res, err := f.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Third", Slug: "My Slug/Here"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetProject().GetSlug()).To(Equal("my-slug-here"))
+			Expect(res.GetProject().GetSlug()).To(Equal("my-slug-here"))
 		})
 
 		It("replays a repeated request id and lets an agent create a project", func(ctx SpecContext) {
 			req := &skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Once"}
-			first, err := f.graph().CreateProject(ctx, connect.NewRequest(req))
+			first, err := f.graph().CreateProject(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			again, err := f.graph().CreateProject(ctx, connect.NewRequest(req))
+			again, err := f.graph().CreateProject(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(again.Msg.GetProject().GetId()).To(Equal(first.Msg.GetProject().GetId()))
+			Expect(again.GetProject().GetId()).To(Equal(first.GetProject().GetId()))
 
 			f.as(f.agent)
-			res, err := f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Agent spike"}))
+			res, err := f.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Agent spike"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetProject().GetSlug()).To(Equal("agent-spike"))
+			Expect(res.GetProject().GetSlug()).To(Equal("agent-spike"))
 
-			_, err = f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID()}))
+			_, err = f.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{RequestId: newID()})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a title is required")
 		})
 
 		It("Scenario: A project knows its repository", func(ctx SpecContext) {
 			By("given a project created with a vcs_url")
-			res, err := f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{
+			res, err := f.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{
 				RequestId: newID(), Title: "Repo", VcsUrl: "https://gitlab.example/x/y.git",
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("when the project is shown")
-			shown, err := f.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: res.Msg.GetProject().GetSlug()}))
+			shown, err := f.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: res.GetProject().GetSlug()})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("then the URL is printed")
-			Expect(shown.Msg.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+			Expect(shown.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
 
-			_, err = f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Bad", VcsUrl: "not a url"}))
+			_, err = f.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Bad", VcsUrl: "not a url"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 			Expect(err.Error()).To(ContainSubstring("vcs_url"))
 		})
@@ -666,9 +666,9 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			p := f.project(ctx, "Platform")
 
 			By("when it is updated with vcs_url \"not a url\"")
-			_, err := f.graph().UpdateProject(ctx, connect.NewRequest(&skiftv1.UpdateProjectRequest{
+			_, err := f.graph().UpdateProject(ctx, &skiftv1.UpdateProjectRequest{
 				RequestId: newID(), Project: p.GetSlug(), VcsUrl: ptr("not a url"),
-			}))
+			})
 
 			By("then the update is refused naming vcs_url")
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
@@ -677,27 +677,27 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 
 		It("sets the repository, clears it on an empty value, leaves it alone when unset, and is a person's", func(ctx SpecContext) {
 			p := f.project(ctx, "Platform")
-			set, err := f.graph().UpdateProject(ctx, connect.NewRequest(&skiftv1.UpdateProjectRequest{
+			set, err := f.graph().UpdateProject(ctx, &skiftv1.UpdateProjectRequest{
 				RequestId: newID(), Project: "platform", VcsUrl: ptr("https://gitlab.example/x/y.git"),
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(set.Msg.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
-			Expect(set.Msg.GetProject().GetId()).To(Equal(p.GetId()))
+			Expect(set.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"))
+			Expect(set.GetProject().GetId()).To(Equal(p.GetId()))
 
-			same, err := f.graph().UpdateProject(ctx, connect.NewRequest(&skiftv1.UpdateProjectRequest{RequestId: newID(), Project: "platform"}))
+			same, err := f.graph().UpdateProject(ctx, &skiftv1.UpdateProjectRequest{RequestId: newID(), Project: "platform"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(same.Msg.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"), "an unset field is left alone")
+			Expect(same.GetProject().GetVcsUrl()).To(Equal("https://gitlab.example/x/y.git"), "an unset field is left alone")
 
-			cleared, err := f.graph().UpdateProject(ctx, connect.NewRequest(&skiftv1.UpdateProjectRequest{
+			cleared, err := f.graph().UpdateProject(ctx, &skiftv1.UpdateProjectRequest{
 				RequestId: newID(), Project: "platform", VcsUrl: ptr(""),
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cleared.Msg.GetProject().GetVcsUrl()).To(BeEmpty())
+			Expect(cleared.GetProject().GetVcsUrl()).To(BeEmpty())
 
 			f.as(f.agent)
-			_, err = f.graph().UpdateProject(ctx, connect.NewRequest(&skiftv1.UpdateProjectRequest{
+			_, err = f.graph().UpdateProject(ctx, &skiftv1.UpdateProjectRequest{
 				RequestId: newID(), Project: "platform", VcsUrl: ptr("https://gitlab.example/x/y.git"),
-			}))
+			})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied), "an agent may not change a project's repository")
 		})
 	})
@@ -705,16 +705,16 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 	Describe("GetProject", func() {
 		It("resolves a slug or an id and reports a missing project as not found", func(ctx SpecContext) {
 			created := f.project(ctx, "Platform")
-			bySlug, err := f.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))
+			bySlug, err := f.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "platform"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(bySlug.Msg.GetProject().GetId()).To(Equal(created.GetId()))
-			byID, err := f.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: created.GetId()}))
+			Expect(bySlug.GetProject().GetId()).To(Equal(created.GetId()))
+			byID, err := f.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: created.GetId()})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(byID.Msg.GetProject().GetSlug()).To(Equal("platform"))
+			Expect(byID.GetProject().GetSlug()).To(Equal("platform"))
 
-			_, err = f.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "nowhere"}))
+			_, err = f.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "nowhere"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
-			_, err = f.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{}))
+			_, err = f.graph().GetProject(ctx, &skiftv1.GetProjectRequest{})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 		})
 	})
@@ -724,7 +724,7 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			for _, title := range []string{"One", "Two", "Three"} {
 				f.project(ctx, title)
 			}
-			_, err := f.graph().ArchiveProject(ctx, connect.NewRequest(&skiftv1.ArchiveProjectRequest{RequestId: newID(), Project: "two"}))
+			_, err := f.graph().ArchiveProject(ctx, &skiftv1.ArchiveProjectRequest{RequestId: newID(), Project: "two"})
 			Expect(err).NotTo(HaveOccurred())
 			slugs := func(res *skiftv1.ListProjectsResponse) []string {
 				out := []string{}
@@ -734,17 +734,17 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 				return out
 			}
 
-			active, err := f.graph().ListProjects(ctx, connect.NewRequest(&skiftv1.ListProjectsRequest{}))
+			active, err := f.graph().ListProjects(ctx, &skiftv1.ListProjectsRequest{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(slugs(active.Msg)).To(Equal([]string{"three", "one"}))
+			Expect(slugs(active)).To(Equal([]string{"three", "one"}))
 
-			all, err := f.graph().ListProjects(ctx, connect.NewRequest(&skiftv1.ListProjectsRequest{IncludeArchived: true, PageSize: 2}))
+			all, err := f.graph().ListProjects(ctx, &skiftv1.ListProjectsRequest{IncludeArchived: true, PageSize: 2})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(slugs(all.Msg)).To(Equal([]string{"three", "two"}))
-			rest, err := f.graph().ListProjects(ctx, connect.NewRequest(&skiftv1.ListProjectsRequest{IncludeArchived: true, PageSize: 2, PageToken: all.Msg.GetNextPageToken()}))
+			Expect(slugs(all)).To(Equal([]string{"three", "two"}))
+			rest, err := f.graph().ListProjects(ctx, &skiftv1.ListProjectsRequest{IncludeArchived: true, PageSize: 2, PageToken: all.GetNextPageToken()})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(slugs(rest.Msg)).To(Equal([]string{"one"}))
-			Expect(rest.Msg.GetNextPageToken()).To(BeEmpty())
+			Expect(slugs(rest)).To(Equal([]string{"one"}))
+			Expect(rest.GetNextPageToken()).To(BeEmpty())
 		})
 	})
 
@@ -754,21 +754,21 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.mustApply(ctx, createOp("a", "Work"))
 
 			f.as(f.agent)
-			_, err := f.graph().ArchiveProject(ctx, connect.NewRequest(&skiftv1.ArchiveProjectRequest{RequestId: newID(), Project: "platform"}))
+			_, err := f.graph().ArchiveProject(ctx, &skiftv1.ArchiveProjectRequest{RequestId: newID(), Project: "platform"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied))
 
 			f.as(f.user)
-			res, err := f.graph().ArchiveProject(ctx, connect.NewRequest(&skiftv1.ArchiveProjectRequest{RequestId: newID(), Project: "platform"}))
+			res, err := f.graph().ArchiveProject(ctx, &skiftv1.ArchiveProjectRequest{RequestId: newID(), Project: "platform"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetProject().GetArchivedAt()).NotTo(BeNil())
+			Expect(res.GetProject().GetArchivedAt()).NotTo(BeNil())
 
 			_, err = f.apply(ctx, "platform", createOp("b", "Too late"))
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeFailedPrecondition))
 
-			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#1"}))
+			explained, err := f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#1"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
-			Expect(explained.Msg.GetReasons()[0].GetArchived().GetProject().GetSlug()).To(Equal("platform"))
+			Expect(explained.GetReasons()).To(HaveLen(1))
+			Expect(explained.GetReasons()[0].GetArchived().GetProject().GetSlug()).To(Equal("platform"))
 		})
 	})
 
@@ -778,50 +778,50 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.mustApply(ctx, createOp("a", "Work"), createOp("b", "More work"))
 
 			f.as(f.agent)
-			_, err := f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform", Reason: "not this quarter"}))
+			_, err := f.graph().HoldProject(ctx, &skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform", Reason: "not this quarter"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied))
 
 			f.as(f.user)
-			_, err = f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform"}))
+			_, err = f.graph().HoldProject(ctx, &skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
-			_, err = f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "nowhere", Reason: "parked"}))
+			_, err = f.graph().HoldProject(ctx, &skiftv1.HoldProjectRequest{RequestId: newID(), Project: "nowhere", Reason: "parked"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
 
-			held, err := f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform", Reason: "not this quarter"}))
+			held, err := f.graph().HoldProject(ctx, &skiftv1.HoldProjectRequest{RequestId: newID(), Project: "platform", Reason: "not this quarter"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(held.Msg.GetHeldCount()).To(BeEquivalentTo(2))
-			Expect(held.Msg.GetProject().GetHold().GetReason()).To(Equal("not this quarter"))
-			Expect(held.Msg.GetProject().GetHold().GetBy()).To(Equal(f.user.ID))
-			Expect(held.Msg.GetProject().GetArchivedAt()).To(BeNil())
+			Expect(held.GetHeldCount()).To(BeEquivalentTo(2))
+			Expect(held.GetProject().GetHold().GetReason()).To(Equal("not this quarter"))
+			Expect(held.GetProject().GetHold().GetBy()).To(Equal(f.user.ID))
+			Expect(held.GetProject().GetArchivedAt()).To(BeNil())
 
-			ready, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+			ready, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ready.Msg.GetNodes()).To(BeEmpty())
-			Expect(ready.Msg.GetHeldCount()).To(BeEquivalentTo(2), "an empty page says whether the work is parked or finished")
+			Expect(ready.GetNodes()).To(BeEmpty())
+			Expect(ready.GetHeldCount()).To(BeEquivalentTo(2), "an empty page says whether the work is parked or finished")
 			f.project(ctx, "Other")
 			_, err = f.apply(ctx, "other", createOp("c", "Elsewhere"))
 			Expect(err).NotTo(HaveOccurred())
-			_, err = f.graph().HoldProject(ctx, connect.NewRequest(&skiftv1.HoldProjectRequest{RequestId: newID(), Project: "other", Reason: "also parked"}))
+			_, err = f.graph().HoldProject(ctx, &skiftv1.HoldProjectRequest{RequestId: newID(), Project: "other", Reason: "also parked"})
 			Expect(err).NotTo(HaveOccurred())
-			across, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{}}))
+			across, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{}})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(across.Msg.GetNodes()).To(BeEmpty())
-			Expect(across.Msg.GetHeldCount()).To(BeEquivalentTo(3), "summed over every project when none is named")
-			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#1"}))
+			Expect(across.GetNodes()).To(BeEmpty())
+			Expect(across.GetHeldCount()).To(BeEquivalentTo(3), "summed over every project when none is named")
+			explained, err := f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#1"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
-			Expect(explained.Msg.GetReasons()[0].GetProjectHeld().GetProject().GetSlug()).To(Equal("platform"))
-			Expect(explained.Msg.GetReasons()[0].GetProjectHeld().GetProject().GetHold().GetReason()).To(Equal("not this quarter"))
+			Expect(explained.GetReasons()).To(HaveLen(1))
+			Expect(explained.GetReasons()[0].GetProjectHeld().GetProject().GetSlug()).To(Equal("platform"))
+			Expect(explained.GetReasons()[0].GetProjectHeld().GetProject().GetHold().GetReason()).To(Equal("not this quarter"))
 
 			_, err = f.apply(ctx, "platform", createOp("c", "Planned while parked"))
 			Expect(err).NotTo(HaveOccurred(), "a held project stays writable")
 
-			released, err := f.graph().UnholdProject(ctx, connect.NewRequest(&skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "platform", Reason: "green light"}))
+			released, err := f.graph().UnholdProject(ctx, &skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "platform", Reason: "green light"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(released.Msg.GetProject().GetHold()).To(BeNil())
-			ready, err = f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+			Expect(released.GetProject().GetHold()).To(BeNil())
+			ready, err = f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(numbers(ready.Msg.GetNodes())).To(ConsistOf(int64(1), int64(2), int64(3)))
+			Expect(numbers(ready.GetNodes())).To(ConsistOf(int64(1), int64(2), int64(3)))
 		})
 	})
 
@@ -834,46 +834,46 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			f.as(f.agent)
-			_, err = f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}, Reason: "platform week"}))
+			_, err = f.graph().Focus(ctx, &skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}, Reason: "platform week"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodePermissionDenied))
 			f.as(f.user)
 
 			By("an organization-wide sweep keeps projects")
-			org, err := f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}, Reason: "platform week"}))
+			org, err := f.graph().Focus(ctx, &skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}, Reason: "platform week"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(org.Msg.GetHeldCount()).To(BeEquivalentTo(1))
-			Expect(org.Msg.GetGroup()).NotTo(BeEmpty())
-			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "other", Node: "#1"}))
+			Expect(org.GetHeldCount()).To(BeEquivalentTo(1))
+			Expect(org.GetGroup()).NotTo(BeEmpty())
+			explained, err := f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "other", Node: "#1"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
-			Expect(explained.Msg.GetReasons()[0].GetProjectHeld().GetProject().GetSlug()).To(Equal("other"))
+			Expect(explained.GetReasons()).To(HaveLen(1))
+			Expect(explained.GetReasons()[0].GetProjectHeld().GetProject().GetSlug()).To(Equal("other"))
 
 			By("a project-scoped sweep keeps nodes")
-			within, err := f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Project: "platform", Keep: []string{"#1"}, Reason: "this one first"}))
+			within, err := f.graph().Focus(ctx, &skiftv1.FocusRequest{RequestId: newID(), Project: "platform", Keep: []string{"#1"}, Reason: "this one first"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(within.Msg.GetHeldCount()).To(BeEquivalentTo(1))
-			Expect(within.Msg.GetGroup()).NotTo(Equal(org.Msg.GetGroup()))
-			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			Expect(within.GetHeldCount()).To(BeEquivalentTo(1))
+			Expect(within.GetGroup()).NotTo(Equal(org.GetGroup()))
+			explained, err = f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#2"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
-			Expect(explained.Msg.GetReasons()[0].GetHeld().GetHold().GetReason()).To(Equal("this one first"))
+			Expect(explained.GetReasons()).To(HaveLen(1))
+			Expect(explained.GetReasons()[0].GetHeld().GetHold().GetReason()).To(Equal("this one first"))
 
 			By("each scope clears on its own")
-			cleared, err := f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform", Reason: "done"}))
+			cleared, err := f.graph().ClearFocus(ctx, &skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform", Reason: "done"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cleared.Msg.GetReleasedCount()).To(BeEquivalentTo(1))
-			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "other", Node: "#1"}))
+			Expect(cleared.GetReleasedCount()).To(BeEquivalentTo(1))
+			explained, err = f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "other", Node: "#1"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(HaveLen(1), "the organization's sweep is still in place")
+			Expect(explained.GetReasons()).To(HaveLen(1), "the organization's sweep is still in place")
 
-			cleared, err = f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Reason: "week over"}))
+			cleared, err = f.graph().ClearFocus(ctx, &skiftv1.ClearFocusRequest{RequestId: newID(), Reason: "week over"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cleared.Msg.GetReleasedCount()).To(BeEquivalentTo(1))
-			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "other", Node: "#1"}))
+			Expect(cleared.GetReleasedCount()).To(BeEquivalentTo(1))
+			explained, err = f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "other", Node: "#1"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(BeEmpty())
+			Expect(explained.GetReasons()).To(BeEmpty())
 
-			_, err = f.graph().Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}}))
+			_, err = f.graph().Focus(ctx, &skiftv1.FocusRequest{RequestId: newID(), Keep: []string{"platform"}})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
 		})
 	})
@@ -891,19 +891,19 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			By("a hold on the epic parks the child, and a release returns it")
 			_, err := f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_HoldNode{HoldNode: &skiftv1.HoldNodeOp{Node: "#1", Reason: "parked"}}})
 			Expect(err).NotTo(HaveOccurred())
-			explained, err := f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			explained, err := f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#2"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(HaveLen(1))
-			held := explained.Msg.GetReasons()[0].GetHeld()
+			Expect(explained.GetReasons()).To(HaveLen(1))
+			held := explained.GetReasons()[0].GetHeld()
 			Expect(held.GetNumber()).To(BeEquivalentTo(1))
 			Expect(held.GetSelf()).To(BeFalse())
 			Expect(held.GetHold().GetReason()).To(Equal("parked"))
 			Expect(held.GetHold().GetBy()).To(Equal(f.user.ID))
 			_, err = f.apply(ctx, "platform", &skiftv1.PatchOp{Op: &skiftv1.PatchOp_UnholdNode{UnholdNode: &skiftv1.UnholdNodeOp{Node: "#1", Reason: "back"}}})
 			Expect(err).NotTo(HaveOccurred())
-			explained, err = f.graph().Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: "platform", Node: "#2"}))
+			explained, err = f.graph().Explain(ctx, &skiftv1.ExplainRequest{Project: "platform", Node: "#2"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(explained.Msg.GetReasons()).To(BeEmpty())
+			Expect(explained.GetReasons()).To(BeEmpty())
 
 			By("a comment keeps its revisions when edited, and records who resolved it")
 			comments := f.getNode(ctx, "platform", "#1").GetComments()
@@ -980,20 +980,20 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 			f.project(ctx, "Platform")
 			f.mustApply(ctx, createOp("a", "Work"))
 
-			_, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Status: skiftv1.Status_STATUS_OPEN}}))
+			_, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Status: skiftv1.Status_STATUS_OPEN}})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
-			_, err = f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Held: true}, Harness: "spec", AgentRef: "spec"}))
+			_, err = f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Held: true}, Harness: "spec", AgentRef: "spec"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 
-			_, err = f.graph().UnholdProject(ctx, connect.NewRequest(&skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "platform"}))
+			_, err = f.graph().UnholdProject(ctx, &skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "platform"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
-			_, err = f.graph().UnholdProject(ctx, connect.NewRequest(&skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "nowhere", Reason: "back"}))
+			_, err = f.graph().UnholdProject(ctx, &skiftv1.UnholdProjectRequest{RequestId: newID(), Project: "nowhere", Reason: "back"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
-			_, err = f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform"}))
+			_, err = f.graph().ClearFocus(ctx, &skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
-			cleared, err := f.graph().ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform", Reason: "nothing to clear"}))
+			cleared, err := f.graph().ClearFocus(ctx, &skiftv1.ClearFocusRequest{RequestId: newID(), Project: "platform", Reason: "nothing to clear"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cleared.Msg.GetReleasedCount()).To(BeZero(), "a scope with no sweep is a no-op, not a mistake")
+			Expect(cleared.GetReleasedCount()).To(BeZero(), "a scope with no sweep is a no-op, not a mistake")
 		})
 	})
 
@@ -1006,7 +1006,7 @@ var _ = Describe("GraphService", Label(testsupport.DBLabel), func() {
 
 	It("refuses a call the transport did not attribute", func(ctx SpecContext) {
 		bare := start(server.Config{}, server.Services{Graph: server.NewGraphService(domain.NewService(f.pool, pol))}, f.pool)
-		_, err := bare.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))
+		_, err := bare.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "platform"})
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 	})
 })

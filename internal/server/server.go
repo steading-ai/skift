@@ -21,7 +21,8 @@ import (
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 	"github.com/steading-ai/skift/internal/codec"
@@ -59,7 +60,7 @@ type Config struct {
 	// Interceptors wrap every Connect handler, in order. Principal
 	// resolution is the first of them; see [interceptor.NewPrincipal].
 	// The health check is outside the Connect namespace and not wrapped.
-	Interceptors []connect.Interceptor
+	Interceptors []connect.ServerInterceptor
 	// Transports are the ways in besides the unix socket, such as the
 	// tailnet. By default they serve the Connect mux. A transport implementing
 	// HTTPHandler() http.Handler instead serves only that isolated handler;
@@ -148,14 +149,16 @@ func New(cfg Config, svc Services, db Pinger) *Server {
 	}
 	// Every handler speaks skift's JSON, not protojson's: the one door
 	// says what every other surface says. See internal/codec.
-	opts := append([]connect.HandlerOption{connect.WithInterceptors(cfg.Interceptors...)}, codec.HandlerOptions()...)
-	graphPath, graphHandler := skiftv1connect.NewGraphServiceHandler(svc.Graph, opts...)
-	workPath, workHandler := skiftv1connect.NewWorkServiceHandler(svc.Work, opts...)
-	s.connectMux.Handle(graphPath, graphHandler)
-	s.connectMux.Handle(workPath, workHandler)
-	s.mux.Handle(graphPath, graphHandler)
-	s.mux.Handle(workPath, workHandler)
-	s.mux.Handle(skiftv1connect.NewEventServiceHandler(svc.Events, opts...))
+	opts := append(codec.HandlerOptions(), connecthttp.WithReadMaxBytes(unboundedReads))
+	unary := connect.NewServer(cfg.Interceptors...)
+	skiftv1connect.RegisterGraphServiceHandler(unary, svc.Graph)
+	skiftv1connect.RegisterWorkServiceHandler(unary, svc.Work)
+	connecthttp.Mount(s.connectMux, unary, opts...)
+	all := connect.NewServer(cfg.Interceptors...)
+	skiftv1connect.RegisterGraphServiceHandler(all, svc.Graph)
+	skiftv1connect.RegisterWorkServiceHandler(all, svc.Work)
+	skiftv1connect.RegisterEventServiceHandler(all, svc.Events)
+	connecthttp.Mount(s.mux, all, opts...)
 	s.mux.HandleFunc("GET "+HealthPath, s.health)
 
 	// Every connection over the socket carries its peer's unix

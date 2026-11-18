@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
@@ -1220,9 +1222,11 @@ var _ = Describe("skift mcp", Label("unit"), func() {
 	Describe("transport is configurable", func() {
 		It("reaches a service at a network address given with --address", func() {
 			By("given the stub served over HTTP, as a tailnet address is")
+			server := connect.NewServer()
+			skiftv1connect.RegisterGraphServiceHandler(server, s)
+			skiftv1connect.RegisterWorkServiceHandler(server, s)
 			mux := http.NewServeMux()
-			mux.Handle(skiftv1connect.NewGraphServiceHandler(s))
-			mux.Handle(skiftv1connect.NewWorkServiceHandler(s))
+			connecthttp.Mount(mux, server)
 			ts := httptest.NewServer(mux)
 			DeferCleanup(ts.Close)
 			s.newNode("Remote work")

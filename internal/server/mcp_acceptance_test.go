@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -86,8 +86,8 @@ var _ = Describe("Native MCP SDK acceptance", Label(testsupport.DBLabel), func()
 		svc := domain.NewService(f.pool, pol)
 		lookup := server.NewIdentityLookup(svc)
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(_ context.Context, peer string) (string, error) { return peer, nil })}
-		srv := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)
-		handler = interceptor.NewAuthenticator(lookup, resolver).Middleware(mcphttp.New(mcptools.Execution{Graph: skiftv1connect.NewGraphServiceClient(srv.InProcessClient(), "http://skift.internal"), Work: skiftv1connect.NewWorkServiceClient(srv.InProcessClient(), "http://skift.internal")}))
+		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)
+		handler = interceptor.NewAuthenticator(lookup, resolver).Middleware(mcphttp.New(mcptools.Execution{Graph: skiftv1connect.NewGraphServiceClient(srv.InProcessClient()), Work: skiftv1connect.NewWorkServiceClient(srv.InProcessClient())}))
 		open = func(ctx context.Context, peer string) (*mcp.ClientSession, *lostMCPResponse) {
 			GinkgoHelper()
 			ts := httptest.NewUnstartedServer(handler)
@@ -129,9 +129,9 @@ var _ = Describe("Native MCP SDK acceptance", Label(testsupport.DBLabel), func()
 			Expect(event.Principal).To(Equal(f.user.ID))
 			Expect(event.IdentityScheme).To(Equal("tailscale"))
 		}
-		nodes, err := f.graph().ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+		nodes, err := f.graph().ListNodes(ctx, &skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(nodes.Msg.GetNodes()).To(HaveLen(2))
+		Expect(nodes.GetNodes()).To(HaveLen(2))
 		claimed := sdkTool(ctx, second, "claim", map[string]any{"projects": []string{"platform"}, "request_id": newID()})
 		token := sdkLease(claimed)
 		Expect(string(sdkContent(claimed)["node"])).To(ContainSubstring("Predecessor"))
@@ -188,8 +188,8 @@ var _ = Describe("Native MCP SDK acceptance", Label(testsupport.DBLabel), func()
 		}
 		Expect(f.pool.QueryRow(ctx, `SELECT count(*) FROM events`).Scan(&after)).To(Succeed())
 		Expect(after).To(Equal(before))
-		nodes, err := f.graph().ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+		nodes, err := f.graph().ListNodes(ctx, &skiftv1.ListNodesRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(nodes.Msg.GetNodes()).To(HaveLen(1))
+		Expect(nodes.GetNodes()).To(HaveLen(1))
 	})
 })

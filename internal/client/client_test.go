@@ -9,7 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -24,13 +25,15 @@ type graphStub struct {
 	skiftv1connect.UnimplementedGraphServiceHandler
 }
 
-func (graphStub) GetProject(_ context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
-	return connect.NewResponse(&skiftv1.GetProjectResponse{Project: &skiftv1.Project{Slug: req.Msg.GetProject()}}), nil
+func (graphStub) GetProject(_ context.Context, req *skiftv1.GetProjectRequest) (*skiftv1.GetProjectResponse, error) {
+	return &skiftv1.GetProjectResponse{Project: &skiftv1.Project{Slug: req.GetProject()}}, nil
 }
 
 func handler() http.Handler {
+	server := connect.NewServer()
+	skiftv1connect.RegisterGraphServiceHandler(server, graphStub{})
 	mux := http.NewServeMux()
-	mux.Handle(skiftv1connect.NewGraphServiceHandler(graphStub{}))
+	connecthttp.Mount(mux, server)
 	return mux
 }
 
@@ -147,9 +150,9 @@ var _ = Describe("Client", Label("unit"), func() {
 			Expect(c.Transport()).To(Equal(client.TransportUnix))
 			Expect(c.Target()).To(Equal(socket))
 
-			res, err := c.Graph.GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))
+			res, err := c.Graph.GetProject(ctx, &skiftv1.GetProjectRequest{Project: "platform"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetProject().GetSlug()).To(Equal("platform"))
+			Expect(res.GetProject().GetSlug()).To(Equal("platform"))
 		})
 
 		It("dials the address when one is configured, even with a socket set", func(ctx SpecContext) {
@@ -159,16 +162,16 @@ var _ = Describe("Client", Label("unit"), func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(c.Transport()).To(Equal(client.TransportHTTP))
 
-			res, err := c.Graph.GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "laptop"}))
+			res, err := c.Graph.GetProject(ctx, &skiftv1.GetProjectRequest{Project: "laptop"})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetProject().GetSlug()).To(Equal("laptop"))
+			Expect(res.GetProject().GetSlug()).To(Equal("laptop"))
 		})
 
 		It("reports an unreachable socket as unavailable, naming the socket", func(ctx SpecContext) {
 			socket := filepath.Join(GinkgoT().TempDir(), "nobody.sock")
 			c, err := client.New(client.Config{Socket: socket})
 			Expect(err).NotTo(HaveOccurred())
-			_, err = c.Graph.GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "platform"}))
+			_, err = c.Graph.GetProject(ctx, &skiftv1.GetProjectRequest{Project: "platform"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnavailable))
 			Expect(err.Error()).To(ContainSubstring(socket))
 		})

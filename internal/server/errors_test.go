@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -55,7 +55,7 @@ var _ = Describe("Connect codes for domain errors", Label("unit"), func() {
 	})
 
 	It("passes a Connect error through unchanged and nil as nil", func() {
-		orig := connect.NewError(connect.CodeUnavailable, errors.New("later"))
+		orig := connect.NewError(connect.CodeUnavailable, "later")
 		Expect(server.ConnectError(orig)).To(BeIdenticalTo(orig))
 		Expect(server.ConnectError(nil)).To(BeNil())
 	})

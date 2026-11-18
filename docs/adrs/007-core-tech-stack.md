@@ -30,7 +30,7 @@ Chosen option: **generated everywhere**, because both of skift's contracts (the 
 | Concern | Choice |
 |---|---|
 | Language | Go 1.25+ |
-| Proto toolchain | buf, with `connectrpc.com/connect` |
+| Proto toolchain | buf, with `connectrpc.com/connect/v2` |
 | Database driver | `github.com/jackc/pgx/v5` |
 | Query generation | sqlc, reading the goose migrations directly |
 | Migrations | goose |

@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -104,7 +103,7 @@ func (a *app) apply(cmd *cobra.Command, req *skiftv1.ApplyPatchRequest) error {
 		return err
 	}
 	return send(a, cmd, func() (*skiftv1.ApplyPatchResponse, error) {
-		res, err := c.Graph.ApplyPatch(cmd.Context(), connect.NewRequest(req))
+		res, err := c.Graph.ApplyPatch(cmd.Context(), req)
 		return unwrap(res, err)
 	})
 }

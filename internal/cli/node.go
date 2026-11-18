@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -37,7 +36,7 @@ func (a *app) nodeShow() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.GetNodeResponse, error) {
-				res, err := c.Graph.GetNode(cmd.Context(), connect.NewRequest(&skiftv1.GetNodeRequest{Project: project, Node: ref, View: v}))
+				res, err := c.Graph.GetNode(cmd.Context(), &skiftv1.GetNodeRequest{Project: project, Node: ref, View: v})
 				return unwrap(res, err)
 			})
 		},
@@ -78,7 +77,7 @@ node show".`,
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.GetInputsResponse, error) {
-				res, err := c.Graph.GetInputs(cmd.Context(), connect.NewRequest(&skiftv1.GetInputsRequest{Project: project, Node: ref, View: v}))
+				res, err := c.Graph.GetInputs(cmd.Context(), &skiftv1.GetInputsRequest{Project: project, Node: ref, View: v})
 				return unwrap(res, err)
 			})
 		},
@@ -128,9 +127,9 @@ otherwise.`,
 				filter.Kinds = []string{f.kind}
 			}
 			return send(a, cmd, func() (*skiftv1.ListNodesResponse, error) {
-				res, err := c.Graph.ListNodes(cmd.Context(), connect.NewRequest(&skiftv1.ListNodesRequest{
+				res, err := c.Graph.ListNodes(cmd.Context(), &skiftv1.ListNodesRequest{
 					Filter: filter, PageSize: page.size, PageToken: page.token, View: v,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},

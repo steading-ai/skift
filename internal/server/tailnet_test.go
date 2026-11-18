@@ -8,7 +8,8 @@ import (
 	"os"
 	"strconv"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -58,7 +59,7 @@ func (t *loopbackTailnet) WhoIs(context.Context, string) (string, error) {
 // graph is a client reaching the handlers over the tailnet rather than the
 // socket.
 func (t *loopbackTailnet) graph() skiftv1connect.GraphServiceClient {
-	return skiftv1connect.NewGraphServiceClient(&http.Client{}, "http://"+t.listener.Addr().String())
+	return skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(&http.Client{}, "http://"+t.listener.Addr().String())))
 }
 
 // failingTransport cannot bind.
@@ -79,18 +80,18 @@ var _ = Describe("Connect server over the tailnet", func() {
 			r := start(server.Config{Transports: []server.Transport{tn}}, server.Services{Graph: graphStub{}}, pinger{})
 
 			By("when the same call is made over each")
-			viaSocket, err := r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+			viaSocket, err := r.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 			Expect(err).NotTo(HaveOccurred())
-			viaTailnet, err := tn.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+			viaTailnet, err := tn.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("then the one handler answers both")
-			Expect(viaTailnet.Msg.GetProject().GetSlug()).To(Equal(viaSocket.Msg.GetProject().GetSlug()))
-			Expect(viaTailnet.Msg.GetProject().GetTitle()).To(Equal("Stub project"))
+			Expect(viaTailnet.GetProject().GetSlug()).To(Equal(viaSocket.GetProject().GetSlug()))
+			Expect(viaTailnet.GetProject().GetTitle()).To(Equal("Stub project"))
 
 			By("and the unmounted services answer Unimplemented over the tailnet too, not 404")
-			_, err = skiftv1connect.NewWorkServiceClient(&http.Client{}, "http://"+tn.listener.Addr().String()).
-				Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
+			_, err = skiftv1connect.NewWorkServiceClient(connect.NewClient(connecthttp.NewTransport(&http.Client{}, "http://"+tn.listener.Addr().String()))).
+				Ready(ctx, &skiftv1.ReadyRequest{})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnimplemented))
 
 			By("and the transport is closed when the server stops")
@@ -103,11 +104,11 @@ var _ = Describe("Connect server over the tailnet", func() {
 			tn := &loopbackTailnet{node: "nSTRANGER"}
 			start(server.Config{
 				Transports: []server.Transport{tn},
-				Interceptors: []connect.Interceptor{interceptor.NewPrincipal(
+				Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(
 					interceptor.StaticLookup{}, interceptor.UnixResolver{}, interceptor.TailscaleResolver{WhoIs: tn},
 				)},
 			}, server.Services{Graph: graphStub{}}, pinger{})
-			_, err := tn.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+			_, err := tn.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 
 			By("then the call fails as unauthenticated")
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
@@ -149,27 +150,27 @@ var _ = Describe("Connect server over the tailnet", func() {
 			tn := &loopbackTailnet{node: "nLAPTOP01"}
 			r := start(server.Config{
 				Transports: []server.Transport{tn},
-				Interceptors: []connect.Interceptor{interceptor.NewPrincipal(
+				Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(
 					server.NewIdentityLookup(svc), interceptor.UnixResolver{}, interceptor.TailscaleResolver{WhoIs: tn},
 				)},
 			}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, pool)
 
 			By("when it calls over the socket and then over the tailnet")
-			_, err = r.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Platform"}))
+			_, err = r.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{RequestId: newID(), Title: "Platform"})
 			Expect(err).NotTo(HaveOccurred())
-			viaSocket, err := r.graph().ApplyPatch(ctx, connect.NewRequest(&skiftv1.ApplyPatchRequest{
+			viaSocket, err := r.graph().ApplyPatch(ctx, &skiftv1.ApplyPatchRequest{
 				RequestId: newID(), Project: "platform", Ops: []*skiftv1.PatchOp{createOp("a", "From the host")}, View: skiftv1.View_VIEW_FULL,
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			viaTailnet, err := tn.graph().ApplyPatch(ctx, connect.NewRequest(&skiftv1.ApplyPatchRequest{
+			viaTailnet, err := tn.graph().ApplyPatch(ctx, &skiftv1.ApplyPatchRequest{
 				RequestId: newID(), Project: "platform", Ops: []*skiftv1.PatchOp{createOp("b", "From the laptop")}, View: skiftv1.View_VIEW_FULL,
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("then both calls attribute to the same principal")
-			Expect(viaSocket.Msg.GetEvents()).To(HaveLen(1))
-			Expect(viaTailnet.Msg.GetEvents()).To(HaveLen(1))
-			socketEvent, tailnetEvent := viaSocket.Msg.GetEvents()[0], viaTailnet.Msg.GetEvents()[0]
+			Expect(viaSocket.GetEvents()).To(HaveLen(1))
+			Expect(viaTailnet.GetEvents()).To(HaveLen(1))
+			socketEvent, tailnetEvent := viaSocket.GetEvents()[0], viaTailnet.GetEvents()[0]
 			Expect(socketEvent.GetPrincipal()).To(Equal(ivy.ID))
 			Expect(tailnetEvent.GetPrincipal()).To(Equal(ivy.ID))
 

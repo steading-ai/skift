@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -23,11 +23,11 @@ type contextGraph struct {
 	call func(context.Context) error
 }
 
-func (g contextGraph) GetProject(ctx context.Context, _ *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
+func (g contextGraph) GetProject(ctx context.Context, _ *skiftv1.GetProjectRequest) (*skiftv1.GetProjectResponse, error) {
 	if err := g.call(ctx); err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&skiftv1.GetProjectResponse{}), nil
+	return &skiftv1.GetProjectResponse{}, nil
 }
 
 var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), func() {
@@ -55,26 +55,26 @@ var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), fun
 		graph := newRecordingGraph()
 		var specs []connect.Spec
 		var mu sync.Mutex
-		record := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		record := connect.ServerInterceptor(func(next connect.ServerFunc) connect.ServerFunc {
+			return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
 				mu.Lock()
-				specs = append(specs, req.Spec())
+				specs = append(specs, spec)
 				mu.Unlock()
-				return next(ctx, req)
+				return next(ctx, spec, stream)
 			}
 		})
-		srv := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver), record}}, server.Services{Graph: graph}, nil)
-		client := skiftv1connect.NewGraphServiceClient(srv.InProcessClient(), baseURL)
+		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver), record}}, server.Services{Graph: graph}, nil)
+		client := skiftv1connect.NewGraphServiceClient(srv.InProcessClient())
 		var wg sync.WaitGroup
 		for _, peer := range []string{"a", "b"} {
 			wg.Go(func() {
 				defer GinkgoRecover()
 				// Even an already-attributed context cannot override the transport.
 				original := interceptor.WithCaller(interceptor.WithTailnetPeer(ctx, peer), interceptor.Principal{ID: "spoof"}, interceptor.Identity{})
-				req := connect.NewRequest(&skiftv1.GetProjectRequest{})
-				req.Header().Set("X-Forwarded-For", "b")
-				req.Header().Set("X-Skift-Principal", "spoof")
-				_, err := client.GetProject(original, req)
+				call, info := connect.NewClientContext(original)
+				info.RequestHeader().Set("X-Forwarded-For", "b")
+				info.RequestHeader().Set("X-Skift-Principal", "spoof")
+				_, err := client.GetProject(call, &skiftv1.GetProjectRequest{})
 				Expect(err).NotTo(HaveOccurred())
 			})
 		}
@@ -89,7 +89,7 @@ var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), fun
 		Expect(got).To(ConsistOf(alice, lookup[interceptor.Identity{Scheme: interceptor.SchemeTailscale, Value: "node-b"}]))
 		Expect(specs).To(HaveLen(2))
 		for _, spec := range specs {
-			Expect(spec.IsClient).To(BeFalse())
+			Expect(spec.Procedure).To(Equal(skiftv1connect.GraphServiceGetProjectProcedure))
 		}
 	})
 	It("authenticates discovery and listing and rejects missing, unmapped, or failed identities before dispatch", func(ctx SpecContext) {
@@ -124,16 +124,16 @@ var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), fun
 	})
 	It("rejects unauthenticated tool RPCs despite spoofed headers", func(ctx SpecContext) {
 		graph := newRecordingGraph()
-		srv := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: graph}, nil)
-		client := skiftv1connect.NewGraphServiceClient(srv.InProcessClient(), baseURL)
+		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: graph}, nil)
+		client := skiftv1connect.NewGraphServiceClient(srv.InProcessClient())
 		for _, peer := range []string{"", "unmapped", "failed"} {
 			callCtx := context.Context(ctx)
 			if peer != "" {
 				callCtx = interceptor.WithTailnetPeer(ctx, peer)
 			}
-			req := connect.NewRequest(&skiftv1.GetProjectRequest{})
-			req.Header().Set("X-Skift-Principal", alice.ID)
-			_, err := client.GetProject(callCtx, req)
+			call, info := connect.NewClientContext(callCtx)
+			info.RequestHeader().Set("X-Skift-Principal", alice.ID)
+			_, err := client.GetProject(call, &skiftv1.GetProjectRequest{})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 		}
 		Expect(graph.seen).NotTo(Receive())
@@ -143,7 +143,7 @@ var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), fun
 		deadline := time.Now().Add(time.Minute)
 		callCtx, cancel := context.WithDeadline(interceptor.WithTailnetPeer(ctx, "a"), deadline)
 		defer cancel()
-		srv := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: contextGraph{call: func(ctx context.Context) error {
+		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: contextGraph{call: func(ctx context.Context) error {
 			d, ok := ctx.Deadline()
 			Expect(ok).To(BeTrue())
 			Expect(d).To(BeTemporally("~", deadline, time.Millisecond))
@@ -154,7 +154,7 @@ var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), fun
 		done := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
-			_, err := skiftv1connect.NewGraphServiceClient(srv.InProcessClient(), baseURL).GetProject(callCtx, connect.NewRequest(&skiftv1.GetProjectRequest{}))
+			_, err := skiftv1connect.NewGraphServiceClient(srv.InProcessClient()).GetProject(callCtx, &skiftv1.GetProjectRequest{})
 			done <- err
 		}()
 		Eventually(started).Should(BeClosed())
@@ -165,7 +165,7 @@ var _ = Describe("Authenticated in-process Connect dispatch", Label("unit"), fun
 		srv := server.New(server.Config{}, server.Services{}, nil)
 		for _, path := range []string{"/mcp", server.HealthPath, skiftv1connect.EventServiceWatchEventsProcedure} {
 			req := httptest.NewRequest(http.MethodPost, baseURL+path, nil).WithContext(ctx)
-			res, err := srv.InProcessClient().Do(req)
+			res, err := srv.InProcessHTTPClient().Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.StatusCode).To(Equal(http.StatusNotFound))
 			Expect(res.Body.Close()).To(Succeed())

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
@@ -26,10 +25,10 @@ type workStub struct {
 	skiftv1connect.UnimplementedWorkServiceHandler
 }
 
-func (workStub) Ready(_ context.Context, _ *connect.Request[skiftv1.ReadyRequest]) (*connect.Response[skiftv1.ReadyResponse], error) {
-	return connect.NewResponse(&skiftv1.ReadyResponse{Nodes: []*skiftv1.Node{
+func (workStub) Ready(_ context.Context, _ *skiftv1.ReadyRequest) (*skiftv1.ReadyResponse, error) {
+	return &skiftv1.ReadyResponse{Nodes: []*skiftv1.Node{
 		{Number: 7, Title: "Piped work", Status: skiftv1.Status_STATUS_OPEN, Priority: skiftv1.Priority_PRIORITY_P1, Ready: true},
-	}}), nil
+	}}, nil
 }
 
 // serveStub mounts the stub on a socket for the length of the spec.

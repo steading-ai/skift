@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 
-	"connectrpc.com/connect"
-
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 	"github.com/steading-ai/skift/internal/domain"
@@ -29,15 +27,15 @@ func NewEventService(svc *domain.Service) *EventService {
 // from its last cursor. A message without an event carries a position
 // alone: the stream's opening position, one after an interval the policy
 // filtered entirely, or a refresh of a quiet stream.
-func (e *EventService) WatchEvents(ctx context.Context, req *connect.Request[skiftv1.WatchEventsRequest], stream *connect.ServerStream[skiftv1.WatchEventsResponse]) error {
+func (e *EventService) WatchEvents(ctx context.Context, req *skiftv1.WatchEventsRequest, stream skiftv1connect.EventServiceWatchEventsServerStream) error {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return err
 	}
 	err = e.svc.WatchEvents(ctx, orgID, actor, domain.WatchRequest{
-		Cursor:   req.Msg.GetCursor(),
-		Project:  req.Msg.GetProject(),
-		Ops:      req.Msg.GetOps(),
+		Cursor:   req.GetCursor(),
+		Project:  req.GetProject(),
+		Ops:      req.GetOps(),
 		PageSize: defaultPageSize,
 		Stop:     Draining(ctx),
 	}, func(ev domain.WatchEvent) error {

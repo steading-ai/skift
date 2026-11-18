@@ -12,7 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
@@ -44,10 +45,10 @@ type graphStub struct {
 	skiftv1connect.UnimplementedGraphServiceHandler
 }
 
-func (graphStub) GetProject(_ context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
-	return connect.NewResponse(&skiftv1.GetProjectResponse{
-		Project: &skiftv1.Project{Slug: req.Msg.GetProject(), Title: "Stub project"},
-	}), nil
+func (graphStub) GetProject(_ context.Context, req *skiftv1.GetProjectRequest) (*skiftv1.GetProjectResponse, error) {
+	return &skiftv1.GetProjectResponse{
+		Project: &skiftv1.Project{Slug: req.GetProject(), Title: "Stub project"},
+	}, nil
 }
 
 // workStub waits in ClaimNext the way the lease implementation will: until
@@ -64,18 +65,18 @@ func newWorkStub() *workStub {
 	return &workStub{waiting: make(chan struct{}, 1)}
 }
 
-func (w *workStub) ClaimNext(ctx context.Context, req *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+func (w *workStub) ClaimNext(ctx context.Context, req *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 	w.waiting <- struct{}{}
-	wait := req.Msg.GetWait().AsDuration()
+	wait := req.GetWait().AsDuration()
 	select {
 	case <-time.After(wait):
 	case <-server.Draining(ctx):
 	case <-ctx.Done():
-		return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
+		return nil, connect.NewError(connect.CodeCanceled, ctx.Err().Error()).WithCause(ctx.Err())
 	}
 	// A lease is created only when a node is handed out; an empty
 	// response carries neither.
-	return connect.NewResponse(&skiftv1.ClaimNextResponse{}), nil
+	return &skiftv1.ClaimNextResponse{}, nil
 }
 
 // running is a server started for one spec.
@@ -141,15 +142,15 @@ func (r *running) httpClient() *http.Client {
 const baseURL = "http://skift"
 
 func (r *running) graph() skiftv1connect.GraphServiceClient {
-	return skiftv1connect.NewGraphServiceClient(r.httpClient(), baseURL)
+	return skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(r.httpClient(), baseURL)))
 }
 
 func (r *running) work() skiftv1connect.WorkServiceClient {
-	return skiftv1connect.NewWorkServiceClient(r.httpClient(), baseURL)
+	return skiftv1connect.NewWorkServiceClient(connect.NewClient(connecthttp.NewTransport(r.httpClient(), baseURL)))
 }
 
 func (r *running) events() skiftv1connect.EventServiceClient {
-	return skiftv1connect.NewEventServiceClient(r.httpClient(), baseURL)
+	return skiftv1connect.NewEventServiceClient(connect.NewClient(connecthttp.NewTransport(r.httpClient(), baseURL)))
 }
 
 // specLogger routes the server's log to the spec's writer, shown only on

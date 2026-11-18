@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -487,12 +487,12 @@ func (s *mcpServer) keepAlive(ctx context.Context, h *leaseHold, expiresAt time.
 			return
 		case <-time.After(wait):
 		}
-		res, err := s.app.client.Work.Heartbeat(ctx, connect.NewRequest(&skiftv1.HeartbeatRequest{
+		res, err := s.app.client.Work.Heartbeat(ctx, &skiftv1.HeartbeatRequest{
 			RequestId: client.NewRequestID(), LeaseId: h.id,
-		}))
+		})
 		switch {
 		case err == nil:
-			expiresAt = res.Msg.GetLease().GetExpiresAt().AsTime()
+			expiresAt = res.GetLease().GetExpiresAt().AsTime()
 		case ctx.Err() != nil:
 			return
 		case connect.CodeOf(err) == connect.CodeFailedPrecondition || connect.CodeOf(err) == connect.CodeNotFound:
@@ -522,10 +522,10 @@ func (s *mcpServer) releaseAll(detail string) {
 	ctx, cancel := context.WithTimeout(context.Background(), mcpShutdownTimeout)
 	defer cancel()
 	for _, h := range held {
-		_, err := s.app.client.Work.Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
+		_, err := s.app.client.Work.Release(ctx, &skiftv1.ReleaseRequest{
 			RequestId: client.NewRequestID(), LeaseId: h.id,
 			Reason: skiftv1.ReleaseReason_RELEASE_REASON_CRASH, Detail: detail,
-		}))
+		})
 		if err != nil {
 			s.log.Error("release lease on shutdown; it will expire instead", "lease_id", h.id, "error", err)
 			continue

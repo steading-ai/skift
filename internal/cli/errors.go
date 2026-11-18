@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectproto"
 
 	"github.com/steading-ai/skift/internal/codec"
 )
@@ -58,7 +59,7 @@ func ToError(err error) *Error {
 	if errors.As(err, &cerr) {
 		e := &Error{Code: cerr.Code().String(), Message: cerr.Message()}
 		for _, d := range cerr.Details() {
-			msg, err := d.Value()
+			msg, err := connectproto.UnmarshalErrorDetail(d)
 			if err != nil {
 				continue
 			}

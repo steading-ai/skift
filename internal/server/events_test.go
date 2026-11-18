@@ -2,24 +2,27 @@ package server_test
 
 import (
 	"context"
+	"io"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 	"github.com/steading-ai/skift/internal/testsupport"
 )
 
 // receive is the next message of stream, failing when it ends first.
-func receive(stream *connect.ServerStreamForClient[skiftv1.WatchEventsResponse]) *skiftv1.WatchEventsResponse {
+func receive(stream skiftv1connect.EventServiceWatchEventsClientStream) *skiftv1.WatchEventsResponse {
 	GinkgoHelper()
-	Expect(stream.Receive()).To(BeTrue(), "stream ended: %v", stream.Err())
-	return stream.Msg()
+	msg, err := stream.Receive()
+	Expect(err).NotTo(HaveOccurred(), "stream ended")
+	return msg
 }
 
 // receiveEvent is the next message carrying an event.
-func receiveEvent(stream *connect.ServerStreamForClient[skiftv1.WatchEventsResponse]) *skiftv1.WatchEventsResponse {
+func receiveEvent(stream skiftv1connect.EventServiceWatchEventsClientStream) *skiftv1.WatchEventsResponse {
 	GinkgoHelper()
 	for {
 		if msg := receive(stream); msg.GetEvent() != nil {
@@ -34,7 +37,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		f.project(ctx, "Platform")
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		stream, err := f.events().WatchEvents(sctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Ops: []string{"create_node"}}))
+		stream, err := f.events().WatchEvents(sctx, &skiftv1.WatchEventsRequest{Ops: []string{"create_node"}})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("a stream from now opens with a position and no event")
@@ -55,7 +58,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		cancel()
 
 		By("resuming after the first event yields the second and nothing earlier")
-		resumed, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Cursor: first.GetCursor()}))
+		resumed, err := f.events().WatchEvents(ctx, &skiftv1.WatchEventsRequest{Cursor: first.GetCursor()})
 		Expect(err).NotTo(HaveOccurred())
 		defer resumed.Close() //nolint:errcheck // ends with the spec
 		Expect(receiveEvent(resumed).GetEvent().GetId()).To(Equal(second.GetEvent().GetId()))
@@ -65,7 +68,7 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 		f := newFixture(ctx)
 		f.project(ctx, "Platform")
 		other := f.project(ctx, "Other")
-		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Project: other.GetSlug()}))
+		stream, err := f.events().WatchEvents(ctx, &skiftv1.WatchEventsRequest{Project: other.GetSlug()})
 		Expect(err).NotTo(HaveOccurred())
 		defer stream.Close() //nolint:errcheck // ends with the spec
 		Expect(receive(stream).GetEvent()).To(BeNil())
@@ -78,22 +81,22 @@ var _ = Describe("EventService", Label(testsupport.DBLabel), func() {
 
 	It("refuses a malformed cursor as an invalid argument", func(ctx SpecContext) {
 		f := newFixture(ctx)
-		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{Cursor: "01J0000000000000000000000"}))
+		stream, err := f.events().WatchEvents(ctx, &skiftv1.WatchEventsRequest{Cursor: "01J0000000000000000000000"})
 		Expect(err).NotTo(HaveOccurred())
 		defer stream.Close() //nolint:errcheck // ends with the spec
-		Expect(stream.Receive()).To(BeFalse())
-		Expect(connect.CodeOf(stream.Err())).To(Equal(connect.CodeInvalidArgument))
+		_, err = stream.Receive()
+		Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 	})
 
 	It("ends the stream cleanly when the server drains", func(ctx SpecContext) {
 		f := newFixture(ctx)
-		stream, err := f.events().WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{}))
+		stream, err := f.events().WatchEvents(ctx, &skiftv1.WatchEventsRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		defer stream.Close() //nolint:errcheck // ends with the spec
 		Expect(receive(stream).GetEvent()).To(BeNil())
 
 		Expect(f.run.stop()).To(Succeed())
-		Expect(stream.Receive()).To(BeFalse())
-		Expect(stream.Err()).NotTo(HaveOccurred())
+		_, err = stream.Receive()
+		Expect(err).To(MatchError(io.EOF), "the stream ends without an error")
 	})
 })

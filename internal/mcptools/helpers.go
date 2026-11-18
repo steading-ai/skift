@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -53,13 +52,6 @@ func shortNames[E protoreflect.Enum](values ...E) []string {
 type protoEnum interface {
 	~int32
 	Descriptor() protoreflect.EnumDescriptor
-}
-
-func unwrap[T any](res *connect.Response[T], err error) (*T, error) {
-	if err != nil {
-		return nil, err
-	}
-	return res.Msg, nil
 }
 
 func orMint(id string) string {
@@ -144,19 +136,19 @@ func claimNext(ctx context.Context, c *Execution, req *skiftv1.ClaimNextRequest,
 			chunk = min(chunk, time.Until(deadline))
 		}
 		req.Wait = durationpb.New(max(chunk, 0))
-		res, err := c.Work.ClaimNext(ctx, connect.NewRequest(req))
+		res, err := c.Work.ClaimNext(ctx, req)
 		if err != nil {
 			return nil, err
 		}
-		if res.Msg.GetNode() != nil || wait == 0 || (wait > 0 && !time.Now().Before(deadline)) {
-			return res.Msg, nil
+		if res.GetNode() != nil || wait == 0 || (wait > 0 && !time.Now().Before(deadline)) {
+			return res, nil
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("wait for work: %w", err)
 		}
 		select {
 		case <-draining:
-			return res.Msg, nil
+			return res, nil
 		default:
 		}
 	}

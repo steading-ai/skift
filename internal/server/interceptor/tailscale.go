@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-
-	"connectrpc.com/connect"
 )
 
 // SchemeTailscale is the identity scheme of callers reaching the service
@@ -73,7 +71,7 @@ func (TailscaleResolver) Scheme() string { return SchemeTailscale }
 // tailnet is declined. One that did but whose node WhoIs cannot name fails
 // the request: the tailnet vouched for the connection, so an answer it
 // cannot give is an error, not an anonymous caller.
-func (r TailscaleResolver) Resolve(ctx context.Context, _ connect.Peer, _ http.Header) (Identity, error) {
+func (r TailscaleResolver) Resolve(ctx context.Context, _ Peer, _ http.Header) (Identity, error) {
 	addr, ok := TailnetPeerFromContext(ctx)
 	if !ok {
 		return Identity{}, ErrNoIdentity

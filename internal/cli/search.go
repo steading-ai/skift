@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -32,10 +31,10 @@ unless --project narrows it.`,
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.SearchResponse, error) {
-				res, err := c.Graph.Search(cmd.Context(), connect.NewRequest(&skiftv1.SearchRequest{
+				res, err := c.Graph.Search(cmd.Context(), &skiftv1.SearchRequest{
 					Query: args[0], Project: project, IncludeArchived: includeArchived,
 					PageSize: page.size, PageToken: page.token, View: v,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},
@@ -61,7 +60,7 @@ func (a *app) explainCommand() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.ExplainResponse, error) {
-				res, err := c.Graph.Explain(cmd.Context(), connect.NewRequest(&skiftv1.ExplainRequest{Project: project, Node: ref}))
+				res, err := c.Graph.Explain(cmd.Context(), &skiftv1.ExplainRequest{Project: project, Node: ref})
 				return unwrap(res, err)
 			})
 		},

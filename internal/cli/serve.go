@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
@@ -262,7 +262,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		SocketGroup:     opts.socketGroup,
 		ShutdownTimeout: opts.shutdownTimeout,
 		Logger:          log,
-		Interceptors: []connect.Interceptor{
+		Interceptors: []connect.ServerInterceptor{
 			interceptor.NewPrincipal(server.NewIdentityLookup(svc), resolvers...),
 		},
 		Transports: transports,
@@ -329,8 +329,8 @@ func newNativeMCPHandler(srv *server.Server, auth *interceptor.Authenticator) ht
 	client := srv.InProcessClient()
 	return auth.Middleware(mcphttp.New(mcptools.Execution{
 		Draining: server.Draining,
-		Graph:    skiftv1connect.NewGraphServiceClient(client, "http://skift.internal"),
-		Work:     skiftv1connect.NewWorkServiceClient(client, "http://skift.internal"),
+		Graph:    skiftv1connect.NewGraphServiceClient(client),
+		Work:     skiftv1connect.NewWorkServiceClient(client),
 	}))
 }
 

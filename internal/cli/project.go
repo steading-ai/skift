@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -34,9 +33,9 @@ func (a *app) projectCreate() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.CreateProjectResponse, error) {
-				res, err := c.Graph.CreateProject(cmd.Context(), connect.NewRequest(&skiftv1.CreateProjectRequest{
+				res, err := c.Graph.CreateProject(cmd.Context(), &skiftv1.CreateProjectRequest{
 					RequestId: orMint(requestID), Title: args[0], Slug: slug, Priority: prio, VcsUrl: vcsURL,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},
@@ -71,7 +70,7 @@ func (a *app) projectUpdate() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.UpdateProjectResponse, error) {
-				res, err := c.Graph.UpdateProject(cmd.Context(), connect.NewRequest(req))
+				res, err := c.Graph.UpdateProject(cmd.Context(), req)
 				return unwrap(res, err)
 			})
 		},
@@ -94,9 +93,9 @@ func (a *app) projectList() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.ListProjectsResponse, error) {
-				res, err := c.Graph.ListProjects(cmd.Context(), connect.NewRequest(&skiftv1.ListProjectsRequest{
+				res, err := c.Graph.ListProjects(cmd.Context(), &skiftv1.ListProjectsRequest{
 					IncludeArchived: includeArchived, PageSize: page.size, PageToken: page.token,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},
@@ -121,7 +120,7 @@ func (a *app) projectShow() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.GetProjectResponse, error) {
-				res, err := c.Graph.GetProject(cmd.Context(), connect.NewRequest(&skiftv1.GetProjectRequest{Project: project}))
+				res, err := c.Graph.GetProject(cmd.Context(), &skiftv1.GetProjectRequest{Project: project})
 				return unwrap(res, err)
 			})
 		},
@@ -144,9 +143,9 @@ func (a *app) projectArchive() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.ArchiveProjectResponse, error) {
-				res, err := c.Graph.ArchiveProject(cmd.Context(), connect.NewRequest(&skiftv1.ArchiveProjectRequest{
+				res, err := c.Graph.ArchiveProject(cmd.Context(), &skiftv1.ArchiveProjectRequest{
 					RequestId: orMint(requestID), Project: project,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},
@@ -192,11 +191,11 @@ func orMint(id string) string {
 }
 
 // unwrap turns a Connect response into its message.
-func unwrap[T any](res *connect.Response[T], err error) (*T, error) {
+func unwrap[T any](res *T, err error) (*T, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.Msg, nil
+	return res, nil
 }
 
 // exactArgs and rangeArgs are cobra's validators reported as usage errors.
@@ -227,7 +226,7 @@ The response says how many open nodes left the ready set.`,
 		"why the work is parked; required", reasonRequired,
 		func(cmd *cobra.Command, c *client.Client, req *skiftv1.HoldProjectRequest) error {
 			return send(a, cmd, func() (*skiftv1.HoldProjectResponse, error) {
-				return unwrap(c.Graph.HoldProject(cmd.Context(), connect.NewRequest(req)))
+				return unwrap(c.Graph.HoldProject(cmd.Context(), req))
 			})
 		})
 	return cmd
@@ -239,9 +238,9 @@ func (a *app) projectUnhold() *cobra.Command {
 		"--reason is required: the event log keeps why the work came back",
 		func(cmd *cobra.Command, c *client.Client, req *skiftv1.HoldProjectRequest) error {
 			return send(a, cmd, func() (*skiftv1.UnholdProjectResponse, error) {
-				return unwrap(c.Graph.UnholdProject(cmd.Context(), connect.NewRequest(&skiftv1.UnholdProjectRequest{
+				return unwrap(c.Graph.UnholdProject(cmd.Context(), &skiftv1.UnholdProjectRequest{
 					RequestId: req.GetRequestId(), Project: req.GetProject(), Reason: req.GetReason(),
-				})))
+				}))
 			})
 		})
 }

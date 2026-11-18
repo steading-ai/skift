@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/pflag"
@@ -831,12 +831,12 @@ var _ = Describe("skift commands", Label("unit"), func() {
 			By("and stdout is the response the RPC gives for the same request")
 			c, err := client.New(client.Config{Socket: socket})
 			Expect(err).NotTo(HaveOccurred())
-			res, err := c.Graph.GetInputs(GinkgoT().Context(), connect.NewRequest(&skiftv1.GetInputsRequest{Node: "platform#3"}))
+			res, err := c.Graph.GetInputs(GinkgoT().Context(), &skiftv1.GetInputsRequest{Node: "platform#3"})
 			Expect(err).NotTo(HaveOccurred())
-			expected, err := codec.Marshal(res.Msg)
+			expected, err := codec.Marshal(res)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(strings.TrimSpace(r.stdout.String())).To(Equal(string(expected)))
-			Expect(res.Msg.GetInputs()).To(HaveLen(2))
+			Expect(res.GetInputs()).To(HaveLen(2))
 			Expect(r.stdout.String()).To(ContainSubstring("result of Alpha"))
 
 			By("and --view summary is sent as asked")

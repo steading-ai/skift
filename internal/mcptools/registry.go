@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"

@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -40,13 +41,13 @@ func newRecordingGraph() *recordingGraph {
 	return &recordingGraph{seen: make(chan attribution, 8)}
 }
 
-func (g *recordingGraph) GetProject(ctx context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
+func (g *recordingGraph) GetProject(ctx context.Context, req *skiftv1.GetProjectRequest) (*skiftv1.GetProjectResponse, error) {
 	p, ok := interceptor.PrincipalFromContext(ctx)
 	id, _ := interceptor.IdentityFromContext(ctx)
 	g.seen <- attribution{principal: p, identity: id, ok: ok}
-	return connect.NewResponse(&skiftv1.GetProjectResponse{
-		Project: &skiftv1.Project{Slug: req.Msg.GetProject()},
-	}), nil
+	return &skiftv1.GetProjectResponse{
+		Project: &skiftv1.Project{Slug: req.GetProject()},
+	}, nil
 }
 
 // headerResolver is a stand-in for a second transport: it trusts a header.
@@ -56,7 +57,7 @@ type headerResolver struct{}
 
 func (headerResolver) Scheme() string { return "spec" }
 
-func (headerResolver) Resolve(_ context.Context, _ connect.Peer, header http.Header) (interceptor.Identity, error) {
+func (headerResolver) Resolve(_ context.Context, _ interceptor.Peer, header http.Header) (interceptor.Identity, error) {
 	v := header.Get("X-Spec-Identity")
 	if v == "" {
 		return interceptor.Identity{}, interceptor.ErrNoIdentity
@@ -81,7 +82,7 @@ func serve(lookup interceptor.Lookup, svc server.Services, resolvers ...intercep
 	srv := server.New(server.Config{
 		SocketPath:   socket,
 		Logger:       slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
-		Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolvers...)},
+		Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolvers...)},
 	}, svc, nil)
 	Expect(srv.Listen()).To(Succeed())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -114,8 +115,8 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		client := serve(lookup, server.Services{Graph: graph}, interceptor.UnixResolver{})
 
 		By("when a process running as that uid calls the service")
-		_, err := skiftv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(client, baseURL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("then the request is attributed to that principal")
@@ -135,20 +136,23 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		client := serve(interceptor.StaticLookup{}, server.Services{Graph: graph}, interceptor.UnixResolver{})
 
 		By("when it calls any method")
-		_, graphErr := skiftv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
-		_, workErr := skiftv1connect.NewWorkServiceClient(client, baseURL).
-			Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
-		stream, streamErr := skiftv1connect.NewEventServiceClient(client, baseURL).
-			WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{}))
-		Expect(streamErr).NotTo(HaveOccurred())
-		stream.Receive()
-		Expect(stream.Close()).To(Succeed())
+		_, graphErr := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(client, baseURL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
+		_, workErr := skiftv1connect.NewWorkServiceClient(connect.NewClient(connecthttp.NewTransport(client, baseURL))).
+			Ready(ctx, &skiftv1.ReadyRequest{})
+		stream, streamErr := skiftv1connect.NewEventServiceClient(connect.NewClient(connecthttp.NewTransport(client, baseURL))).
+			WatchEvents(ctx, &skiftv1.WatchEventsRequest{})
+		if streamErr == nil {
+			// The refusal arrives with the first receive when opening
+			// the stream did not wait for the response headers.
+			_, streamErr = stream.Receive()
+			Expect(stream.Close()).To(Succeed())
+		}
 
 		By("then the call fails as unauthenticated")
 		Expect(connect.CodeOf(graphErr)).To(Equal(connect.CodeUnauthenticated))
 		Expect(connect.CodeOf(workErr)).To(Equal(connect.CodeUnauthenticated))
-		Expect(connect.CodeOf(stream.Err())).To(Equal(connect.CodeUnauthenticated), "streams are gated too")
+		Expect(connect.CodeOf(streamErr)).To(Equal(connect.CodeUnauthenticated), "streams are gated too")
 
 		By("and no handler ran")
 		Expect(graph.seen).NotTo(Receive())
@@ -173,14 +177,14 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		ctx2 := interceptor.WithPeerCredentials(ctx, interceptor.PeerCredentials{UID: 1001, GID: 1001, PID: 4242})
 
 		By("when the unix resolver runs")
-		id, err := interceptor.UnixResolver{}.Resolve(ctx2, connect.Peer{}, http.Header{})
+		id, err := interceptor.UnixResolver{}.Resolve(ctx2, interceptor.Peer{}, http.Header{})
 
 		By("then the identity is the unix scheme with that uid")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(id).To(Equal(interceptor.Identity{Scheme: interceptor.SchemeUnix, Value: "1001"}))
 
 		By("and a connection with no peer credentials is not this transport's")
-		_, err = interceptor.UnixResolver{}.Resolve(ctx, connect.Peer{}, http.Header{})
+		_, err = interceptor.UnixResolver{}.Resolve(ctx, interceptor.Peer{}, http.Header{})
 		Expect(err).To(MatchError(interceptor.ErrNoIdentity))
 	})
 
@@ -198,14 +202,17 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 		// A TCP server: no unix socket, so no peer credentials, so the
 		// unix resolver declines and the next resolver decides.
 		mux := http.NewServeMux()
-		mux.Handle(skiftv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
+		rpc := connect.NewServer(
 			interceptor.NewPrincipal(lookup, interceptor.UnixResolver{}, headerResolver{}),
-		)))
+		)
+		skiftv1connect.RegisterGraphServiceHandler(rpc, graph)
+		connecthttp.Mount(mux, rpc)
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
-		req := connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"})
-		req.Header().Set("X-Spec-Identity", "bob")
-		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).GetProject(ctx, req)
+		call, info := connect.NewClientContext(ctx)
+		info.RequestHeader().Set("X-Spec-Identity", "bob")
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(ts.Client(), ts.URL))).
+			GetProject(call, &skiftv1.GetProjectRequest{Project: "skeleton"})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("then the unchanged handler is attributed through the second scheme")
@@ -216,8 +223,8 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 
 		By("and the same handler over the socket is attributed through the unix scheme")
 		client := serve(lookup, server.Services{Graph: graph}, interceptor.UnixResolver{}, headerResolver{})
-		_, err = skiftv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		_, err = skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(client, baseURL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(graph.seen).To(Receive(&seen))
 		Expect(seen.principal).To(Equal(alice))
@@ -227,13 +234,15 @@ var _ = Describe("Principal resolution interceptor", Label("unit"), func() {
 	It("rejects a caller no resolver recognises rather than serving it anonymously", func(ctx SpecContext) {
 		graph := newRecordingGraph()
 		mux := http.NewServeMux()
-		mux.Handle(skiftv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
+		rpc := connect.NewServer(
 			interceptor.NewPrincipal(interceptor.StaticLookup{}, interceptor.UnixResolver{}),
-		)))
+		)
+		skiftv1connect.RegisterGraphServiceHandler(rpc, graph)
+		connecthttp.Mount(mux, rpc)
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
-		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{}))
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(ts.Client(), ts.URL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{})
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 		Expect(graph.seen).NotTo(Receive())
 	})

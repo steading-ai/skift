@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -94,7 +94,7 @@ func newFixture(ctx context.Context) *fixture {
 	svc := domain.NewService(pool, pol)
 	f.lookup = &switchLookup{principal: f.user}
 	f.run = start(server.Config{
-		Interceptors: []connect.Interceptor{interceptor.NewPrincipal(f.lookup, interceptor.UnixResolver{})},
+		Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(f.lookup, interceptor.UnixResolver{})},
 	}, server.Services{
 		Graph:  server.NewGraphService(svc),
 		Work:   server.NewWorkService(svc),
@@ -113,9 +113,9 @@ func (f *fixture) events() skiftv1connect.EventServiceClient { return f.run.even
 // project creates a project over the wire and returns it.
 func (f *fixture) project(ctx context.Context, title string) *skiftv1.Project {
 	GinkgoHelper()
-	res, err := f.graph().CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{RequestId: newID(), Title: title}))
+	res, err := f.graph().CreateProject(ctx, &skiftv1.CreateProjectRequest{RequestId: newID(), Title: title})
 	Expect(err).NotTo(HaveOccurred())
-	return res.Msg.GetProject()
+	return res.GetProject()
 }
 
 // apply sends one patch to project with a fresh request id.
@@ -126,11 +126,11 @@ func (f *fixture) apply(ctx context.Context, project string, ops ...*skiftv1.Pat
 
 func (f *fixture) applyWith(ctx context.Context, req *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error) {
 	GinkgoHelper()
-	res, err := f.graph().ApplyPatch(ctx, connect.NewRequest(req))
+	res, err := f.graph().ApplyPatch(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return res.Msg, nil
+	return res, nil
 }
 
 // mustApply is apply for fixtures, against the "platform" project every
@@ -145,9 +145,9 @@ func (f *fixture) mustApply(ctx context.Context, ops ...*skiftv1.PatchOp) *skift
 // getNode reads one node by reference.
 func (f *fixture) getNode(ctx context.Context, project, ref string) *skiftv1.GetNodeResponse {
 	GinkgoHelper()
-	res, err := f.graph().GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: project, Node: ref}))
+	res, err := f.graph().GetNode(ctx, &skiftv1.GetNodeRequest{Project: project, Node: ref})
 	Expect(err).NotTo(HaveOccurred())
-	return res.Msg
+	return res
 }
 
 // claim claims the next ready node of project as the agent, with the
@@ -156,11 +156,11 @@ func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Dur
 	GinkgoHelper()
 	f.as(f.agent)
 	defer f.as(f.user)
-	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+	res, err := f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{
 		RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{project}}, Ttl: ttl, Harness: "spec", AgentRef: "spec",
-	}))
+	})
 	Expect(err).NotTo(HaveOccurred())
-	return res.Msg
+	return res
 }
 
 // claimAsUser claims the next ready node of project as the user
@@ -168,12 +168,12 @@ func (f *fixture) claim(ctx context.Context, project string, ttl *durationpb.Dur
 // itself while it dispatches an agent under it.
 func (f *fixture) claimAsUser(ctx context.Context, project string) *skiftv1.ClaimNextResponse {
 	GinkgoHelper()
-	res, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+	res, err := f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{
 		RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{project}}, Harness: "spec", AgentRef: "spec",
-	}))
+	})
 	Expect(err).NotTo(HaveOccurred())
-	Expect(res.Msg.GetNode()).NotTo(BeNil())
-	return res.Msg
+	Expect(res.GetNode()).NotTo(BeNil())
+	return res
 }
 
 // Operation builders.

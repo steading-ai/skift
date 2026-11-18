@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -179,10 +178,10 @@ and priority is only advisory ordering, p2 the default.`,
 						return nil, err
 					}
 				}
-				return unwrap(c.Graph.Search(ctx, connect.NewRequest(&skiftv1.SearchRequest{
+				return c.Graph.Search(ctx, &skiftv1.SearchRequest{
 					Query: args.Query, Project: project, IncludeArchived: args.IncludeArchived,
 					PageSize: args.PageSize, PageToken: args.PageToken, View: view,
-				})))
+				})
 			},
 		},
 		{
@@ -211,7 +210,7 @@ it reports only how many inputs there are, and inputs returns them.`,
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.GetNode(ctx, connect.NewRequest(&skiftv1.GetNodeRequest{Project: project, Node: ref, View: view})))
+				return c.Graph.GetNode(ctx, &skiftv1.GetNodeRequest{Project: project, Node: ref, View: view})
 			},
 		},
 		{
@@ -241,7 +240,7 @@ transitive.`,
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.GetInputs(ctx, connect.NewRequest(&skiftv1.GetInputsRequest{Project: project, Node: ref, View: view})))
+				return c.Graph.GetInputs(ctx, &skiftv1.GetInputsRequest{Project: project, Node: ref, View: view})
 			},
 		},
 		{
@@ -299,9 +298,9 @@ whole backlog. Summaries, no bodies.`,
 				if args.Kind != "" {
 					filter.Kinds = []string{args.Kind}
 				}
-				return unwrap(c.Graph.ListNodes(ctx, connect.NewRequest(&skiftv1.ListNodesRequest{
+				return c.Graph.ListNodes(ctx, &skiftv1.ListNodesRequest{
 					Filter: filter, PageSize: args.PageSize, PageToken: args.PageToken, View: view,
-				})))
+				})
 			},
 		},
 		{
@@ -324,7 +323,7 @@ archived project. No reasons means it is ready.`,
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.Explain(ctx, connect.NewRequest(&skiftv1.ExplainRequest{Project: project, Node: ref})))
+				return c.Graph.Explain(ctx, &skiftv1.ExplainRequest{Project: project, Node: ref})
 			},
 		},
 		{
@@ -432,9 +431,9 @@ It is the first sort key here, and the only thing skift does with it.`,
 				if args.Kind != "" {
 					filter.Kinds = []string{args.Kind}
 				}
-				return unwrap(c.Work.Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{
+				return c.Work.Ready(ctx, &skiftv1.ReadyRequest{
 					Filter: filter, PageSize: args.PageSize, PageToken: args.PageToken, View: view,
-				})))
+				})
 			},
 		},
 		{
@@ -539,7 +538,7 @@ that operation's retry. Stale or expired leases cannot write.`,
 				if ttl > 0 {
 					req.Ttl = durationpb.New(ttl)
 				}
-				return unwrap(c.Work.Heartbeat(ctx, connect.NewRequest(req)))
+				return c.Work.Heartbeat(ctx, req)
 			},
 		},
 		{
@@ -581,9 +580,9 @@ instead.`,
 				if err != nil {
 					return nil, err
 				}
-				res, err := unwrap(c.Work.Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
+				res, err := c.Work.Release(ctx, &skiftv1.ReleaseRequest{
 					RequestId: orMint(args.RequestID), LeaseId: leaseID, Reason: reason, Detail: args.Detail,
-				})))
+				})
 				if err != nil {
 					return nil, err
 				}
@@ -713,11 +712,11 @@ it still blocks what depends on it.
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.ApplyPatch(ctx, connect.NewRequest(&skiftv1.ApplyPatchRequest{
+				return c.Graph.ApplyPatch(ctx, &skiftv1.ApplyPatchRequest{
 					RequestId: orMint(args.RequestID), Project: project,
 					Ops:  []*skiftv1.PatchOp{holdOp(ref.String(), args.Reason, args.Release)},
 					View: skiftv1.View_VIEW_SUMMARY,
-				})))
+				})
 			},
 		},
 		{
@@ -749,15 +748,15 @@ touches only its own holds.`,
 					return nil, err
 				}
 				if args.Release {
-					return unwrap(c.Graph.ClearFocus(ctx, connect.NewRequest(&skiftv1.ClearFocusRequest{
+					return c.Graph.ClearFocus(ctx, &skiftv1.ClearFocusRequest{
 						RequestId: orMint(args.RequestID), Project: args.Project,
 						Group: args.Group, Reason: args.Reason,
-					})))
+					})
 				}
-				return unwrap(c.Graph.Focus(ctx, connect.NewRequest(&skiftv1.FocusRequest{
+				return c.Graph.Focus(ctx, &skiftv1.FocusRequest{
 					RequestId: orMint(args.RequestID), Project: args.Project,
 					Keep: args.Keep, Reason: args.Reason,
-				})))
+				})
 			},
 		},
 		{
@@ -778,9 +777,9 @@ and left out unless asked for.`,
 				if err := decodeArgs(raw, &args); err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.ListProjects(ctx, connect.NewRequest(&skiftv1.ListProjectsRequest{
+				return c.Graph.ListProjects(ctx, &skiftv1.ListProjectsRequest{
 					IncludeArchived: args.IncludeArchived, PageSize: args.PageSize, PageToken: args.PageToken,
-				})))
+				})
 			},
 		},
 		{
@@ -807,7 +806,7 @@ is named by slug, "org/slug", or id, and a retired slug still resolves.`,
 						return nil, err
 					}
 				}
-				return unwrap(c.Graph.GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: project})))
+				return c.Graph.GetProject(ctx, &skiftv1.GetProjectRequest{Project: project})
 			},
 		},
 		{
@@ -845,9 +844,9 @@ wrong project.`,
 				if err != nil {
 					return nil, err
 				}
-				return unwrap(c.Graph.CreateProject(ctx, connect.NewRequest(&skiftv1.CreateProjectRequest{
+				return c.Graph.CreateProject(ctx, &skiftv1.CreateProjectRequest{
 					RequestId: orMint(args.RequestID), Title: args.Title, Slug: args.Slug, Priority: prio, VcsUrl: args.VCSURL,
-				})))
+				})
 			},
 		},
 	}
@@ -856,7 +855,7 @@ wrong project.`,
 // apply sends one patch. A held lease whose node the patch closed is
 // forgotten: the server released it with the patch.
 func (s *Execution) apply(ctx context.Context, req *skiftv1.ApplyPatchRequest) (proto.Message, error) {
-	res, err := unwrap(s.Graph.ApplyPatch(ctx, connect.NewRequest(req)))
+	res, err := s.Graph.ApplyPatch(ctx, req)
 	if err != nil {
 		return nil, err
 	}
