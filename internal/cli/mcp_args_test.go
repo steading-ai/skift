@@ -82,7 +82,7 @@ var _ = Describe("skift mcp argument diagnostics", Label("unit"), func() {
 			{"project_create", map[string]any{"title": "New", "priority": "high"}, `priority: "high" is not one of`},
 			{"project_list", map[string]any{"page_size": "ten"}, "page_size: expected a number"},
 			{"heartbeat", map[string]any{"ttl": 5}, "ttl: expected a string"},
-			{"focus", map[string]any{"keep": []any{1}, "reason": "r"}, "keep: expected a string"},
+			{"focus", map[string]any{"keep": []any{1}, "reason": "r"}, "keep[0]: expected a string"},
 		} {
 			res := m.call(c.tool, c.args)
 			Expect(res.isError).To(BeTrue(), "%s %v answered without error: %s", c.tool, c.args, res.text)
