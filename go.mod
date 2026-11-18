@@ -4,7 +4,6 @@ go 1.26.10
 
 require (
 	connectrpc.com/connect v1.21.1
-	connectrpc.com/connect/v2 v2.0.2
 	github.com/cavaliergopher/rpm v1.3.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -15,8 +14,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/testcontainers/testcontainers-go v0.45.0
-	go.yaml.in/yaml/v3 v3.0.5
-	go.yaml.in/yaml/v4 v4.0.0
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261113174652-9ccaac6145fb
 	golang.org/x/sys v0.50.0
 	google.golang.org/protobuf v1.36.12
