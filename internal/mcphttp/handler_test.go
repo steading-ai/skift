@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,9 +26,9 @@ type graphStub struct {
 	calls atomic.Int32
 }
 
-func (g *graphStub) ListProjects(context.Context, *connect.Request[skiftv1.ListProjectsRequest]) (*connect.Response[skiftv1.ListProjectsResponse], error) {
+func (g *graphStub) ListProjects(context.Context, *skiftv1.ListProjectsRequest) (*skiftv1.ListProjectsResponse, error) {
 	g.calls.Add(1)
-	return connect.NewResponse(&skiftv1.ListProjectsResponse{}), nil
+	return &skiftv1.ListProjectsResponse{}, nil
 }
 
 func metadata() map[string]any {

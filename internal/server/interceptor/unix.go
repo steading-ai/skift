@@ -5,8 +5,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-
-	"connectrpc.com/connect"
 )
 
 // SchemeUnix is the identity scheme of callers on a unix socket.
@@ -67,7 +65,7 @@ type UnixResolver struct{}
 func (UnixResolver) Scheme() string { return SchemeUnix }
 
 // Resolve implements [Resolver].
-func (UnixResolver) Resolve(ctx context.Context, _ connect.Peer, _ http.Header) (Identity, error) {
+func (UnixResolver) Resolve(ctx context.Context, _ Peer, _ http.Header) (Identity, error) {
 	creds, ok := PeerCredentialsFromContext(ctx)
 	if !ok {
 		return Identity{}, ErrNoIdentity

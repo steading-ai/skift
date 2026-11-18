@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -17,27 +17,27 @@ import (
 
 type graphStub struct {
 	skiftv1connect.GraphServiceClient
-	get   func(context.Context, *connect.Request[skiftv1.GetNodeRequest]) (*connect.Response[skiftv1.GetNodeResponse], error)
-	patch func(context.Context, *connect.Request[skiftv1.ApplyPatchRequest]) (*connect.Response[skiftv1.ApplyPatchResponse], error)
+	get   func(context.Context, *skiftv1.GetNodeRequest) (*skiftv1.GetNodeResponse, error)
+	patch func(context.Context, *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error)
 }
 
-func (g graphStub) GetNode(ctx context.Context, r *connect.Request[skiftv1.GetNodeRequest]) (*connect.Response[skiftv1.GetNodeResponse], error) {
+func (g graphStub) GetNode(ctx context.Context, r *skiftv1.GetNodeRequest) (*skiftv1.GetNodeResponse, error) {
 	return g.get(ctx, r)
 }
-func (g graphStub) ApplyPatch(ctx context.Context, r *connect.Request[skiftv1.ApplyPatchRequest]) (*connect.Response[skiftv1.ApplyPatchResponse], error) {
+func (g graphStub) ApplyPatch(ctx context.Context, r *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error) {
 	return g.patch(ctx, r)
 }
 
 type workStub struct {
 	skiftv1connect.WorkServiceClient
-	claim     func(context.Context, *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error)
-	heartbeat func(context.Context, *connect.Request[skiftv1.HeartbeatRequest]) (*connect.Response[skiftv1.HeartbeatResponse], error)
+	claim     func(context.Context, *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error)
+	heartbeat func(context.Context, *skiftv1.HeartbeatRequest) (*skiftv1.HeartbeatResponse, error)
 }
 
-func (w workStub) ClaimNext(ctx context.Context, r *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+func (w workStub) ClaimNext(ctx context.Context, r *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 	return w.claim(ctx, r)
 }
-func (w workStub) Heartbeat(ctx context.Context, r *connect.Request[skiftv1.HeartbeatRequest]) (*connect.Response[skiftv1.HeartbeatResponse], error) {
+func (w workStub) Heartbeat(ctx context.Context, r *skiftv1.HeartbeatRequest) (*skiftv1.HeartbeatResponse, error) {
 	return w.heartbeat(ctx, r)
 }
 
@@ -78,19 +78,19 @@ func inventory(e mcptools.Execution) map[string]*mcptools.Tool {
 var _ = Describe("shared tool execution", func() {
 	It("retains the stdio inventory, strict schemas, views, wire responses and retry keys", func() {
 		g := graphStub{
-			get: func(_ context.Context, r *connect.Request[skiftv1.GetNodeRequest]) (*connect.Response[skiftv1.GetNodeResponse], error) {
-				Expect(r.Msg.GetProject()).To(Equal("platform"))
-				Expect(r.Msg.GetNode()).To(Equal("#7"))
-				Expect(r.Msg.GetView()).To(Equal(skiftv1.View_VIEW_FULL))
-				return connect.NewResponse(&skiftv1.GetNodeResponse{Node: &skiftv1.Node{Title: "seven", Reference: "platform#7"}}), nil
+			get: func(_ context.Context, r *skiftv1.GetNodeRequest) (*skiftv1.GetNodeResponse, error) {
+				Expect(r.GetProject()).To(Equal("platform"))
+				Expect(r.GetNode()).To(Equal("#7"))
+				Expect(r.GetView()).To(Equal(skiftv1.View_VIEW_FULL))
+				return &skiftv1.GetNodeResponse{Node: &skiftv1.Node{Title: "seven", Reference: "platform#7"}}, nil
 			},
-			patch: func(_ context.Context, r *connect.Request[skiftv1.ApplyPatchRequest]) (*connect.Response[skiftv1.ApplyPatchResponse], error) {
-				Expect(r.Msg.GetProject()).To(Equal("platform"))
-				Expect(r.Msg.GetRequestId()).To(Equal("retry-key"))
-				Expect(r.Msg.GetView()).To(Equal(skiftv1.View_VIEW_REFS))
-				Expect(r.Msg.GetOps()[0].GetCompleteNode().GetNode()).To(Equal("#7"))
-				Expect(r.Msg.GetLeaseId()).To(Equal("lease"))
-				return connect.NewResponse(&skiftv1.ApplyPatchResponse{Nodes: []*skiftv1.Node{{Reference: "platform#7", Status: skiftv1.Status_STATUS_DONE}}}), nil
+			patch: func(_ context.Context, r *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error) {
+				Expect(r.GetProject()).To(Equal("platform"))
+				Expect(r.GetRequestId()).To(Equal("retry-key"))
+				Expect(r.GetView()).To(Equal(skiftv1.View_VIEW_REFS))
+				Expect(r.GetOps()[0].GetCompleteNode().GetNode()).To(Equal("#7"))
+				Expect(r.GetLeaseId()).To(Equal("lease"))
+				return &skiftv1.ApplyPatchResponse{Nodes: []*skiftv1.Node{{Reference: "platform#7", Status: skiftv1.Status_STATUS_DONE}}}, nil
 			},
 		}
 		ts := inventory(mcptools.Execution{Graph: g, Projects: []string{"platform"}})
@@ -120,15 +120,15 @@ var _ = Describe("shared tool execution", func() {
 	It("isolates project defaults and lease bookkeeping when execution contexts overlap", func() {
 		entered := make(chan string, 2)
 		proceed := make(chan struct{})
-		w := workStub{claim: func(ctx context.Context, r *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
-			project := r.Msg.GetFilter().GetProjects()[0]
+		w := workStub{claim: func(ctx context.Context, r *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
+			project := r.GetFilter().GetProjects()[0]
 			entered <- project
 			select {
 			case <-proceed:
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
-			return connect.NewResponse(&skiftv1.ClaimNextResponse{Lease: &skiftv1.Lease{Id: project + "-lease"}, Node: &skiftv1.Node{Reference: project + "#1"}}), nil
+			return &skiftv1.ClaimNextResponse{Lease: &skiftv1.Lease{Id: project + "-lease"}, Node: &skiftv1.Node{Reference: project + "#1"}}, nil
 		}}
 		ha, hb := &hooks{}, &hooks{}
 		projects := []string{"alpha"}
@@ -154,13 +154,13 @@ var _ = Describe("shared tool execution", func() {
 	})
 
 	It("uses no ambient project, provenance or lease default without explicit execution values", func() {
-		w := workStub{claim: func(_ context.Context, r *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
-			Expect(r.Msg.GetFilter().GetProjects()).To(BeEmpty())
-			Expect(r.Msg.GetHarness()).To(BeEmpty())
-			Expect(r.Msg.GetAgentRef()).To(BeEmpty())
-			Expect(r.Msg.GetSessionRef()).To(BeEmpty())
-			Expect(r.Msg.GetRequestId()).To(Equal("retry"))
-			return connect.NewResponse(&skiftv1.ClaimNextResponse{Lease: &skiftv1.Lease{Id: "committed"}}), nil
+		w := workStub{claim: func(_ context.Context, r *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
+			Expect(r.GetFilter().GetProjects()).To(BeEmpty())
+			Expect(r.GetHarness()).To(BeEmpty())
+			Expect(r.GetAgentRef()).To(BeEmpty())
+			Expect(r.GetSessionRef()).To(BeEmpty())
+			Expect(r.GetRequestId()).To(Equal("retry"))
+			return &skiftv1.ClaimNextResponse{Lease: &skiftv1.Lease{Id: "committed"}}, nil
 		}}
 		ts := inventory(mcptools.Execution{Work: w})
 		Expect(ts["claim"].Description).To(ContainSubstring("explicitly release"))
@@ -175,11 +175,11 @@ var _ = Describe("shared tool execution", func() {
 		defer cancel()
 		entered := make(chan struct{})
 		done := make(chan mcptools.Result, 1)
-		w := workStub{claim: func(got context.Context, _ *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+		w := workStub{claim: func(got context.Context, _ *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 			Expect(got).To(BeIdenticalTo(ctx))
 			close(entered)
 			<-got.Done()
-			return nil, connect.NewError(connect.CodeCanceled, got.Err())
+			return nil, connect.NewError(connect.CodeCanceled, got.Err().Error()).WithCause(got.Err())
 		}}
 		ts := inventory(mcptools.Execution{Work: w})
 		go func() { defer GinkgoRecover(); done <- ts["claim"].Invoke(ctx, json.RawMessage(`{"wait":"1m"}`)) }()
@@ -193,7 +193,7 @@ var _ = Describe("shared tool execution", func() {
 	It("stops before claim dispatch when the request service is already draining", func() {
 		draining := make(chan struct{})
 		close(draining)
-		w := workStub{claim: func(context.Context, *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+		w := workStub{claim: func(context.Context, *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 			Fail("draining claim dispatched")
 			return nil, nil
 		}}
@@ -204,11 +204,11 @@ var _ = Describe("shared tool execution", func() {
 	It("does not retry an empty waiting claim response after the service drain signal", func() {
 		draining := make(chan struct{})
 		calls := 0
-		w := workStub{claim: func(context.Context, *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+		w := workStub{claim: func(context.Context, *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 			calls++
 			Expect(calls).To(Equal(1))
 			close(draining)
-			return connect.NewResponse(&skiftv1.ClaimNextResponse{}), nil
+			return &skiftv1.ClaimNextResponse{}, nil
 		}}
 		ts := inventory(mcptools.Execution{Work: w, Draining: func(context.Context) <-chan struct{} { return draining }})
 		Expect(ts["claim"].Invoke(context.Background(), json.RawMessage(`{"wait":"5m"}`)).IsError).To(BeFalse())
@@ -216,9 +216,9 @@ var _ = Describe("shared tool execution", func() {
 	})
 	It("preserves a committed claim returned while the service begins draining", func() {
 		draining := make(chan struct{})
-		w := workStub{claim: func(context.Context, *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+		w := workStub{claim: func(context.Context, *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 			close(draining)
-			return connect.NewResponse(&skiftv1.ClaimNextResponse{Node: &skiftv1.Node{Reference: "platform#1"}, Lease: &skiftv1.Lease{Id: "committed"}}), nil
+			return &skiftv1.ClaimNextResponse{Node: &skiftv1.Node{Reference: "platform#1"}, Lease: &skiftv1.Lease{Id: "committed"}}, nil
 		}}
 		ts := inventory(mcptools.Execution{Work: w, Draining: func(context.Context) <-chan struct{} { return draining }})
 		res := ts["claim"].Invoke(context.Background(), json.RawMessage(`{"wait":"5m"}`))

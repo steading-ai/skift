@@ -26,20 +26,11 @@
 package skiftv1connect
 
 import (
-	connect "connectrpc.com/connect"
+	connect "connectrpc.com/connect/v2"
 	context "context"
-	errors "errors"
 	v1 "github.com/steading-ai/skift/gen/skift/v1"
-	http "net/http"
-	strings "strings"
+	sync "sync"
 )
-
-// This is a compile-time assertion to ensure that this generated file and the connect package are
-// compatible. If you get a compiler error that this constant is not defined, this code was
-// generated with a version of connect newer than the one compiled into your binary. You can fix the
-// problem by either regenerating this code with an older version of connect or updating the connect
-// version compiled into your binary.
-const _ = connect.IsAtLeastVersion1_13_0
 
 const (
 	// GraphServiceName is the fully-qualified name of the GraphService service.
@@ -50,63 +41,165 @@ const (
 	EventServiceName = "skift.v1.EventService"
 )
 
-// These constants are the fully-qualified names of the RPCs defined in this package. They're
-// exposed at runtime as Spec.Procedure and as the final two segments of the HTTP route.
+// These constants are the procedure names of the RPCs defined in this package. They're exposed at
+// runtime as Spec.Procedure and as the final two segments of the HTTP route.
 //
 // Note that these are different from the fully-qualified method names used by
 // google.golang.org/protobuf/reflect/protoreflect. To convert from these constants to
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// GraphServiceApplyPatchProcedure is the fully-qualified name of the GraphService's ApplyPatch RPC.
+	// GraphServiceApplyPatchProcedure is the procedure name of the GraphService's ApplyPatch RPC.
 	GraphServiceApplyPatchProcedure = "/skift.v1.GraphService/ApplyPatch"
-	// GraphServiceGetNodeProcedure is the fully-qualified name of the GraphService's GetNode RPC.
+	// GraphServiceGetNodeProcedure is the procedure name of the GraphService's GetNode RPC.
 	GraphServiceGetNodeProcedure = "/skift.v1.GraphService/GetNode"
-	// GraphServiceGetInputsProcedure is the fully-qualified name of the GraphService's GetInputs RPC.
+	// GraphServiceGetInputsProcedure is the procedure name of the GraphService's GetInputs RPC.
 	GraphServiceGetInputsProcedure = "/skift.v1.GraphService/GetInputs"
-	// GraphServiceListNodesProcedure is the fully-qualified name of the GraphService's ListNodes RPC.
+	// GraphServiceListNodesProcedure is the procedure name of the GraphService's ListNodes RPC.
 	GraphServiceListNodesProcedure = "/skift.v1.GraphService/ListNodes"
-	// GraphServiceExplainProcedure is the fully-qualified name of the GraphService's Explain RPC.
+	// GraphServiceExplainProcedure is the procedure name of the GraphService's Explain RPC.
 	GraphServiceExplainProcedure = "/skift.v1.GraphService/Explain"
-	// GraphServiceSearchProcedure is the fully-qualified name of the GraphService's Search RPC.
+	// GraphServiceSearchProcedure is the procedure name of the GraphService's Search RPC.
 	GraphServiceSearchProcedure = "/skift.v1.GraphService/Search"
-	// GraphServiceCreateProjectProcedure is the fully-qualified name of the GraphService's
-	// CreateProject RPC.
+	// GraphServiceCreateProjectProcedure is the procedure name of the GraphService's CreateProject RPC.
 	GraphServiceCreateProjectProcedure = "/skift.v1.GraphService/CreateProject"
-	// GraphServiceGetProjectProcedure is the fully-qualified name of the GraphService's GetProject RPC.
+	// GraphServiceGetProjectProcedure is the procedure name of the GraphService's GetProject RPC.
 	GraphServiceGetProjectProcedure = "/skift.v1.GraphService/GetProject"
-	// GraphServiceListProjectsProcedure is the fully-qualified name of the GraphService's ListProjects
-	// RPC.
+	// GraphServiceListProjectsProcedure is the procedure name of the GraphService's ListProjects RPC.
 	GraphServiceListProjectsProcedure = "/skift.v1.GraphService/ListProjects"
-	// GraphServiceArchiveProjectProcedure is the fully-qualified name of the GraphService's
-	// ArchiveProject RPC.
+	// GraphServiceArchiveProjectProcedure is the procedure name of the GraphService's ArchiveProject
+	// RPC.
 	GraphServiceArchiveProjectProcedure = "/skift.v1.GraphService/ArchiveProject"
-	// GraphServiceUpdateProjectProcedure is the fully-qualified name of the GraphService's
-	// UpdateProject RPC.
+	// GraphServiceUpdateProjectProcedure is the procedure name of the GraphService's UpdateProject RPC.
 	GraphServiceUpdateProjectProcedure = "/skift.v1.GraphService/UpdateProject"
-	// GraphServiceHoldProjectProcedure is the fully-qualified name of the GraphService's HoldProject
-	// RPC.
+	// GraphServiceHoldProjectProcedure is the procedure name of the GraphService's HoldProject RPC.
 	GraphServiceHoldProjectProcedure = "/skift.v1.GraphService/HoldProject"
-	// GraphServiceUnholdProjectProcedure is the fully-qualified name of the GraphService's
-	// UnholdProject RPC.
+	// GraphServiceUnholdProjectProcedure is the procedure name of the GraphService's UnholdProject RPC.
 	GraphServiceUnholdProjectProcedure = "/skift.v1.GraphService/UnholdProject"
-	// GraphServiceFocusProcedure is the fully-qualified name of the GraphService's Focus RPC.
+	// GraphServiceFocusProcedure is the procedure name of the GraphService's Focus RPC.
 	GraphServiceFocusProcedure = "/skift.v1.GraphService/Focus"
-	// GraphServiceClearFocusProcedure is the fully-qualified name of the GraphService's ClearFocus RPC.
+	// GraphServiceClearFocusProcedure is the procedure name of the GraphService's ClearFocus RPC.
 	GraphServiceClearFocusProcedure = "/skift.v1.GraphService/ClearFocus"
-	// WorkServiceReadyProcedure is the fully-qualified name of the WorkService's Ready RPC.
+	// WorkServiceReadyProcedure is the procedure name of the WorkService's Ready RPC.
 	WorkServiceReadyProcedure = "/skift.v1.WorkService/Ready"
-	// WorkServiceClaimNextProcedure is the fully-qualified name of the WorkService's ClaimNext RPC.
+	// WorkServiceClaimNextProcedure is the procedure name of the WorkService's ClaimNext RPC.
 	WorkServiceClaimNextProcedure = "/skift.v1.WorkService/ClaimNext"
-	// WorkServiceHeartbeatProcedure is the fully-qualified name of the WorkService's Heartbeat RPC.
+	// WorkServiceHeartbeatProcedure is the procedure name of the WorkService's Heartbeat RPC.
 	WorkServiceHeartbeatProcedure = "/skift.v1.WorkService/Heartbeat"
-	// WorkServiceReleaseProcedure is the fully-qualified name of the WorkService's Release RPC.
+	// WorkServiceReleaseProcedure is the procedure name of the WorkService's Release RPC.
 	WorkServiceReleaseProcedure = "/skift.v1.WorkService/Release"
-	// WorkServiceReportUsageProcedure is the fully-qualified name of the WorkService's ReportUsage RPC.
+	// WorkServiceReportUsageProcedure is the procedure name of the WorkService's ReportUsage RPC.
 	WorkServiceReportUsageProcedure = "/skift.v1.WorkService/ReportUsage"
-	// EventServiceWatchEventsProcedure is the fully-qualified name of the EventService's WatchEvents
-	// RPC.
+	// EventServiceWatchEventsProcedure is the procedure name of the EventService's WatchEvents RPC.
 	EventServiceWatchEventsProcedure = "/skift.v1.EventService/WatchEvents"
+)
+
+var (
+	graphServiceApplyPatchSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("ApplyPatch"),
+			Procedure:  GraphServiceApplyPatchProcedure,
+		}
+	})
+	graphServiceGetNodeSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("GetNode"),
+			Procedure:  GraphServiceGetNodeProcedure,
+		}
+	})
+	graphServiceGetInputsSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("GetInputs"),
+			Procedure:  GraphServiceGetInputsProcedure,
+		}
+	})
+	graphServiceListNodesSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("ListNodes"),
+			Procedure:  GraphServiceListNodesProcedure,
+		}
+	})
+	graphServiceExplainSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("Explain"),
+			Procedure:  GraphServiceExplainProcedure,
+		}
+	})
+	graphServiceSearchSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("Search"),
+			Procedure:  GraphServiceSearchProcedure,
+		}
+	})
+	graphServiceCreateProjectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("CreateProject"),
+			Procedure:  GraphServiceCreateProjectProcedure,
+		}
+	})
+	graphServiceGetProjectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("GetProject"),
+			Procedure:  GraphServiceGetProjectProcedure,
+		}
+	})
+	graphServiceListProjectsSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("ListProjects"),
+			Procedure:  GraphServiceListProjectsProcedure,
+		}
+	})
+	graphServiceArchiveProjectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("ArchiveProject"),
+			Procedure:  GraphServiceArchiveProjectProcedure,
+		}
+	})
+	graphServiceUpdateProjectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("UpdateProject"),
+			Procedure:  GraphServiceUpdateProjectProcedure,
+		}
+	})
+	graphServiceHoldProjectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("HoldProject"),
+			Procedure:  GraphServiceHoldProjectProcedure,
+		}
+	})
+	graphServiceUnholdProjectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("UnholdProject"),
+			Procedure:  GraphServiceUnholdProjectProcedure,
+		}
+	})
+	graphServiceFocusSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("Focus"),
+			Procedure:  GraphServiceFocusProcedure,
+		}
+	})
+	graphServiceClearFocusSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods().ByName("ClearFocus"),
+			Procedure:  GraphServiceClearFocusProcedure,
+		}
+	})
 )
 
 // GraphServiceClient is a client for the skift.v1.GraphService service.
@@ -114,250 +207,58 @@ type GraphServiceClient interface {
 	// ApplyPatch applies a flat list of operations in one transaction. Cycle
 	// detection runs over the resulting graph, aliases resolve across the
 	// whole patch, and one rejected operation rolls back every other.
-	ApplyPatch(context.Context, *connect.Request[v1.ApplyPatchRequest]) (*connect.Response[v1.ApplyPatchResponse], error)
+	ApplyPatch(context.Context, *v1.ApplyPatchRequest) (*v1.ApplyPatchResponse, error)
 	// GetNode returns one node with the relations and content attached to it.
-	GetNode(context.Context, *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error)
+	GetNode(context.Context, *v1.GetNodeRequest) (*v1.GetNodeResponse, error)
 	// GetInputs returns the results of the predecessors that satisfy a node:
 	// what a downstream agent assembles its context from. GetNode carries
 	// only a hint of their size, so a caller pays for them when it wants
 	// them.
-	GetInputs(context.Context, *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error)
+	GetInputs(context.Context, *v1.GetInputsRequest) (*v1.GetInputsResponse, error)
 	// ListNodes pages through the nodes of one project, filtered.
-	ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error)
+	ListNodes(context.Context, *v1.ListNodesRequest) (*v1.ListNodesResponse, error)
 	// Explain says why a node is not ready, as structured reasons. A node
 	// with no reasons is ready.
-	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
+	Explain(context.Context, *v1.ExplainRequest) (*v1.ExplainResponse, error)
 	// Search runs a lexical query over titles, bodies, results, and comments
 	// in the caller's organization, filtered by policy.
-	Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
+	Search(context.Context, *v1.SearchRequest) (*v1.SearchResponse, error)
 	// CreateProject creates a project. No provisioning, no name adjudication:
 	// the slug is derived from the title and disambiguated on collision.
-	CreateProject(context.Context, *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error)
+	CreateProject(context.Context, *v1.CreateProjectRequest) (*v1.CreateProjectResponse, error)
 	// GetProject returns one project by slug or id. Retired slugs resolve.
-	GetProject(context.Context, *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error)
+	GetProject(context.Context, *v1.GetProjectRequest) (*v1.GetProjectResponse, error)
 	// ListProjects pages through the caller's projects, most recently active
 	// first. Archived projects are excluded unless asked for.
-	ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error)
+	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	// ArchiveProject makes a project read-only. Keys stay valid forever and
 	// existing edges keep their meaning.
-	ArchiveProject(context.Context, *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error)
+	ArchiveProject(context.Context, *v1.ArchiveProjectRequest) (*v1.ArchiveProjectResponse, error)
 	// UpdateProject changes what a project carries about itself: today the
 	// repository it delivers to. Fields left unset are left alone.
-	UpdateProject(context.Context, *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error)
+	UpdateProject(context.Context, *v1.UpdateProjectRequest) (*v1.UpdateProjectResponse, error)
 	// HoldProject parks a project: every node in it leaves the ready set and
 	// none of their statuses change. Unlike archiving, the project stays
 	// writable, so parked work can still be planned.
-	HoldProject(context.Context, *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error)
+	HoldProject(context.Context, *v1.HoldProjectRequest) (*v1.HoldProjectResponse, error)
 	// UnholdProject releases a project's hold, returning its work to the
 	// ready set unless something else holds it back.
-	UnholdProject(context.Context, *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error)
+	UnholdProject(context.Context, *v1.UnholdProjectRequest) (*v1.UnholdProjectResponse, error)
 	// Focus parks everything outside a keep-set: the projects of an
 	// organization, or the nodes of one project. It is declarative and
 	// replacing, so calling it again in a scope retires the previous sweep
 	// in the same transaction, and it holds only what is not already held.
-	Focus(context.Context, *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error)
+	Focus(context.Context, *v1.FocusRequest) (*v1.FocusResponse, error)
 	// ClearFocus releases the holds one focus sweep placed, leaving holds
 	// placed on their own alone. It needs no sweep id: at most one sweep is
 	// active per scope.
-	ClearFocus(context.Context, *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error)
+	ClearFocus(context.Context, *v1.ClearFocusRequest) (*v1.ClearFocusResponse, error)
 }
 
-// NewGraphServiceClient constructs a client for the skift.v1.GraphService service. By default, it
-// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
-// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
-// connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewGraphServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) GraphServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	graphServiceMethods := v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods()
-	return &graphServiceClient{
-		applyPatch: connect.NewClient[v1.ApplyPatchRequest, v1.ApplyPatchResponse](
-			httpClient,
-			baseURL+GraphServiceApplyPatchProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("ApplyPatch")),
-			connect.WithClientOptions(opts...),
-		),
-		getNode: connect.NewClient[v1.GetNodeRequest, v1.GetNodeResponse](
-			httpClient,
-			baseURL+GraphServiceGetNodeProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("GetNode")),
-			connect.WithClientOptions(opts...),
-		),
-		getInputs: connect.NewClient[v1.GetInputsRequest, v1.GetInputsResponse](
-			httpClient,
-			baseURL+GraphServiceGetInputsProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("GetInputs")),
-			connect.WithClientOptions(opts...),
-		),
-		listNodes: connect.NewClient[v1.ListNodesRequest, v1.ListNodesResponse](
-			httpClient,
-			baseURL+GraphServiceListNodesProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("ListNodes")),
-			connect.WithClientOptions(opts...),
-		),
-		explain: connect.NewClient[v1.ExplainRequest, v1.ExplainResponse](
-			httpClient,
-			baseURL+GraphServiceExplainProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("Explain")),
-			connect.WithClientOptions(opts...),
-		),
-		search: connect.NewClient[v1.SearchRequest, v1.SearchResponse](
-			httpClient,
-			baseURL+GraphServiceSearchProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("Search")),
-			connect.WithClientOptions(opts...),
-		),
-		createProject: connect.NewClient[v1.CreateProjectRequest, v1.CreateProjectResponse](
-			httpClient,
-			baseURL+GraphServiceCreateProjectProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("CreateProject")),
-			connect.WithClientOptions(opts...),
-		),
-		getProject: connect.NewClient[v1.GetProjectRequest, v1.GetProjectResponse](
-			httpClient,
-			baseURL+GraphServiceGetProjectProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("GetProject")),
-			connect.WithClientOptions(opts...),
-		),
-		listProjects: connect.NewClient[v1.ListProjectsRequest, v1.ListProjectsResponse](
-			httpClient,
-			baseURL+GraphServiceListProjectsProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("ListProjects")),
-			connect.WithClientOptions(opts...),
-		),
-		archiveProject: connect.NewClient[v1.ArchiveProjectRequest, v1.ArchiveProjectResponse](
-			httpClient,
-			baseURL+GraphServiceArchiveProjectProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("ArchiveProject")),
-			connect.WithClientOptions(opts...),
-		),
-		updateProject: connect.NewClient[v1.UpdateProjectRequest, v1.UpdateProjectResponse](
-			httpClient,
-			baseURL+GraphServiceUpdateProjectProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("UpdateProject")),
-			connect.WithClientOptions(opts...),
-		),
-		holdProject: connect.NewClient[v1.HoldProjectRequest, v1.HoldProjectResponse](
-			httpClient,
-			baseURL+GraphServiceHoldProjectProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("HoldProject")),
-			connect.WithClientOptions(opts...),
-		),
-		unholdProject: connect.NewClient[v1.UnholdProjectRequest, v1.UnholdProjectResponse](
-			httpClient,
-			baseURL+GraphServiceUnholdProjectProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("UnholdProject")),
-			connect.WithClientOptions(opts...),
-		),
-		focus: connect.NewClient[v1.FocusRequest, v1.FocusResponse](
-			httpClient,
-			baseURL+GraphServiceFocusProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("Focus")),
-			connect.WithClientOptions(opts...),
-		),
-		clearFocus: connect.NewClient[v1.ClearFocusRequest, v1.ClearFocusResponse](
-			httpClient,
-			baseURL+GraphServiceClearFocusProcedure,
-			connect.WithSchema(graphServiceMethods.ByName("ClearFocus")),
-			connect.WithClientOptions(opts...),
-		),
-	}
-}
-
-// graphServiceClient implements GraphServiceClient.
-type graphServiceClient struct {
-	applyPatch     *connect.Client[v1.ApplyPatchRequest, v1.ApplyPatchResponse]
-	getNode        *connect.Client[v1.GetNodeRequest, v1.GetNodeResponse]
-	getInputs      *connect.Client[v1.GetInputsRequest, v1.GetInputsResponse]
-	listNodes      *connect.Client[v1.ListNodesRequest, v1.ListNodesResponse]
-	explain        *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
-	search         *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	createProject  *connect.Client[v1.CreateProjectRequest, v1.CreateProjectResponse]
-	getProject     *connect.Client[v1.GetProjectRequest, v1.GetProjectResponse]
-	listProjects   *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
-	archiveProject *connect.Client[v1.ArchiveProjectRequest, v1.ArchiveProjectResponse]
-	updateProject  *connect.Client[v1.UpdateProjectRequest, v1.UpdateProjectResponse]
-	holdProject    *connect.Client[v1.HoldProjectRequest, v1.HoldProjectResponse]
-	unholdProject  *connect.Client[v1.UnholdProjectRequest, v1.UnholdProjectResponse]
-	focus          *connect.Client[v1.FocusRequest, v1.FocusResponse]
-	clearFocus     *connect.Client[v1.ClearFocusRequest, v1.ClearFocusResponse]
-}
-
-// ApplyPatch calls skift.v1.GraphService.ApplyPatch.
-func (c *graphServiceClient) ApplyPatch(ctx context.Context, req *connect.Request[v1.ApplyPatchRequest]) (*connect.Response[v1.ApplyPatchResponse], error) {
-	return c.applyPatch.CallUnary(ctx, req)
-}
-
-// GetNode calls skift.v1.GraphService.GetNode.
-func (c *graphServiceClient) GetNode(ctx context.Context, req *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error) {
-	return c.getNode.CallUnary(ctx, req)
-}
-
-// GetInputs calls skift.v1.GraphService.GetInputs.
-func (c *graphServiceClient) GetInputs(ctx context.Context, req *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error) {
-	return c.getInputs.CallUnary(ctx, req)
-}
-
-// ListNodes calls skift.v1.GraphService.ListNodes.
-func (c *graphServiceClient) ListNodes(ctx context.Context, req *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error) {
-	return c.listNodes.CallUnary(ctx, req)
-}
-
-// Explain calls skift.v1.GraphService.Explain.
-func (c *graphServiceClient) Explain(ctx context.Context, req *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error) {
-	return c.explain.CallUnary(ctx, req)
-}
-
-// Search calls skift.v1.GraphService.Search.
-func (c *graphServiceClient) Search(ctx context.Context, req *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error) {
-	return c.search.CallUnary(ctx, req)
-}
-
-// CreateProject calls skift.v1.GraphService.CreateProject.
-func (c *graphServiceClient) CreateProject(ctx context.Context, req *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error) {
-	return c.createProject.CallUnary(ctx, req)
-}
-
-// GetProject calls skift.v1.GraphService.GetProject.
-func (c *graphServiceClient) GetProject(ctx context.Context, req *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error) {
-	return c.getProject.CallUnary(ctx, req)
-}
-
-// ListProjects calls skift.v1.GraphService.ListProjects.
-func (c *graphServiceClient) ListProjects(ctx context.Context, req *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
-	return c.listProjects.CallUnary(ctx, req)
-}
-
-// ArchiveProject calls skift.v1.GraphService.ArchiveProject.
-func (c *graphServiceClient) ArchiveProject(ctx context.Context, req *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error) {
-	return c.archiveProject.CallUnary(ctx, req)
-}
-
-// UpdateProject calls skift.v1.GraphService.UpdateProject.
-func (c *graphServiceClient) UpdateProject(ctx context.Context, req *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error) {
-	return c.updateProject.CallUnary(ctx, req)
-}
-
-// HoldProject calls skift.v1.GraphService.HoldProject.
-func (c *graphServiceClient) HoldProject(ctx context.Context, req *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error) {
-	return c.holdProject.CallUnary(ctx, req)
-}
-
-// UnholdProject calls skift.v1.GraphService.UnholdProject.
-func (c *graphServiceClient) UnholdProject(ctx context.Context, req *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error) {
-	return c.unholdProject.CallUnary(ctx, req)
-}
-
-// Focus calls skift.v1.GraphService.Focus.
-func (c *graphServiceClient) Focus(ctx context.Context, req *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error) {
-	return c.focus.CallUnary(ctx, req)
-}
-
-// ClearFocus calls skift.v1.GraphService.ClearFocus.
-func (c *graphServiceClient) ClearFocus(ctx context.Context, req *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error) {
-	return c.clearFocus.CallUnary(ctx, req)
+// NewGraphServiceClient constructs a client for the skift.v1.GraphService service. Multiple service
+// clients may share a single connect.Client.
+func NewGraphServiceClient(client *connect.Client) GraphServiceClient {
+	return &graphServiceClient{client: client}
 }
 
 // GraphServiceHandler is an implementation of the skift.v1.GraphService service.
@@ -365,490 +266,718 @@ type GraphServiceHandler interface {
 	// ApplyPatch applies a flat list of operations in one transaction. Cycle
 	// detection runs over the resulting graph, aliases resolve across the
 	// whole patch, and one rejected operation rolls back every other.
-	ApplyPatch(context.Context, *connect.Request[v1.ApplyPatchRequest]) (*connect.Response[v1.ApplyPatchResponse], error)
+	ApplyPatch(context.Context, *v1.ApplyPatchRequest) (*v1.ApplyPatchResponse, error)
 	// GetNode returns one node with the relations and content attached to it.
-	GetNode(context.Context, *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error)
+	GetNode(context.Context, *v1.GetNodeRequest) (*v1.GetNodeResponse, error)
 	// GetInputs returns the results of the predecessors that satisfy a node:
 	// what a downstream agent assembles its context from. GetNode carries
 	// only a hint of their size, so a caller pays for them when it wants
 	// them.
-	GetInputs(context.Context, *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error)
+	GetInputs(context.Context, *v1.GetInputsRequest) (*v1.GetInputsResponse, error)
 	// ListNodes pages through the nodes of one project, filtered.
-	ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error)
+	ListNodes(context.Context, *v1.ListNodesRequest) (*v1.ListNodesResponse, error)
 	// Explain says why a node is not ready, as structured reasons. A node
 	// with no reasons is ready.
-	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
+	Explain(context.Context, *v1.ExplainRequest) (*v1.ExplainResponse, error)
 	// Search runs a lexical query over titles, bodies, results, and comments
 	// in the caller's organization, filtered by policy.
-	Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
+	Search(context.Context, *v1.SearchRequest) (*v1.SearchResponse, error)
 	// CreateProject creates a project. No provisioning, no name adjudication:
 	// the slug is derived from the title and disambiguated on collision.
-	CreateProject(context.Context, *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error)
+	CreateProject(context.Context, *v1.CreateProjectRequest) (*v1.CreateProjectResponse, error)
 	// GetProject returns one project by slug or id. Retired slugs resolve.
-	GetProject(context.Context, *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error)
+	GetProject(context.Context, *v1.GetProjectRequest) (*v1.GetProjectResponse, error)
 	// ListProjects pages through the caller's projects, most recently active
 	// first. Archived projects are excluded unless asked for.
-	ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error)
+	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	// ArchiveProject makes a project read-only. Keys stay valid forever and
 	// existing edges keep their meaning.
-	ArchiveProject(context.Context, *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error)
+	ArchiveProject(context.Context, *v1.ArchiveProjectRequest) (*v1.ArchiveProjectResponse, error)
 	// UpdateProject changes what a project carries about itself: today the
 	// repository it delivers to. Fields left unset are left alone.
-	UpdateProject(context.Context, *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error)
+	UpdateProject(context.Context, *v1.UpdateProjectRequest) (*v1.UpdateProjectResponse, error)
 	// HoldProject parks a project: every node in it leaves the ready set and
 	// none of their statuses change. Unlike archiving, the project stays
 	// writable, so parked work can still be planned.
-	HoldProject(context.Context, *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error)
+	HoldProject(context.Context, *v1.HoldProjectRequest) (*v1.HoldProjectResponse, error)
 	// UnholdProject releases a project's hold, returning its work to the
 	// ready set unless something else holds it back.
-	UnholdProject(context.Context, *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error)
+	UnholdProject(context.Context, *v1.UnholdProjectRequest) (*v1.UnholdProjectResponse, error)
 	// Focus parks everything outside a keep-set: the projects of an
 	// organization, or the nodes of one project. It is declarative and
 	// replacing, so calling it again in a scope retires the previous sweep
 	// in the same transaction, and it holds only what is not already held.
-	Focus(context.Context, *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error)
+	Focus(context.Context, *v1.FocusRequest) (*v1.FocusResponse, error)
 	// ClearFocus releases the holds one focus sweep placed, leaving holds
 	// placed on their own alone. It needs no sweep id: at most one sweep is
 	// active per scope.
-	ClearFocus(context.Context, *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error)
+	ClearFocus(context.Context, *v1.ClearFocusRequest) (*v1.ClearFocusResponse, error)
 }
 
-// NewGraphServiceHandler builds an HTTP handler from the service implementation. It returns the
-// path on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewGraphServiceHandler(svc GraphServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	graphServiceMethods := v1.File_skift_v1_service_proto.Services().ByName("GraphService").Methods()
-	graphServiceApplyPatchHandler := connect.NewUnaryHandler(
-		GraphServiceApplyPatchProcedure,
-		svc.ApplyPatch,
-		connect.WithSchema(graphServiceMethods.ByName("ApplyPatch")),
-		connect.WithHandlerOptions(opts...),
+// RegisterGraphServiceHandler registers svc as the skift.v1.GraphService implementation on server.
+func RegisterGraphServiceHandler(server *connect.Server, svc GraphServiceHandler) {
+	adapter := graphServiceHandler{svc: svc}
+	server.Register(
+		connect.Method{Spec: graphServiceApplyPatchSpec(), Handler: adapter.applyPatch},
+		connect.Method{Spec: graphServiceGetNodeSpec(), Handler: adapter.getNode},
+		connect.Method{Spec: graphServiceGetInputsSpec(), Handler: adapter.getInputs},
+		connect.Method{Spec: graphServiceListNodesSpec(), Handler: adapter.listNodes},
+		connect.Method{Spec: graphServiceExplainSpec(), Handler: adapter.explain},
+		connect.Method{Spec: graphServiceSearchSpec(), Handler: adapter.search},
+		connect.Method{Spec: graphServiceCreateProjectSpec(), Handler: adapter.createProject},
+		connect.Method{Spec: graphServiceGetProjectSpec(), Handler: adapter.getProject},
+		connect.Method{Spec: graphServiceListProjectsSpec(), Handler: adapter.listProjects},
+		connect.Method{Spec: graphServiceArchiveProjectSpec(), Handler: adapter.archiveProject},
+		connect.Method{Spec: graphServiceUpdateProjectSpec(), Handler: adapter.updateProject},
+		connect.Method{Spec: graphServiceHoldProjectSpec(), Handler: adapter.holdProject},
+		connect.Method{Spec: graphServiceUnholdProjectSpec(), Handler: adapter.unholdProject},
+		connect.Method{Spec: graphServiceFocusSpec(), Handler: adapter.focus},
+		connect.Method{Spec: graphServiceClearFocusSpec(), Handler: adapter.clearFocus},
 	)
-	graphServiceGetNodeHandler := connect.NewUnaryHandler(
-		GraphServiceGetNodeProcedure,
-		svc.GetNode,
-		connect.WithSchema(graphServiceMethods.ByName("GetNode")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceGetInputsHandler := connect.NewUnaryHandler(
-		GraphServiceGetInputsProcedure,
-		svc.GetInputs,
-		connect.WithSchema(graphServiceMethods.ByName("GetInputs")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceListNodesHandler := connect.NewUnaryHandler(
-		GraphServiceListNodesProcedure,
-		svc.ListNodes,
-		connect.WithSchema(graphServiceMethods.ByName("ListNodes")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceExplainHandler := connect.NewUnaryHandler(
-		GraphServiceExplainProcedure,
-		svc.Explain,
-		connect.WithSchema(graphServiceMethods.ByName("Explain")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceSearchHandler := connect.NewUnaryHandler(
-		GraphServiceSearchProcedure,
-		svc.Search,
-		connect.WithSchema(graphServiceMethods.ByName("Search")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceCreateProjectHandler := connect.NewUnaryHandler(
-		GraphServiceCreateProjectProcedure,
-		svc.CreateProject,
-		connect.WithSchema(graphServiceMethods.ByName("CreateProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceGetProjectHandler := connect.NewUnaryHandler(
-		GraphServiceGetProjectProcedure,
-		svc.GetProject,
-		connect.WithSchema(graphServiceMethods.ByName("GetProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceListProjectsHandler := connect.NewUnaryHandler(
-		GraphServiceListProjectsProcedure,
-		svc.ListProjects,
-		connect.WithSchema(graphServiceMethods.ByName("ListProjects")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceArchiveProjectHandler := connect.NewUnaryHandler(
-		GraphServiceArchiveProjectProcedure,
-		svc.ArchiveProject,
-		connect.WithSchema(graphServiceMethods.ByName("ArchiveProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceUpdateProjectHandler := connect.NewUnaryHandler(
-		GraphServiceUpdateProjectProcedure,
-		svc.UpdateProject,
-		connect.WithSchema(graphServiceMethods.ByName("UpdateProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceHoldProjectHandler := connect.NewUnaryHandler(
-		GraphServiceHoldProjectProcedure,
-		svc.HoldProject,
-		connect.WithSchema(graphServiceMethods.ByName("HoldProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceUnholdProjectHandler := connect.NewUnaryHandler(
-		GraphServiceUnholdProjectProcedure,
-		svc.UnholdProject,
-		connect.WithSchema(graphServiceMethods.ByName("UnholdProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceFocusHandler := connect.NewUnaryHandler(
-		GraphServiceFocusProcedure,
-		svc.Focus,
-		connect.WithSchema(graphServiceMethods.ByName("Focus")),
-		connect.WithHandlerOptions(opts...),
-	)
-	graphServiceClearFocusHandler := connect.NewUnaryHandler(
-		GraphServiceClearFocusProcedure,
-		svc.ClearFocus,
-		connect.WithSchema(graphServiceMethods.ByName("ClearFocus")),
-		connect.WithHandlerOptions(opts...),
-	)
-	return "/skift.v1.GraphService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case GraphServiceApplyPatchProcedure:
-			graphServiceApplyPatchHandler.ServeHTTP(w, r)
-		case GraphServiceGetNodeProcedure:
-			graphServiceGetNodeHandler.ServeHTTP(w, r)
-		case GraphServiceGetInputsProcedure:
-			graphServiceGetInputsHandler.ServeHTTP(w, r)
-		case GraphServiceListNodesProcedure:
-			graphServiceListNodesHandler.ServeHTTP(w, r)
-		case GraphServiceExplainProcedure:
-			graphServiceExplainHandler.ServeHTTP(w, r)
-		case GraphServiceSearchProcedure:
-			graphServiceSearchHandler.ServeHTTP(w, r)
-		case GraphServiceCreateProjectProcedure:
-			graphServiceCreateProjectHandler.ServeHTTP(w, r)
-		case GraphServiceGetProjectProcedure:
-			graphServiceGetProjectHandler.ServeHTTP(w, r)
-		case GraphServiceListProjectsProcedure:
-			graphServiceListProjectsHandler.ServeHTTP(w, r)
-		case GraphServiceArchiveProjectProcedure:
-			graphServiceArchiveProjectHandler.ServeHTTP(w, r)
-		case GraphServiceUpdateProjectProcedure:
-			graphServiceUpdateProjectHandler.ServeHTTP(w, r)
-		case GraphServiceHoldProjectProcedure:
-			graphServiceHoldProjectHandler.ServeHTTP(w, r)
-		case GraphServiceUnholdProjectProcedure:
-			graphServiceUnholdProjectHandler.ServeHTTP(w, r)
-		case GraphServiceFocusProcedure:
-			graphServiceFocusHandler.ServeHTTP(w, r)
-		case GraphServiceClearFocusProcedure:
-			graphServiceClearFocusHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
 }
 
 // UnimplementedGraphServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedGraphServiceHandler struct{}
 
-func (UnimplementedGraphServiceHandler) ApplyPatch(context.Context, *connect.Request[v1.ApplyPatchRequest]) (*connect.Response[v1.ApplyPatchResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.ApplyPatch is not implemented"))
+func (UnimplementedGraphServiceHandler) ApplyPatch(context.Context, *v1.ApplyPatchRequest) (*v1.ApplyPatchResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.ApplyPatch is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) GetNode(context.Context, *connect.Request[v1.GetNodeRequest]) (*connect.Response[v1.GetNodeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.GetNode is not implemented"))
+func (UnimplementedGraphServiceHandler) GetNode(context.Context, *v1.GetNodeRequest) (*v1.GetNodeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.GetNode is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) GetInputs(context.Context, *connect.Request[v1.GetInputsRequest]) (*connect.Response[v1.GetInputsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.GetInputs is not implemented"))
+func (UnimplementedGraphServiceHandler) GetInputs(context.Context, *v1.GetInputsRequest) (*v1.GetInputsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.GetInputs is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.ListNodes is not implemented"))
+func (UnimplementedGraphServiceHandler) ListNodes(context.Context, *v1.ListNodesRequest) (*v1.ListNodesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.ListNodes is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.Explain is not implemented"))
+func (UnimplementedGraphServiceHandler) Explain(context.Context, *v1.ExplainRequest) (*v1.ExplainResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.Explain is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.Search is not implemented"))
+func (UnimplementedGraphServiceHandler) Search(context.Context, *v1.SearchRequest) (*v1.SearchResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.Search is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) CreateProject(context.Context, *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.CreateProject is not implemented"))
+func (UnimplementedGraphServiceHandler) CreateProject(context.Context, *v1.CreateProjectRequest) (*v1.CreateProjectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.CreateProject is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) GetProject(context.Context, *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.GetProject is not implemented"))
+func (UnimplementedGraphServiceHandler) GetProject(context.Context, *v1.GetProjectRequest) (*v1.GetProjectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.GetProject is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.ListProjects is not implemented"))
+func (UnimplementedGraphServiceHandler) ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.ListProjects is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) ArchiveProject(context.Context, *connect.Request[v1.ArchiveProjectRequest]) (*connect.Response[v1.ArchiveProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.ArchiveProject is not implemented"))
+func (UnimplementedGraphServiceHandler) ArchiveProject(context.Context, *v1.ArchiveProjectRequest) (*v1.ArchiveProjectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.ArchiveProject is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) UpdateProject(context.Context, *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.UpdateProject is not implemented"))
+func (UnimplementedGraphServiceHandler) UpdateProject(context.Context, *v1.UpdateProjectRequest) (*v1.UpdateProjectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.UpdateProject is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) HoldProject(context.Context, *connect.Request[v1.HoldProjectRequest]) (*connect.Response[v1.HoldProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.HoldProject is not implemented"))
+func (UnimplementedGraphServiceHandler) HoldProject(context.Context, *v1.HoldProjectRequest) (*v1.HoldProjectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.HoldProject is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) UnholdProject(context.Context, *connect.Request[v1.UnholdProjectRequest]) (*connect.Response[v1.UnholdProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.UnholdProject is not implemented"))
+func (UnimplementedGraphServiceHandler) UnholdProject(context.Context, *v1.UnholdProjectRequest) (*v1.UnholdProjectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.UnholdProject is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) Focus(context.Context, *connect.Request[v1.FocusRequest]) (*connect.Response[v1.FocusResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.Focus is not implemented"))
+func (UnimplementedGraphServiceHandler) Focus(context.Context, *v1.FocusRequest) (*v1.FocusResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.Focus is not implemented")
 }
 
-func (UnimplementedGraphServiceHandler) ClearFocus(context.Context, *connect.Request[v1.ClearFocusRequest]) (*connect.Response[v1.ClearFocusResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.GraphService.ClearFocus is not implemented"))
+func (UnimplementedGraphServiceHandler) ClearFocus(context.Context, *v1.ClearFocusRequest) (*v1.ClearFocusResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.GraphService.ClearFocus is not implemented")
 }
+
+type graphServiceClient struct {
+	client *connect.Client
+}
+
+func (c *graphServiceClient) ApplyPatch(ctx context.Context, req *v1.ApplyPatchRequest) (*v1.ApplyPatchResponse, error) {
+	var res v1.ApplyPatchResponse
+	if err := c.client.CallUnary(ctx, graphServiceApplyPatchSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) GetNode(ctx context.Context, req *v1.GetNodeRequest) (*v1.GetNodeResponse, error) {
+	var res v1.GetNodeResponse
+	if err := c.client.CallUnary(ctx, graphServiceGetNodeSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) GetInputs(ctx context.Context, req *v1.GetInputsRequest) (*v1.GetInputsResponse, error) {
+	var res v1.GetInputsResponse
+	if err := c.client.CallUnary(ctx, graphServiceGetInputsSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) ListNodes(ctx context.Context, req *v1.ListNodesRequest) (*v1.ListNodesResponse, error) {
+	var res v1.ListNodesResponse
+	if err := c.client.CallUnary(ctx, graphServiceListNodesSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) Explain(ctx context.Context, req *v1.ExplainRequest) (*v1.ExplainResponse, error) {
+	var res v1.ExplainResponse
+	if err := c.client.CallUnary(ctx, graphServiceExplainSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) Search(ctx context.Context, req *v1.SearchRequest) (*v1.SearchResponse, error) {
+	var res v1.SearchResponse
+	if err := c.client.CallUnary(ctx, graphServiceSearchSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) CreateProject(ctx context.Context, req *v1.CreateProjectRequest) (*v1.CreateProjectResponse, error) {
+	var res v1.CreateProjectResponse
+	if err := c.client.CallUnary(ctx, graphServiceCreateProjectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) GetProject(ctx context.Context, req *v1.GetProjectRequest) (*v1.GetProjectResponse, error) {
+	var res v1.GetProjectResponse
+	if err := c.client.CallUnary(ctx, graphServiceGetProjectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) ListProjects(ctx context.Context, req *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
+	var res v1.ListProjectsResponse
+	if err := c.client.CallUnary(ctx, graphServiceListProjectsSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) ArchiveProject(ctx context.Context, req *v1.ArchiveProjectRequest) (*v1.ArchiveProjectResponse, error) {
+	var res v1.ArchiveProjectResponse
+	if err := c.client.CallUnary(ctx, graphServiceArchiveProjectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) UpdateProject(ctx context.Context, req *v1.UpdateProjectRequest) (*v1.UpdateProjectResponse, error) {
+	var res v1.UpdateProjectResponse
+	if err := c.client.CallUnary(ctx, graphServiceUpdateProjectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) HoldProject(ctx context.Context, req *v1.HoldProjectRequest) (*v1.HoldProjectResponse, error) {
+	var res v1.HoldProjectResponse
+	if err := c.client.CallUnary(ctx, graphServiceHoldProjectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) UnholdProject(ctx context.Context, req *v1.UnholdProjectRequest) (*v1.UnholdProjectResponse, error) {
+	var res v1.UnholdProjectResponse
+	if err := c.client.CallUnary(ctx, graphServiceUnholdProjectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) Focus(ctx context.Context, req *v1.FocusRequest) (*v1.FocusResponse, error) {
+	var res v1.FocusResponse
+	if err := c.client.CallUnary(ctx, graphServiceFocusSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *graphServiceClient) ClearFocus(ctx context.Context, req *v1.ClearFocusRequest) (*v1.ClearFocusResponse, error) {
+	var res v1.ClearFocusResponse
+	if err := c.client.CallUnary(ctx, graphServiceClearFocusSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+type graphServiceHandler struct{ svc GraphServiceHandler }
+
+func (h graphServiceHandler) applyPatch(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ApplyPatchRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ApplyPatch(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) getNode(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.GetNodeRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetNode(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) getInputs(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.GetInputsRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetInputs(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) listNodes(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ListNodesRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ListNodes(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) explain(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ExplainRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Explain(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) search(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.SearchRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Search(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) createProject(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.CreateProjectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.CreateProject(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) getProject(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.GetProjectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetProject(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) listProjects(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ListProjectsRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ListProjects(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) archiveProject(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ArchiveProjectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ArchiveProject(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) updateProject(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.UpdateProjectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.UpdateProject(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) holdProject(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.HoldProjectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.HoldProject(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) unholdProject(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.UnholdProjectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.UnholdProject(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) focus(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.FocusRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Focus(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h graphServiceHandler) clearFocus(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ClearFocusRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ClearFocus(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+var (
+	workServiceReadySpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods().ByName("Ready"),
+			Procedure:  WorkServiceReadyProcedure,
+		}
+	})
+	workServiceClaimNextSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods().ByName("ClaimNext"),
+			Procedure:  WorkServiceClaimNextProcedure,
+		}
+	})
+	workServiceHeartbeatSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods().ByName("Heartbeat"),
+			Procedure:  WorkServiceHeartbeatProcedure,
+		}
+	})
+	workServiceReleaseSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods().ByName("Release"),
+			Procedure:  WorkServiceReleaseProcedure,
+		}
+	})
+	workServiceReportUsageSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods().ByName("ReportUsage"),
+			Procedure:  WorkServiceReportUsageProcedure,
+		}
+	})
+)
 
 // WorkServiceClient is a client for the skift.v1.WorkService service.
 type WorkServiceClient interface {
 	// Ready returns the ready set of one project, ordered by priority then
 	// age, without claiming anything.
-	Ready(context.Context, *connect.Request[v1.ReadyRequest]) (*connect.Response[v1.ReadyResponse], error)
+	Ready(context.Context, *v1.ReadyRequest) (*v1.ReadyResponse, error)
 	// ClaimNext performs Ready and Claim in one round trip. When nothing
 	// matches it waits up to the request's wait duration for work to appear,
 	// and returns the node already claimed under a lease.
-	ClaimNext(context.Context, *connect.Request[v1.ClaimNextRequest]) (*connect.Response[v1.ClaimNextResponse], error)
+	ClaimNext(context.Context, *v1.ClaimNextRequest) (*v1.ClaimNextResponse, error)
 	// Heartbeat renews a live lease. Any write to the node by the holder
 	// renews it implicitly; this is the explicit form.
-	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
+	Heartbeat(context.Context, *v1.HeartbeatRequest) (*v1.HeartbeatResponse, error)
 	// Release ends a lease with a reason, returning the node to the ready set
 	// if nothing else holds it back.
-	Release(context.Context, *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error)
+	Release(context.Context, *v1.ReleaseRequest) (*v1.ReleaseResponse, error)
 	// ReportUsage records what one attempt cost, attributed to the lease
 	// that attempt runs under. It is the orchestrator's call: the process
 	// that runs an agent is the one that can count its tokens, and an agent
 	// principal is refused. An agent says what work is expected to cost
 	// instead, with the estimate_node operation of a patch.
-	ReportUsage(context.Context, *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error)
+	ReportUsage(context.Context, *v1.ReportUsageRequest) (*v1.ReportUsageResponse, error)
 }
 
-// NewWorkServiceClient constructs a client for the skift.v1.WorkService service. By default, it
-// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
-// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
-// connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewWorkServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) WorkServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	workServiceMethods := v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods()
-	return &workServiceClient{
-		ready: connect.NewClient[v1.ReadyRequest, v1.ReadyResponse](
-			httpClient,
-			baseURL+WorkServiceReadyProcedure,
-			connect.WithSchema(workServiceMethods.ByName("Ready")),
-			connect.WithClientOptions(opts...),
-		),
-		claimNext: connect.NewClient[v1.ClaimNextRequest, v1.ClaimNextResponse](
-			httpClient,
-			baseURL+WorkServiceClaimNextProcedure,
-			connect.WithSchema(workServiceMethods.ByName("ClaimNext")),
-			connect.WithClientOptions(opts...),
-		),
-		heartbeat: connect.NewClient[v1.HeartbeatRequest, v1.HeartbeatResponse](
-			httpClient,
-			baseURL+WorkServiceHeartbeatProcedure,
-			connect.WithSchema(workServiceMethods.ByName("Heartbeat")),
-			connect.WithClientOptions(opts...),
-		),
-		release: connect.NewClient[v1.ReleaseRequest, v1.ReleaseResponse](
-			httpClient,
-			baseURL+WorkServiceReleaseProcedure,
-			connect.WithSchema(workServiceMethods.ByName("Release")),
-			connect.WithClientOptions(opts...),
-		),
-		reportUsage: connect.NewClient[v1.ReportUsageRequest, v1.ReportUsageResponse](
-			httpClient,
-			baseURL+WorkServiceReportUsageProcedure,
-			connect.WithSchema(workServiceMethods.ByName("ReportUsage")),
-			connect.WithClientOptions(opts...),
-		),
-	}
-}
-
-// workServiceClient implements WorkServiceClient.
-type workServiceClient struct {
-	ready       *connect.Client[v1.ReadyRequest, v1.ReadyResponse]
-	claimNext   *connect.Client[v1.ClaimNextRequest, v1.ClaimNextResponse]
-	heartbeat   *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
-	release     *connect.Client[v1.ReleaseRequest, v1.ReleaseResponse]
-	reportUsage *connect.Client[v1.ReportUsageRequest, v1.ReportUsageResponse]
-}
-
-// Ready calls skift.v1.WorkService.Ready.
-func (c *workServiceClient) Ready(ctx context.Context, req *connect.Request[v1.ReadyRequest]) (*connect.Response[v1.ReadyResponse], error) {
-	return c.ready.CallUnary(ctx, req)
-}
-
-// ClaimNext calls skift.v1.WorkService.ClaimNext.
-func (c *workServiceClient) ClaimNext(ctx context.Context, req *connect.Request[v1.ClaimNextRequest]) (*connect.Response[v1.ClaimNextResponse], error) {
-	return c.claimNext.CallUnary(ctx, req)
-}
-
-// Heartbeat calls skift.v1.WorkService.Heartbeat.
-func (c *workServiceClient) Heartbeat(ctx context.Context, req *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
-	return c.heartbeat.CallUnary(ctx, req)
-}
-
-// Release calls skift.v1.WorkService.Release.
-func (c *workServiceClient) Release(ctx context.Context, req *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error) {
-	return c.release.CallUnary(ctx, req)
-}
-
-// ReportUsage calls skift.v1.WorkService.ReportUsage.
-func (c *workServiceClient) ReportUsage(ctx context.Context, req *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error) {
-	return c.reportUsage.CallUnary(ctx, req)
+// NewWorkServiceClient constructs a client for the skift.v1.WorkService service. Multiple service
+// clients may share a single connect.Client.
+func NewWorkServiceClient(client *connect.Client) WorkServiceClient {
+	return &workServiceClient{client: client}
 }
 
 // WorkServiceHandler is an implementation of the skift.v1.WorkService service.
 type WorkServiceHandler interface {
 	// Ready returns the ready set of one project, ordered by priority then
 	// age, without claiming anything.
-	Ready(context.Context, *connect.Request[v1.ReadyRequest]) (*connect.Response[v1.ReadyResponse], error)
+	Ready(context.Context, *v1.ReadyRequest) (*v1.ReadyResponse, error)
 	// ClaimNext performs Ready and Claim in one round trip. When nothing
 	// matches it waits up to the request's wait duration for work to appear,
 	// and returns the node already claimed under a lease.
-	ClaimNext(context.Context, *connect.Request[v1.ClaimNextRequest]) (*connect.Response[v1.ClaimNextResponse], error)
+	ClaimNext(context.Context, *v1.ClaimNextRequest) (*v1.ClaimNextResponse, error)
 	// Heartbeat renews a live lease. Any write to the node by the holder
 	// renews it implicitly; this is the explicit form.
-	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
+	Heartbeat(context.Context, *v1.HeartbeatRequest) (*v1.HeartbeatResponse, error)
 	// Release ends a lease with a reason, returning the node to the ready set
 	// if nothing else holds it back.
-	Release(context.Context, *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error)
+	Release(context.Context, *v1.ReleaseRequest) (*v1.ReleaseResponse, error)
 	// ReportUsage records what one attempt cost, attributed to the lease
 	// that attempt runs under. It is the orchestrator's call: the process
 	// that runs an agent is the one that can count its tokens, and an agent
 	// principal is refused. An agent says what work is expected to cost
 	// instead, with the estimate_node operation of a patch.
-	ReportUsage(context.Context, *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error)
+	ReportUsage(context.Context, *v1.ReportUsageRequest) (*v1.ReportUsageResponse, error)
 }
 
-// NewWorkServiceHandler builds an HTTP handler from the service implementation. It returns the path
-// on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewWorkServiceHandler(svc WorkServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	workServiceMethods := v1.File_skift_v1_service_proto.Services().ByName("WorkService").Methods()
-	workServiceReadyHandler := connect.NewUnaryHandler(
-		WorkServiceReadyProcedure,
-		svc.Ready,
-		connect.WithSchema(workServiceMethods.ByName("Ready")),
-		connect.WithHandlerOptions(opts...),
+// RegisterWorkServiceHandler registers svc as the skift.v1.WorkService implementation on server.
+func RegisterWorkServiceHandler(server *connect.Server, svc WorkServiceHandler) {
+	adapter := workServiceHandler{svc: svc}
+	server.Register(
+		connect.Method{Spec: workServiceReadySpec(), Handler: adapter.ready},
+		connect.Method{Spec: workServiceClaimNextSpec(), Handler: adapter.claimNext},
+		connect.Method{Spec: workServiceHeartbeatSpec(), Handler: adapter.heartbeat},
+		connect.Method{Spec: workServiceReleaseSpec(), Handler: adapter.release},
+		connect.Method{Spec: workServiceReportUsageSpec(), Handler: adapter.reportUsage},
 	)
-	workServiceClaimNextHandler := connect.NewUnaryHandler(
-		WorkServiceClaimNextProcedure,
-		svc.ClaimNext,
-		connect.WithSchema(workServiceMethods.ByName("ClaimNext")),
-		connect.WithHandlerOptions(opts...),
-	)
-	workServiceHeartbeatHandler := connect.NewUnaryHandler(
-		WorkServiceHeartbeatProcedure,
-		svc.Heartbeat,
-		connect.WithSchema(workServiceMethods.ByName("Heartbeat")),
-		connect.WithHandlerOptions(opts...),
-	)
-	workServiceReleaseHandler := connect.NewUnaryHandler(
-		WorkServiceReleaseProcedure,
-		svc.Release,
-		connect.WithSchema(workServiceMethods.ByName("Release")),
-		connect.WithHandlerOptions(opts...),
-	)
-	workServiceReportUsageHandler := connect.NewUnaryHandler(
-		WorkServiceReportUsageProcedure,
-		svc.ReportUsage,
-		connect.WithSchema(workServiceMethods.ByName("ReportUsage")),
-		connect.WithHandlerOptions(opts...),
-	)
-	return "/skift.v1.WorkService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case WorkServiceReadyProcedure:
-			workServiceReadyHandler.ServeHTTP(w, r)
-		case WorkServiceClaimNextProcedure:
-			workServiceClaimNextHandler.ServeHTTP(w, r)
-		case WorkServiceHeartbeatProcedure:
-			workServiceHeartbeatHandler.ServeHTTP(w, r)
-		case WorkServiceReleaseProcedure:
-			workServiceReleaseHandler.ServeHTTP(w, r)
-		case WorkServiceReportUsageProcedure:
-			workServiceReportUsageHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
 }
 
 // UnimplementedWorkServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedWorkServiceHandler struct{}
 
-func (UnimplementedWorkServiceHandler) Ready(context.Context, *connect.Request[v1.ReadyRequest]) (*connect.Response[v1.ReadyResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.WorkService.Ready is not implemented"))
+func (UnimplementedWorkServiceHandler) Ready(context.Context, *v1.ReadyRequest) (*v1.ReadyResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.WorkService.Ready is not implemented")
 }
 
-func (UnimplementedWorkServiceHandler) ClaimNext(context.Context, *connect.Request[v1.ClaimNextRequest]) (*connect.Response[v1.ClaimNextResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.WorkService.ClaimNext is not implemented"))
+func (UnimplementedWorkServiceHandler) ClaimNext(context.Context, *v1.ClaimNextRequest) (*v1.ClaimNextResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.WorkService.ClaimNext is not implemented")
 }
 
-func (UnimplementedWorkServiceHandler) Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.WorkService.Heartbeat is not implemented"))
+func (UnimplementedWorkServiceHandler) Heartbeat(context.Context, *v1.HeartbeatRequest) (*v1.HeartbeatResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.WorkService.Heartbeat is not implemented")
 }
 
-func (UnimplementedWorkServiceHandler) Release(context.Context, *connect.Request[v1.ReleaseRequest]) (*connect.Response[v1.ReleaseResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.WorkService.Release is not implemented"))
+func (UnimplementedWorkServiceHandler) Release(context.Context, *v1.ReleaseRequest) (*v1.ReleaseResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.WorkService.Release is not implemented")
 }
 
-func (UnimplementedWorkServiceHandler) ReportUsage(context.Context, *connect.Request[v1.ReportUsageRequest]) (*connect.Response[v1.ReportUsageResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.WorkService.ReportUsage is not implemented"))
+func (UnimplementedWorkServiceHandler) ReportUsage(context.Context, *v1.ReportUsageRequest) (*v1.ReportUsageResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "skift.v1.WorkService.ReportUsage is not implemented")
 }
+
+type workServiceClient struct {
+	client *connect.Client
+}
+
+func (c *workServiceClient) Ready(ctx context.Context, req *v1.ReadyRequest) (*v1.ReadyResponse, error) {
+	var res v1.ReadyResponse
+	if err := c.client.CallUnary(ctx, workServiceReadySpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *workServiceClient) ClaimNext(ctx context.Context, req *v1.ClaimNextRequest) (*v1.ClaimNextResponse, error) {
+	var res v1.ClaimNextResponse
+	if err := c.client.CallUnary(ctx, workServiceClaimNextSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *workServiceClient) Heartbeat(ctx context.Context, req *v1.HeartbeatRequest) (*v1.HeartbeatResponse, error) {
+	var res v1.HeartbeatResponse
+	if err := c.client.CallUnary(ctx, workServiceHeartbeatSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *workServiceClient) Release(ctx context.Context, req *v1.ReleaseRequest) (*v1.ReleaseResponse, error) {
+	var res v1.ReleaseResponse
+	if err := c.client.CallUnary(ctx, workServiceReleaseSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *workServiceClient) ReportUsage(ctx context.Context, req *v1.ReportUsageRequest) (*v1.ReportUsageResponse, error) {
+	var res v1.ReportUsageResponse
+	if err := c.client.CallUnary(ctx, workServiceReportUsageSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+type workServiceHandler struct{ svc WorkServiceHandler }
+
+func (h workServiceHandler) ready(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ReadyRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Ready(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h workServiceHandler) claimNext(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ClaimNextRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ClaimNext(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h workServiceHandler) heartbeat(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.HeartbeatRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Heartbeat(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h workServiceHandler) release(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ReleaseRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Release(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h workServiceHandler) reportUsage(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.ReportUsageRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ReportUsage(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+var (
+	eventServiceWatchEventsSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeServer,
+			Schema:     v1.File_skift_v1_service_proto.Services().ByName("EventService").Methods().ByName("WatchEvents"),
+			Procedure:  EventServiceWatchEventsProcedure,
+		}
+	})
+)
 
 // EventServiceClient is a client for the skift.v1.EventService service.
 type EventServiceClient interface {
 	// WatchEvents streams events after a cursor, filtered by project and
 	// operation, scoped to the caller's organization, and policy-filtered.
 	// Delivery is at least once; consumers deduplicate by event id.
-	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.WatchEventsResponse], error)
+	WatchEvents(context.Context, *v1.WatchEventsRequest) (EventServiceWatchEventsClientStream, error)
 }
 
-// NewEventServiceClient constructs a client for the skift.v1.EventService service. By default, it
-// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
-// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
-// connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewEventServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) EventServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	eventServiceMethods := v1.File_skift_v1_service_proto.Services().ByName("EventService").Methods()
-	return &eventServiceClient{
-		watchEvents: connect.NewClient[v1.WatchEventsRequest, v1.WatchEventsResponse](
-			httpClient,
-			baseURL+EventServiceWatchEventsProcedure,
-			connect.WithSchema(eventServiceMethods.ByName("WatchEvents")),
-			connect.WithClientOptions(opts...),
-		),
+// NewEventServiceClient constructs a client for the skift.v1.EventService service. Multiple service
+// clients may share a single connect.Client.
+func NewEventServiceClient(client *connect.Client) EventServiceClient {
+	return &eventServiceClient{client: client}
+}
+
+// EventServiceWatchEventsClientStream is the client stream for the EventService's WatchEvents RPC.
+type EventServiceWatchEventsClientStream struct {
+	stream connect.ClientStream
+}
+
+// Receive returns the next response message from the server.
+func (s EventServiceWatchEventsClientStream) Receive() (*v1.WatchEventsResponse, error) {
+	var res v1.WatchEventsResponse
+	if err := s.stream.Receive(&res); err != nil {
+		return nil, err
 	}
+	return &res, nil
 }
 
-// eventServiceClient implements EventServiceClient.
-type eventServiceClient struct {
-	watchEvents *connect.Client[v1.WatchEventsRequest, v1.WatchEventsResponse]
-}
-
-// WatchEvents calls skift.v1.EventService.WatchEvents.
-func (c *eventServiceClient) WatchEvents(ctx context.Context, req *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.WatchEventsResponse], error) {
-	return c.watchEvents.CallServerStream(ctx, req)
+// Close releases the stream's resources. It is idempotent and is typically deferred to clean up a
+// stream abandoned before io.EOF.
+func (s EventServiceWatchEventsClientStream) Close() error {
+	return s.stream.Close()
 }
 
 // EventServiceHandler is an implementation of the skift.v1.EventService service.
@@ -856,35 +985,57 @@ type EventServiceHandler interface {
 	// WatchEvents streams events after a cursor, filtered by project and
 	// operation, scoped to the caller's organization, and policy-filtered.
 	// Delivery is at least once; consumers deduplicate by event id.
-	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error
+	WatchEvents(context.Context, *v1.WatchEventsRequest, EventServiceWatchEventsServerStream) error
 }
 
-// NewEventServiceHandler builds an HTTP handler from the service implementation. It returns the
-// path on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewEventServiceHandler(svc EventServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	eventServiceMethods := v1.File_skift_v1_service_proto.Services().ByName("EventService").Methods()
-	eventServiceWatchEventsHandler := connect.NewServerStreamHandler(
-		EventServiceWatchEventsProcedure,
-		svc.WatchEvents,
-		connect.WithSchema(eventServiceMethods.ByName("WatchEvents")),
-		connect.WithHandlerOptions(opts...),
+// RegisterEventServiceHandler registers svc as the skift.v1.EventService implementation on server.
+func RegisterEventServiceHandler(server *connect.Server, svc EventServiceHandler) {
+	adapter := eventServiceHandler{svc: svc}
+	server.Register(
+		connect.Method{Spec: eventServiceWatchEventsSpec(), Handler: adapter.watchEvents},
 	)
-	return "/skift.v1.EventService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case EventServiceWatchEventsProcedure:
-			eventServiceWatchEventsHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
+}
+
+// EventServiceWatchEventsServerStream is the server stream for the EventService's WatchEvents RPC.
+type EventServiceWatchEventsServerStream struct {
+	stream connect.ServerStream
+}
+
+// SendHeaders flushes the response headers without a message. The first Send does this implicitly.
+func (s EventServiceWatchEventsServerStream) SendHeaders() error {
+	return s.stream.SendHeaders()
+}
+
+// Send sends a response message to the client.
+func (s EventServiceWatchEventsServerStream) Send(res *v1.WatchEventsResponse) error {
+	return s.stream.Send(res)
 }
 
 // UnimplementedEventServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedEventServiceHandler struct{}
 
-func (UnimplementedEventServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("skift.v1.EventService.WatchEvents is not implemented"))
+func (UnimplementedEventServiceHandler) WatchEvents(context.Context, *v1.WatchEventsRequest, EventServiceWatchEventsServerStream) error {
+	return connect.NewError(connect.CodeUnimplemented, "skift.v1.EventService.WatchEvents is not implemented")
+}
+
+type eventServiceClient struct {
+	client *connect.Client
+}
+
+func (c *eventServiceClient) WatchEvents(ctx context.Context, req *v1.WatchEventsRequest) (EventServiceWatchEventsClientStream, error) {
+	stream, err := c.client.CallServerStream(ctx, eventServiceWatchEventsSpec(), req)
+	if err != nil {
+		return EventServiceWatchEventsClientStream{}, err
+	}
+	return EventServiceWatchEventsClientStream{stream: stream}, nil
+}
+
+type eventServiceHandler struct{ svc EventServiceHandler }
+
+func (h eventServiceHandler) watchEvents(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WatchEventsRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	return h.svc.WatchEvents(ctx, &req, EventServiceWatchEventsServerStream{stream: stream})
 }

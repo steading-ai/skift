@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -25,10 +25,10 @@ type nativeCompositionGraph struct {
 	principal chan interceptor.Principal
 }
 
-func (g nativeCompositionGraph) ListProjects(ctx context.Context, _ *connect.Request[skiftv1.ListProjectsRequest]) (*connect.Response[skiftv1.ListProjectsResponse], error) {
+func (g nativeCompositionGraph) ListProjects(ctx context.Context, _ *skiftv1.ListProjectsRequest) (*skiftv1.ListProjectsResponse, error) {
 	p, _ := interceptor.PrincipalFromContext(ctx)
 	g.principal <- p
-	return connect.NewResponse(&skiftv1.ListProjectsResponse{}), nil
+	return &skiftv1.ListProjectsResponse{}, nil
 }
 
 type nativeCompositionWork struct {
@@ -37,7 +37,7 @@ type nativeCompositionWork struct {
 	stopped chan struct{}
 }
 
-func (w nativeCompositionWork) ClaimNext(ctx context.Context, _ *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+func (w nativeCompositionWork) ClaimNext(ctx context.Context, _ *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 	close(w.started)
 	<-ctx.Done()
 	close(w.stopped)
@@ -72,7 +72,7 @@ var _ = Describe("Native MCP service composition", Label("unit"), func() {
 		checks = &atomic.Int32{}
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(_ context.Context, peer string) (string, error) { checks.Add(1); return peer, nil })}
 		lookup := interceptor.StaticLookup{{Scheme: interceptor.SchemeTailscale, Value: "original-peer"}: {ID: "alice", OrgID: "org", Kind: interceptor.KindAgent}}
-		srv := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: graph, Work: work}, nil)
+		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: graph, Work: work}, nil)
 		h = newNativeMCPHandler(srv, interceptor.NewAuthenticator(lookup, resolver))
 	})
 	It("uses the real factory for authenticated discover/list/call and server-side reauthentication", func() {

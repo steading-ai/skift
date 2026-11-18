@@ -12,7 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
@@ -68,8 +69,8 @@ var _ = Describe("skift serve", Label("unit"), func() {
 	It("serves the Connect handlers over the socket", func(ctx SpecContext) {
 		testsupport.RequirePeerCredentials()
 		By("when a client calls GetProject over the socket")
-		client := skiftv1connect.NewGraphServiceClient(socketClient(socket), "http://skift")
-		_, err := client.GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		client := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(socketClient(socket), "http://skift")))
+		_, err := client.GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 
 		By("then the service answers over the socket: the database is unreachable, so the caller cannot be resolved")
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeInternal))

@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -110,17 +110,17 @@ var _ = Describe("HTTP MCP real-domain lease lifetime", Label(testsupport.DBLabe
 		svc := domain.NewService(f.pool, pol)
 		lookup := interceptor.StaticLookup{{Scheme: interceptor.SchemeTailscale, Value: "node"}: f.user}
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(context.Context, string) (string, error) { return "node", nil })}
-		observe := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-				if req.Spec().Procedure == skiftv1connect.WorkServiceClaimNextProcedure {
+		observe := connect.ServerInterceptor(func(next connect.ServerFunc) connect.ServerFunc {
+			return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
+				if spec.Procedure == skiftv1connect.WorkServiceClaimNextProcedure {
 					active.Add(1)
 					defer active.Add(-1)
 				}
-				return next(ctx, req)
+				return next(ctx, spec, stream)
 			}
 		})
-		srv := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver), observe}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)
-		execution := mcptools.Execution{Draining: server.Draining, Graph: skiftv1connect.NewGraphServiceClient(srv.InProcessClient(), "http://skift.internal"), Work: skiftv1connect.NewWorkServiceClient(srv.InProcessClient(), "http://skift.internal")}
+		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver), observe}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)
+		execution := mcptools.Execution{Draining: server.Draining, Graph: skiftv1connect.NewGraphServiceClient(srv.InProcessClient()), Work: skiftv1connect.NewWorkServiceClient(srv.InProcessClient())}
 		ts = httptest.NewUnstartedServer(interceptor.NewAuthenticator(lookup, resolver).Middleware(mcphttp.New(execution)))
 		ts.Config.ConnContext = interceptor.TailnetConnContext
 		ts.Start()
@@ -172,12 +172,12 @@ var _ = Describe("HTTP MCP real-domain lease lifetime", Label(testsupport.DBLabe
 		lookup := interceptor.StaticLookup{{Scheme: interceptor.SchemeTailscale, Value: "node"}: f.user}
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(context.Context, string) (string, error) { return "node", nil })}
 		entered := make(chan struct{}, 1)
-		observe := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-				if req.Spec().Procedure == skiftv1connect.WorkServiceClaimNextProcedure {
+		observe := connect.ServerInterceptor(func(next connect.ServerFunc) connect.ServerFunc {
+			return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
+				if spec.Procedure == skiftv1connect.WorkServiceClaimNextProcedure {
 					entered <- struct{}{}
 				}
-				return next(ctx, req)
+				return next(ctx, spec, stream)
 			}
 		})
 		var handler http.Handler
@@ -185,10 +185,10 @@ var _ = Describe("HTTP MCP real-domain lease lifetime", Label(testsupport.DBLabe
 		run := start(server.Config{Transports: []server.Transport{transport}}, server.Services{}, f.pool)
 		// Inject the real generated services into a dispatcher whose request contexts
 		// originate on the running listener and therefore carry its common drain signal.
-		dispatcher := server.New(server.Config{Interceptors: []connect.Interceptor{interceptor.NewPrincipal(lookup, resolver), observe}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)
+		dispatcher := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver), observe}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)
 		handler = interceptor.NewAuthenticator(lookup, resolver).Middleware(mcphttp.New(mcptools.Execution{
 			Draining: server.Draining,
-			Graph:    skiftv1connect.NewGraphServiceClient(dispatcher.InProcessClient(), "http://skift.internal"), Work: skiftv1connect.NewWorkServiceClient(dispatcher.InProcessClient(), "http://skift.internal"),
+			Graph:    skiftv1connect.NewGraphServiceClient(dispatcher.InProcessClient()), Work: skiftv1connect.NewWorkServiceClient(dispatcher.InProcessClient()),
 		}))
 		url := "http://" + transport.listener.Addr().String()
 		req := mcpToolRequest(ctx, url, "claim", map[string]any{"projects": []string{"platform"}, "wait": "1m"})

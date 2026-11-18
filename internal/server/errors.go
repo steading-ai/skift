@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	"github.com/steading-ai/skift/internal/domain"
 )
@@ -24,7 +24,7 @@ func connectError(err error) error {
 	if errors.As(err, &cerr) {
 		return err
 	}
-	return connect.NewError(codeOf(err), err)
+	return connect.NewError(codeOf(err), err.Error()).WithCause(err)
 }
 
 // codeOf is the Connect code for one domain error. Typed errors are

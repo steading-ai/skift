@@ -3,7 +3,7 @@ module github.com/steading-ai/skift
 go 1.27.4
 
 require (
-	connectrpc.com/connect v1.21.1
+	connectrpc.com/connect/v2 v2.0.2
 	github.com/cavaliergopher/rpm v1.3.0
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -147,7 +147,7 @@ require (
 )
 
 tool (
-	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	connectrpc.com/connect/v2/cmd/protoc-gen-connect-go
 	github.com/onsi/ginkgo/v2/ginkgo
 	google.golang.org/protobuf/cmd/protoc-gen-go
 )

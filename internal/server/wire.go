@@ -4,13 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -88,7 +87,7 @@ var dropReasons = enum[skiftv1.DropReason]{
 // are ListNodes-only fields of [skiftv1.NodeFilter].
 func rejectStatusHeld(f *skiftv1.NodeFilter) error {
 	if f.GetStatus() != skiftv1.Status_STATUS_UNSPECIFIED || f.GetHeld() {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("status and held apply to list only, not a claim or a ready read"))
+		return connect.NewError(connect.CodeInvalidArgument, "status and held apply to list only, not a claim or a ready read")
 	}
 	return nil
 }
@@ -135,11 +134,11 @@ func decodePageToken(token string) (int, error) {
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return 0, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("malformed page token %q", token))
+		return 0, connect.Errorf(connect.CodeInvalidArgument, "malformed page token %q", token)
 	}
 	offset, err := strconv.Atoi(strings.TrimPrefix(string(raw), "o="))
 	if err != nil || !strings.HasPrefix(string(raw), "o=") || offset < 0 {
-		return 0, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("malformed page token %q", token))
+		return 0, connect.Errorf(connect.CodeInvalidArgument, "malformed page token %q", token)
 	}
 	return offset, nil
 }
@@ -630,10 +629,10 @@ func fromDuration(d *durationpb.Duration) (time.Duration, error) {
 		return 0, nil
 	}
 	if err := d.CheckValid(); err != nil {
-		return 0, connect.NewError(connect.CodeInvalidArgument, err)
+		return 0, connect.NewError(connect.CodeInvalidArgument, err.Error()).WithCause(err)
 	}
 	if d.AsDuration() < 0 {
-		return 0, connect.NewError(connect.CodeInvalidArgument, errors.New("duration is negative"))
+		return 0, connect.NewError(connect.CodeInvalidArgument, "duration is negative")
 	}
 	return d.AsDuration(), nil
 }

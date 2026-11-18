@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -36,12 +36,12 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 				f.mustApply(ctx, ops...)
 
 				By("when ready is called with no view")
-				res, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+				res, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(res.Msg.GetNodes()).To(HaveLen(22))
+				Expect(res.GetNodes()).To(HaveLen(22))
 
 				By("then every node in the response has title, kind, priority and reference")
-				for i, n := range res.Msg.GetNodes() {
+				for i, n := range res.GetNodes() {
 					Expect(n.GetTitle()).To(Equal(fmt.Sprintf("Task %d", i+1)))
 					Expect(n.GetKind()).To(Equal("task"))
 					Expect(n.GetPriority()).To(Equal(skiftv1.Priority_PRIORITY_P1))
@@ -51,17 +51,17 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 				}
 
 				By("and no node in the response has a body")
-				for _, n := range res.Msg.GetNodes() {
+				for _, n := range res.GetNodes() {
 					Expect(n.GetBody()).To(BeEmpty())
 				}
-				wire := wireJSON(res.Msg)
+				wire := wireJSON(res)
 				Expect(wire).NotTo(ContainSubstring(`"body"`))
 				Expect(len(wire)).To(BeNumerically("<", 22*2000), "the bodies were not sent: %d bytes", len(wire))
 
 				By("and the full view carries the body on request")
-				full, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, View: skiftv1.View_VIEW_FULL, PageSize: 1}))
+				full, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, View: skiftv1.View_VIEW_FULL, PageSize: 1})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(full.Msg.GetNodes()[0].GetBody()).To(HaveLen(2000))
+				Expect(full.GetNodes()[0].GetBody()).To(HaveLen(2000))
 			})
 		})
 
@@ -78,9 +78,9 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 					req.Filter = &skiftv1.NodeFilter{}
 				}
 				req.Filter.Projects = []string{"platform"}
-				res, err := f.work().Ready(ctx, connect.NewRequest(req))
+				res, err := f.work().Ready(ctx, req)
 				Expect(err).NotTo(HaveOccurred())
-				return res.Msg
+				return res
 			}
 
 			all := ready(&skiftv1.ReadyRequest{})
@@ -100,9 +100,9 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			Expect(numbers(last.GetNodes())).To(Equal([]int64{1}))
 			Expect(last.GetNextPageToken()).To(BeEmpty())
 
-			res, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
+			res, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{})
 			Expect(err).NotTo(HaveOccurred(), "an empty filter means every project the caller may read, not an error")
-			Expect(numbers(res.Msg.GetNodes())).To(Equal([]int64{2, 4, 1}), "platform is the caller's only project")
+			Expect(numbers(res.GetNodes())).To(Equal([]int64{2, 4, 1}), "platform is the caller's only project")
 		})
 	})
 
@@ -131,9 +131,9 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 
 		It("carries the project the node was claimed in, with the repository it delivers to", func(ctx SpecContext) {
 			f.mustApply(ctx, createOpWith(&skiftv1.CreateNodeOp{Alias: "a", Title: "A"}))
-			_, err := f.graph().UpdateProject(ctx, connect.NewRequest(&skiftv1.UpdateProjectRequest{
+			_, err := f.graph().UpdateProject(ctx, &skiftv1.UpdateProjectRequest{
 				RequestId: newID(), Project: "platform", VcsUrl: ptr("https://gitlab.example/x/y.git"),
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
 
 			claimed := f.claim(ctx, "platform", nil)
@@ -145,12 +145,12 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 		It("waits for work and returns empty when none appears", func(ctx SpecContext) {
 			f.as(f.agent)
 			started := time.Now()
-			res, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+			res, err := f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{
 				RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(150 * time.Millisecond), Harness: "spec", AgentRef: "spec",
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Msg.GetNode()).To(BeNil())
-			Expect(res.Msg.GetLease()).To(BeNil())
+			Expect(res.GetNode()).To(BeNil())
+			Expect(res.GetLease()).To(BeNil())
 			Expect(time.Since(started)).To(BeNumerically(">=", 150*time.Millisecond))
 		})
 
@@ -163,14 +163,14 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			done := make(chan outcome, 1)
 			go func() {
 				defer GinkgoRecover()
-				res, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+				res, err := f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{
 					RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(time.Minute), Harness: "spec", AgentRef: "spec",
-				}))
+				})
 				if err != nil {
 					done <- outcome{err: err}
 					return
 				}
-				done <- outcome{res: res.Msg}
+				done <- outcome{res: res}
 			}()
 			time.Sleep(200 * time.Millisecond)
 
@@ -183,9 +183,9 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 
 		It("reports a missing project as not found and a negative wait as invalid", func(ctx SpecContext) {
 			f.as(f.agent)
-			_, err := f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{"nowhere"}}, Harness: "spec", AgentRef: "spec"}))
+			_, err := f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{"nowhere"}}, Harness: "spec", AgentRef: "spec"})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeNotFound))
-			_, err = f.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(-time.Second)}))
+			_, err = f.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{RequestId: newID(), Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}, Wait: durationpb.New(-time.Second)})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument))
 		})
 	})
@@ -196,21 +196,21 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			claimed := f.claim(ctx, "platform", durationpb.New(time.Minute))
 
 			f.as(f.user)
-			_, err := f.work().Heartbeat(ctx, connect.NewRequest(&skiftv1.HeartbeatRequest{RequestId: newID(), LeaseId: claimed.GetLease().GetId()}))
+			_, err := f.work().Heartbeat(ctx, &skiftv1.HeartbeatRequest{RequestId: newID(), LeaseId: claimed.GetLease().GetId()})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeFailedPrecondition), "held by another principal")
 
 			f.as(f.agent)
-			renewed, err := f.work().Heartbeat(ctx, connect.NewRequest(&skiftv1.HeartbeatRequest{
+			renewed, err := f.work().Heartbeat(ctx, &skiftv1.HeartbeatRequest{
 				RequestId: newID(), LeaseId: claimed.GetLease().GetId(), Ttl: durationpb.New(30 * time.Minute),
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(renewed.Msg.GetLease().GetExpiresAt().AsTime()).To(BeTemporally(">", claimed.GetLease().GetExpiresAt().AsTime()))
+			Expect(renewed.GetLease().GetExpiresAt().AsTime()).To(BeTemporally(">", claimed.GetLease().GetExpiresAt().AsTime()))
 
-			_, err = f.work().Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
+			_, err = f.work().Release(ctx, &skiftv1.ReleaseRequest{
 				RequestId: newID(), LeaseId: claimed.GetLease().GetId(), Reason: skiftv1.ReleaseReason_RELEASE_REASON_CRASH,
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			_, err = f.work().Heartbeat(ctx, connect.NewRequest(&skiftv1.HeartbeatRequest{RequestId: newID(), LeaseId: claimed.GetLease().GetId()}))
+			_, err = f.work().Heartbeat(ctx, &skiftv1.HeartbeatRequest{RequestId: newID(), LeaseId: claimed.GetLease().GetId()})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeFailedPrecondition), "no longer live")
 		})
 	})
@@ -221,17 +221,17 @@ var _ = Describe("WorkService", Label(testsupport.DBLabel), func() {
 			claimed := f.claim(ctx, "platform", nil)
 
 			f.as(f.agent)
-			released, err := f.work().Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{
+			released, err := f.work().Release(ctx, &skiftv1.ReleaseRequest{
 				RequestId: newID(), LeaseId: claimed.GetLease().GetId(), Reason: skiftv1.ReleaseReason_RELEASE_REASON_GATE, Detail: "waiting on review",
-			}))
+			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(released.Msg.GetLease().GetReleaseReason()).To(Equal(skiftv1.ReleaseReason_RELEASE_REASON_GATE))
+			Expect(released.GetLease().GetReleaseReason()).To(Equal(skiftv1.ReleaseReason_RELEASE_REASON_GATE))
 
-			ready, err := f.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}}))
+			ready, err := f.work().Ready(ctx, &skiftv1.ReadyRequest{Filter: &skiftv1.NodeFilter{Projects: []string{"platform"}}})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(numbers(ready.Msg.GetNodes())).To(Equal([]int64{1}))
+			Expect(numbers(ready.GetNodes())).To(Equal([]int64{1}))
 
-			_, err = f.work().Release(ctx, connect.NewRequest(&skiftv1.ReleaseRequest{RequestId: newID(), LeaseId: claimed.GetLease().GetId()}))
+			_, err = f.work().Release(ctx, &skiftv1.ReleaseRequest{RequestId: newID(), LeaseId: claimed.GetLease().GetId()})
 			Expect(connect.CodeOf(err)).To(Equal(connect.CodeInvalidArgument), "a reason is required")
 		})
 	})

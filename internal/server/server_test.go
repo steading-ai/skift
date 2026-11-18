@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -27,11 +27,11 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		r := start(server.Config{}, server.Services{Graph: graphStub{}}, pinger{})
 
 		By("when a client calls GetProject over that socket")
-		res, err := r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		res, err := r.graph().GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 
 		By("then a response is returned")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Msg.GetProject().GetSlug()).To(Equal("skeleton"))
+		Expect(res.GetProject().GetSlug()).To(Equal("skeleton"))
 	})
 
 	It("The generated Connect client reaches the server over the socket", func(ctx SpecContext) {
@@ -39,8 +39,8 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		r := start(server.Config{}, server.Services{}, pinger{})
 
 		By("when the generated client calls each service")
-		_, graphErr := r.graph().GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{}))
-		_, workErr := r.work().Ready(ctx, connect.NewRequest(&skiftv1.ReadyRequest{}))
+		_, graphErr := r.graph().GetProject(ctx, &skiftv1.GetProjectRequest{})
+		_, workErr := r.work().Ready(ctx, &skiftv1.ReadyRequest{})
 
 		By("then every call is answered by the handler, as a Connect error rather than a 404")
 		Expect(connect.CodeOf(graphErr)).To(Equal(connect.CodeUnimplemented))
@@ -110,17 +110,17 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		work := newWorkStub()
 		r := start(server.Config{}, server.Services{Work: work}, pinger{})
 		type result struct {
-			res *connect.Response[skiftv1.ClaimNextResponse]
+			res *skiftv1.ClaimNextResponse
 			err error
 		}
 		results := make(chan result, 1)
 		go func() {
 			defer GinkgoRecover()
-			res, err := r.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+			res, err := r.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{
 				RequestId: "wait-1",
 				Filter:    &skiftv1.NodeFilter{Projects: []string{"skeleton"}},
 				Wait:      durationpb.New(time.Minute),
-			}))
+			})
 			results <- result{res, err}
 		}()
 		Eventually(work.waiting).Should(Receive(), "the call never reached the handler")
@@ -133,10 +133,10 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		var got result
 		Eventually(results, 10*time.Second).Should(Receive(&got))
 		Expect(got.err).NotTo(HaveOccurred())
-		Expect(got.res.Msg.GetNode()).To(BeNil(), "nothing was claimed")
+		Expect(got.res.GetNode()).To(BeNil(), "nothing was claimed")
 
 		By("and no lease is left in an inconsistent state")
-		Expect(got.res.Msg.GetLease()).To(BeNil())
+		Expect(got.res.GetLease()).To(BeNil())
 		Expect(work.claims.Load()).To(BeZero())
 		Eventually(stopped).Should(Receive(BeNil()), "the drain finished without forcing connections closed")
 	})
@@ -150,11 +150,11 @@ var _ = Describe("Connect server over a unix socket", Label("unit"), func() {
 		for i := range waiters {
 			go func() {
 				defer GinkgoRecover()
-				_, err := r.work().ClaimNext(ctx, connect.NewRequest(&skiftv1.ClaimNextRequest{
+				_, err := r.work().ClaimNext(ctx, &skiftv1.ClaimNextRequest{
 					RequestId: "wait-" + strconv.Itoa(i),
 					Filter:    &skiftv1.NodeFilter{Projects: []string{"skeleton"}},
 					Wait:      durationpb.New(time.Minute),
-				}))
+				})
 				errs <- err
 			}()
 		}

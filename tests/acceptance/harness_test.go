@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/jackc/pgx/v5"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -168,7 +168,7 @@ func deploy(ctx context.Context) *deployment {
 		SocketPath:      filepath.Join(dir, "laptop.sock"),
 		ShutdownTimeout: 5 * time.Second,
 		Logger:          slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
-		Interceptors: []connect.Interceptor{interceptor.NewPrincipal(
+		Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(
 			server.NewIdentityLookup(svc), interceptor.TailscaleResolver{WhoIs: tn},
 		)},
 		Transports: []server.Transport{tn},

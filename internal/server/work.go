@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
-	"fmt"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
@@ -27,20 +26,20 @@ func NewWorkService(svc *domain.Service) *WorkService {
 }
 
 // Ready implements skiftv1connect.WorkServiceHandler.
-func (w *WorkService) Ready(ctx context.Context, req *connect.Request[skiftv1.ReadyRequest]) (*connect.Response[skiftv1.ReadyResponse], error) {
+func (w *WorkService) Ready(ctx context.Context, req *skiftv1.ReadyRequest) (*skiftv1.ReadyResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	f := req.Msg.GetFilter()
+	f := req.GetFilter()
 	if err := rejectStatusHeld(f); err != nil {
 		return nil, err
 	}
-	offset, err := decodePageToken(req.Msg.GetPageToken())
+	offset, err := decodePageToken(req.GetPageToken())
 	if err != nil {
 		return nil, err
 	}
-	size := pageSize(req.Msg.GetPageSize())
+	size := pageSize(req.GetPageSize())
 	nodes, held, err := w.svc.Ready(ctx, orgID, actor, f.GetProjects(), domain.ReadyQuery{
 		Kinds:        f.GetKinds(),
 		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
@@ -54,35 +53,35 @@ func (w *WorkService) Ready(ctx context.Context, req *connect.Request[skiftv1.Re
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.ReadyResponse{
-		Nodes:         toNodes(nodes, viewOr(req.Msg.GetView(), skiftv1.View_VIEW_SUMMARY)),
+	return &skiftv1.ReadyResponse{
+		Nodes:         toNodes(nodes, viewOr(req.GetView(), skiftv1.View_VIEW_SUMMARY)),
 		NextPageToken: nextPageToken(offset, size, len(nodes)),
-		HeldCount:     int32(held), //nolint:gosec // a project's open nodes
-	}), nil
+		HeldCount:     int32(held),
+	}, nil
 }
 
 // ClaimNext implements skiftv1connect.WorkServiceHandler. A waiting claim
 // ends early, empty, when the server starts draining, so a shutdown never
 // cuts a client off mid-wait and never interrupts a claim mid-transaction.
-func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
+func (w *WorkService) ClaimNext(ctx context.Context, req *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	f := req.Msg.GetFilter()
+	f := req.GetFilter()
 	if err := rejectStatusHeld(f); err != nil {
 		return nil, err
 	}
-	wait, err := fromDuration(req.Msg.GetWait())
+	wait, err := fromDuration(req.GetWait())
 	if err != nil {
 		return nil, err
 	}
-	ttl, err := fromDuration(req.Msg.GetTtl())
+	ttl, err := fromDuration(req.GetTtl())
 	if err != nil {
 		return nil, err
 	}
 	out, err := w.svc.ClaimNext(ctx, orgID, actor, domain.ClaimRequest{
-		RequestID:    req.Msg.GetRequestId(),
+		RequestID:    req.GetRequestId(),
 		Projects:     f.GetProjects(),
 		Kinds:        f.GetKinds(),
 		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
@@ -92,9 +91,9 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[skiftv
 		Parent:       f.GetParent(),
 		TTL:          ttl,
 		Wait:         wait,
-		Harness:      req.Msg.GetHarness(),
-		AgentRef:     req.Msg.GetAgentRef(),
-		SessionRef:   req.Msg.GetSessionRef(),
+		Harness:      req.GetHarness(),
+		AgentRef:     req.GetAgentRef(),
+		SessionRef:   req.GetSessionRef(),
 		Stop:         Draining(ctx),
 	})
 	if err != nil {
@@ -108,31 +107,31 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *connect.Request[skiftv
 		res.Comments = toCommentsHint(out.Comments)
 		res.Project = toProject(*out.Project)
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // Heartbeat implements skiftv1connect.WorkServiceHandler.
-func (w *WorkService) Heartbeat(ctx context.Context, req *connect.Request[skiftv1.HeartbeatRequest]) (*connect.Response[skiftv1.HeartbeatResponse], error) {
+func (w *WorkService) Heartbeat(ctx context.Context, req *skiftv1.HeartbeatRequest) (*skiftv1.HeartbeatResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	ttl, err := fromDuration(req.Msg.GetTtl())
+	ttl, err := fromDuration(req.GetTtl())
 	if err != nil {
 		return nil, err
 	}
-	change, err := w.svc.Heartbeat(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetLeaseId(), ttl)
+	change, err := w.svc.Heartbeat(ctx, orgID, actor, req.GetRequestId(), req.GetLeaseId(), ttl)
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.HeartbeatResponse{Lease: toLease(change.Lease)}), nil
+	return &skiftv1.HeartbeatResponse{Lease: toLease(change.Lease)}, nil
 }
 
 // ReportUsage implements skiftv1connect.WorkServiceHandler. The report
 // is applied as a one-operation patch carrying the attempt's lease, so it
 // is fenced, idempotent, and evented like every other write to a held
 // node.
-func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[skiftv1.ReportUsageRequest]) (*connect.Response[skiftv1.ReportUsageResponse], error) {
+func (w *WorkService) ReportUsage(ctx context.Context, req *skiftv1.ReportUsageRequest) (*skiftv1.ReportUsageResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
@@ -141,14 +140,14 @@ func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[skif
 		return nil, err
 	}
 	out, err := w.svc.Apply(ctx, orgID, actor, domain.Patch{
-		RequestID: req.Msg.GetRequestId(),
-		Project:   req.Msg.GetProject(),
-		LeaseID:   req.Msg.GetLeaseId(),
+		RequestID: req.GetRequestId(),
+		Project:   req.GetProject(),
+		LeaseID:   req.GetLeaseId(),
 		Ops: []domain.Op{{ReportUsage: &domain.ReportUsage{
-			Node: req.Msg.GetNode(), Model: req.Msg.GetModel(),
+			Node: req.GetNode(), Model: req.GetModel(),
 			Tokens: domain.Tokens{
-				InputTokens: req.Msg.GetInputTokens(), OutputTokens: req.Msg.GetOutputTokens(),
-				CacheReadTokens: req.Msg.GetCacheReadTokens(), CacheWriteTokens: req.Msg.GetCacheWriteTokens(),
+				InputTokens: req.GetInputTokens(), OutputTokens: req.GetOutputTokens(),
+				CacheReadTokens: req.GetCacheReadTokens(), CacheWriteTokens: req.GetCacheWriteTokens(),
 			},
 		}}},
 	})
@@ -159,7 +158,7 @@ func (w *WorkService) ReportUsage(ctx context.Context, req *connect.Request[skif
 	if len(out.Usage) > 0 {
 		res.Usage = toUsage(out.Usage[0])
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // onlyOrchestrators refuses a principal that runs work rather than
@@ -173,22 +172,20 @@ func onlyOrchestrators(actor domain.Actor) error {
 	if actor.PrincipalKind == string(interceptor.KindUser) {
 		return nil
 	}
-	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf(
-		"the orchestrator reports usage, not the %s that does the work: "+
-			"record what a node is expected to cost with the estimate_node operation of a patch, "+
-			"and leave reporting what an attempt cost to whoever dispatched it",
-		actor.PrincipalKind))
+	return connect.Errorf(connect.CodePermissionDenied, "the orchestrator reports usage, not the %s that does the work: "+
+		"record what a node is expected to cost with the estimate_node operation of a patch, "+
+		"and leave reporting what an attempt cost to whoever dispatched it", actor.PrincipalKind)
 }
 
 // Release implements skiftv1connect.WorkServiceHandler.
-func (w *WorkService) Release(ctx context.Context, req *connect.Request[skiftv1.ReleaseRequest]) (*connect.Response[skiftv1.ReleaseResponse], error) {
+func (w *WorkService) Release(ctx context.Context, req *skiftv1.ReleaseRequest) (*skiftv1.ReleaseResponse, error) {
 	orgID, actor, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	change, err := w.svc.Release(ctx, orgID, actor, req.Msg.GetRequestId(), req.Msg.GetLeaseId(), releaseReasons.str(req.Msg.GetReason()), req.Msg.GetDetail())
+	change, err := w.svc.Release(ctx, orgID, actor, req.GetRequestId(), req.GetLeaseId(), releaseReasons.str(req.GetReason()), req.GetDetail())
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return connect.NewResponse(&skiftv1.ReleaseResponse{Lease: toLease(change.Lease)}), nil
+	return &skiftv1.ReleaseResponse{Lease: toLease(change.Lease)}, nil
 }

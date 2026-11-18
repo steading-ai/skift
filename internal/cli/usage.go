@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -128,11 +127,11 @@ tokens. An agent records an estimate with "skift estimate" instead.`,
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.ReportUsageResponse, error) {
-				res, err := c.Work.ReportUsage(cmd.Context(), connect.NewRequest(&skiftv1.ReportUsageRequest{
+				res, err := c.Work.ReportUsage(cmd.Context(), &skiftv1.ReportUsageRequest{
 					RequestId: orMint(requestID), Project: project, LeaseId: lease, Node: ref.String(),
 					Model: tokens.model, InputTokens: tokens.input, OutputTokens: tokens.output,
 					CacheReadTokens: tokens.cacheRead, CacheWriteTokens: tokens.cacheWrite,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},

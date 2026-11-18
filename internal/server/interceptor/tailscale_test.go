@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -35,9 +36,11 @@ func (w *whoIsTable) WhoIs(_ context.Context, remoteAddr string) (string, error)
 // interceptor in front of graph.
 func serveTailnet(lookup interceptor.Lookup, graph skiftv1connect.GraphServiceHandler, whoIs interceptor.WhoIs) *httptest.Server {
 	mux := http.NewServeMux()
-	mux.Handle(skiftv1connect.NewGraphServiceHandler(graph, connect.WithInterceptors(
+	rpc := connect.NewServer(
 		interceptor.NewPrincipal(lookup, interceptor.UnixResolver{}, interceptor.TailscaleResolver{WhoIs: whoIs}),
-	)))
+	)
+	skiftv1connect.RegisterGraphServiceHandler(rpc, graph)
+	connecthttp.Mount(mux, rpc)
 	ts := httptest.NewUnstartedServer(mux)
 	ts.Config.ConnContext = interceptor.TailnetConnContext
 	ts.Start()
@@ -55,8 +58,8 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 		ts := serveTailnet(interceptor.StaticLookup{laptop: alice}, graph, whoIs)
 
 		By("when the node calls the service over the tailnet")
-		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(ts.Client(), ts.URL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("then the request is attributed to that principal through the tailscale scheme")
@@ -76,8 +79,8 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 		By("when an unmapped tailnet node calls the service")
 		graph := newRecordingGraph()
 		ts := serveTailnet(interceptor.StaticLookup{}, graph, &whoIsTable{node: "nSTRANGER"})
-		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(ts.Client(), ts.URL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 
 		By("then the call fails as unauthenticated")
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
@@ -87,8 +90,8 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 	It("fails the call when the tailnet cannot say who is calling", func(ctx SpecContext) {
 		graph := newRecordingGraph()
 		ts := serveTailnet(interceptor.StaticLookup{laptop: alice}, graph, &whoIsTable{err: errors.New("no such peer")})
-		_, err := skiftv1connect.NewGraphServiceClient(ts.Client(), ts.URL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "skeleton"}))
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(ts.Client(), ts.URL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "skeleton"})
 		Expect(connect.CodeOf(err)).To(Equal(connect.CodeUnauthenticated))
 		Expect(err.Error()).To(ContainSubstring("no such peer"))
 		Expect(graph.seen).NotTo(Receive())
@@ -100,14 +103,14 @@ var _ = Describe("Tailscale identity resolver", Label("unit"), func() {
 		r := interceptor.TailscaleResolver{WhoIs: whoIs}
 
 		By("when it resolves")
-		_, err := r.Resolve(ctx, connect.Peer{Addr: "127.0.0.1:1"}, http.Header{})
+		_, err := r.Resolve(ctx, interceptor.Peer{Addr: "127.0.0.1:1"}, http.Header{})
 
 		By("then it passes to the next resolver, and the tailnet was never consulted")
 		Expect(err).To(MatchError(interceptor.ErrNoIdentity))
 		Expect(whoIs.asked).To(BeEmpty())
 
 		By("and a marked connection resolves to the node")
-		id, err := r.Resolve(interceptor.WithTailnetPeer(ctx, "100.64.0.7:51234"), connect.Peer{}, http.Header{})
+		id, err := r.Resolve(interceptor.WithTailnetPeer(ctx, "100.64.0.7:51234"), interceptor.Peer{}, http.Header{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(id).To(Equal(laptop))
 		Expect(whoIs.asked).To(Equal([]string{"100.64.0.7:51234"}))

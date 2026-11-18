@@ -3,10 +3,11 @@ package cli
 import (
 	"context"
 	"errors"
+	"io"
 	"os/signal"
 	"syscall"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -43,24 +44,29 @@ Delivery is at least once: consumers deduplicate by event id.`,
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			stream, err := c.Events.WatchEvents(ctx, connect.NewRequest(&skiftv1.WatchEventsRequest{
+			stream, err := c.Events.WatchEvents(ctx, &skiftv1.WatchEventsRequest{
 				Cursor: cursor, Project: project, Ops: ops,
-			}))
+			})
 			if err != nil {
 				return err
 			}
 			defer stream.Close() //nolint:errcheck // the stream ends with the command
-			for stream.Receive() {
-				if err := p.emit(stream.Msg()); err != nil {
+			for {
+				res, err := stream.Receive()
+				switch {
+				case errors.Is(err, io.EOF):
+					return nil
+				case err != nil && errors.Is(ctx.Err(), context.Canceled) &&
+					(errors.Is(err, context.Canceled) || connect.CodeOf(err) == connect.CodeCanceled):
+					// Interrupted by the user: the stream ended as asked.
+					return nil
+				case err != nil:
+					return err
+				}
+				if err := p.emit(res); err != nil {
 					return err
 				}
 			}
-			err = stream.Err()
-			if err == nil || errors.Is(ctx.Err(), context.Canceled) && connect.CodeOf(err) == connect.CodeCanceled {
-				// Interrupted by the user: the stream ended as asked.
-				return nil
-			}
-			return err
 		},
 	}
 	cmd.Flags().StringVar(&cursor, "cursor", "", "resume after this cursor (default: from now)")

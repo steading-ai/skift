@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"connectrpc.com/connect"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -25,14 +24,14 @@ type lifetimeWork struct {
 	node     *skiftv1.Node
 }
 
-func (w lifetimeWork) Release(_ context.Context, r *connect.Request[skiftv1.ReleaseRequest]) (*connect.Response[skiftv1.ReleaseResponse], error) {
-	w.releases <- r.Msg.GetLeaseId()
-	return connect.NewResponse(&skiftv1.ReleaseResponse{}), nil
+func (w lifetimeWork) Release(_ context.Context, r *skiftv1.ReleaseRequest) (*skiftv1.ReleaseResponse, error) {
+	w.releases <- r.GetLeaseId()
+	return &skiftv1.ReleaseResponse{}, nil
 }
 
-func (w lifetimeWork) ClaimNext(_ context.Context, r *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
-	w.claims <- r.Msg.GetRequestId()
-	return connect.NewResponse(&skiftv1.ClaimNextResponse{Lease: w.lease, Node: w.node}), nil
+func (w lifetimeWork) ClaimNext(_ context.Context, r *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
+	w.claims <- r.GetRequestId()
+	return &skiftv1.ClaimNextResponse{Lease: w.lease, Node: w.node}, nil
 }
 
 var _ = Describe("stdio retried claim lifetime", Label("unit"), func() {

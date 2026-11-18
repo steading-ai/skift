@@ -22,8 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 )
 
 // Kind is what sort of actor a principal is. The values match the
@@ -62,6 +63,13 @@ func (id Identity) String() string {
 	return id.Scheme + ":" + id.Value
 }
 
+// Peer is the network address a request arrived from, as the transport
+// reports it. A resolver that identifies the caller by its connection,
+// such as the unix socket's, reads the connection from the context instead.
+type Peer struct {
+	Addr string
+}
+
 // Resolver identifies the caller of one request from its transport. One
 // exists per transport, and the principal interceptor tries them in order.
 type Resolver interface {
@@ -70,7 +78,7 @@ type Resolver interface {
 	// Resolve returns the caller's identity. It returns [ErrNoIdentity]
 	// when the request did not arrive over this resolver's transport, so
 	// the next resolver is tried; any other error fails the request.
-	Resolve(ctx context.Context, peer connect.Peer, header http.Header) (Identity, error)
+	Resolve(ctx context.Context, peer Peer, header http.Header) (Identity, error)
 }
 
 // ErrNoIdentity is returned by a Resolver whose transport carries nothing it
@@ -138,11 +146,6 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 	return c.identity, ok
 }
 
-// principalInterceptor is the resolution step of the request path.
-type principalInterceptor struct {
-	auth *Authenticator
-}
-
 // Authenticator shares transport identity resolution between Connect and HTTP.
 // It never accepts an identity from a request's application metadata.
 type Authenticator struct {
@@ -158,7 +161,7 @@ func NewAuthenticator(lookup Lookup, resolvers ...Resolver) *Authenticator {
 // Middleware authenticates every HTTP request, including discovery and listing.
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.Authenticate(r.Context(), connect.Peer{Addr: r.RemoteAddr}, r.Header)
+		ctx, err := a.Authenticate(r.Context(), Peer{Addr: r.RemoteAddr}, r.Header)
 		if err != nil {
 			status := http.StatusUnauthorized
 			if connect.CodeOf(err) == connect.CodeInternal {
@@ -176,61 +179,55 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 // transport decides the identity. A request no resolver recognises, or whose
 // identity no principal holds, fails with [connect.CodeUnauthenticated]
 // before reaching a handler.
-func NewPrincipal(lookup Lookup, resolvers ...Resolver) connect.Interceptor {
-	return &principalInterceptor{auth: NewAuthenticator(lookup, resolvers...)}
+func NewPrincipal(lookup Lookup, resolvers ...Resolver) connect.ServerInterceptor {
+	auth := NewAuthenticator(lookup, resolvers...)
+	return func(next connect.ServerFunc) connect.ServerFunc {
+		return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
+			info, ok := connect.CallInfoForServerContext(ctx)
+			if !ok {
+				return connect.NewError(connect.CodeInternal, "interceptor: no call info for "+spec.Procedure)
+			}
+			ctx, err := auth.Authenticate(ctx, Peer{Addr: info.PeerAddr}, httpHeader(info.RequestHeader()))
+			if err != nil {
+				return err
+			}
+			return next(ctx, spec, stream)
+		}
+	}
+}
+
+// httpHeader copies a Connect request header into the form a [Resolver]
+// reads, the same one an HTTP request carries.
+func httpHeader(h *connect.Header) http.Header {
+	out := make(http.Header, h.Len())
+	for key, values := range h.All() {
+		out[key] = slices.Clone(values)
+	}
+	return out
 }
 
 // Authenticate runs the resolvers and lookup and returns the attributed context.
 // Existing caller attribution is not trusted: Connect rechecks the transport.
-func (p *Authenticator) Authenticate(ctx context.Context, peer connect.Peer, header http.Header) (context.Context, error) {
+func (p *Authenticator) Authenticate(ctx context.Context, peer Peer, header http.Header) (context.Context, error) {
 	for _, r := range p.resolvers {
 		id, err := r.Resolve(ctx, peer, header)
 		if errors.Is(err, ErrNoIdentity) {
 			continue
 		}
 		if err != nil {
-			return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("%s: %w", r.Scheme(), err))
+			err = fmt.Errorf("%s: %w", r.Scheme(), err)
+			return nil, connect.NewError(connect.CodeUnauthenticated, err.Error()).WithCause(err)
 		}
 		principal, err := p.lookup.LookupIdentity(ctx, id)
 		if err != nil {
 			var unmapped *UnmappedIdentityError
 			if errors.As(err, &unmapped) {
-				return nil, connect.NewError(connect.CodeUnauthenticated, err)
+				return nil, connect.NewError(connect.CodeUnauthenticated, err.Error()).WithCause(err)
 			}
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("interceptor: look up %s: %w", id, err))
+			err = fmt.Errorf("interceptor: look up %s: %w", id, err)
+			return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 		}
 		return WithCaller(ctx, principal, id), nil
 	}
-	return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("interceptor: no transport identity"))
-}
-
-// WrapUnary implements [connect.Interceptor].
-func (p *principalInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		if req.Spec().IsClient {
-			return next(ctx, req)
-		}
-		ctx, err := p.auth.Authenticate(ctx, req.Peer(), req.Header())
-		if err != nil {
-			return nil, err
-		}
-		return next(ctx, req)
-	}
-}
-
-// WrapStreamingClient implements [connect.Interceptor]. Resolution is a
-// server concern, so the client side passes through.
-func (p *principalInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return next
-}
-
-// WrapStreamingHandler implements [connect.Interceptor].
-func (p *principalInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		ctx, err := p.auth.Authenticate(ctx, conn.Peer(), conn.RequestHeader())
-		if err != nil {
-			return err
-		}
-		return next(ctx, conn)
-	}
+	return nil, connect.NewError(connect.CodeUnauthenticated, "interceptor: no transport identity")
 }

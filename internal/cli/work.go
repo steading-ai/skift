@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -134,9 +133,9 @@ To take work, use "skift claim", which returns a node under a lease, and
 				filter.Kinds = []string{f.kind}
 			}
 			return send(a, cmd, func() (*skiftv1.ReadyResponse, error) {
-				res, err := c.Work.Ready(cmd.Context(), connect.NewRequest(&skiftv1.ReadyRequest{
+				res, err := c.Work.Ready(cmd.Context(), &skiftv1.ReadyRequest{
 					Filter: filter, PageSize: page.size, PageToken: page.token, View: v,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},
@@ -223,12 +222,12 @@ func claimNext(ctx context.Context, c *client.Client, req *skiftv1.ClaimNextRequ
 			chunk = min(chunk, time.Until(deadline))
 		}
 		req.Wait = durationpb.New(max(chunk, 0))
-		res, err := c.Work.ClaimNext(ctx, connect.NewRequest(req))
+		res, err := c.Work.ClaimNext(ctx, req)
 		if err != nil {
 			return nil, err
 		}
-		if res.Msg.GetNode() != nil || wait == 0 || (wait > 0 && !time.Now().Before(deadline)) {
-			return res.Msg, nil
+		if res.GetNode() != nil || wait == 0 || (wait > 0 && !time.Now().Before(deadline)) {
+			return res, nil
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("wait for work: %w", err)
@@ -253,7 +252,7 @@ func (a *app) heartbeatCommand() *cobra.Command {
 				req.Ttl = durationpb.New(ttl)
 			}
 			return send(a, cmd, func() (*skiftv1.HeartbeatResponse, error) {
-				res, err := c.Work.Heartbeat(cmd.Context(), connect.NewRequest(req))
+				res, err := c.Work.Heartbeat(cmd.Context(), req)
 				return unwrap(res, err)
 			})
 		},
@@ -282,9 +281,9 @@ func (a *app) releaseCommand() *cobra.Command {
 				return err
 			}
 			return send(a, cmd, func() (*skiftv1.ReleaseResponse, error) {
-				res, err := c.Work.Release(cmd.Context(), connect.NewRequest(&skiftv1.ReleaseRequest{
+				res, err := c.Work.Release(cmd.Context(), &skiftv1.ReleaseRequest{
 					RequestId: orMint(requestID), LeaseId: args[0], Reason: r, Detail: detail,
-				}))
+				})
 				return unwrap(res, err)
 			})
 		},

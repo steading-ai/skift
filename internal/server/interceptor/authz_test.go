@@ -1,7 +1,8 @@
 package interceptor_test
 
 import (
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -21,8 +22,8 @@ var _ = Describe("Authorization at the interceptor", Label("unit"), func() {
 		client := serve(lookup, server.Services{Graph: graph}, interceptor.UnixResolver{})
 
 		By("when an agent calls a method naming a project the default policy gives it no rights over")
-		_, err := skiftv1connect.NewGraphServiceClient(client, baseURL).
-			GetProject(ctx, connect.NewRequest(&skiftv1.GetProjectRequest{Project: "finance"}))
+		_, err := skiftv1connect.NewGraphServiceClient(connect.NewClient(connecthttp.NewTransport(client, baseURL))).
+			GetProject(ctx, &skiftv1.GetProjectRequest{Project: "finance"})
 
 		By("then the interceptor admits the call, attributed, and leaves the resource decision to the domain")
 		Expect(err).NotTo(HaveOccurred())

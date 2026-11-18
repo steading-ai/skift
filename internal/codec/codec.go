@@ -15,11 +15,15 @@ package codec
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	"connectrpc.com/connect/v2/connectproto"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -92,53 +96,58 @@ func explain(raw []byte, md protoreflect.MessageDescriptor, allowUnknown bool, e
 	return err
 }
 
-// Name is the codec name Connect negotiates JSON under.
+// Name is the codec name Connect negotiates JSON under. Connect drops a
+// utf-8 charset from the content type before matching, so this one name
+// also covers a client that spells it.
 const Name = "json"
 
-// nameUTF8 is the same codec under the content type a client may spell
-// with a charset. Connect treats the two as separate registrations.
-const nameUTF8 = Name + "; charset=utf-8"
-
 // Codec is [Marshal] and [Unmarshal] as a Connect codec, registered under
-// one of the JSON names.
-type Codec struct{ name string }
+// [Name].
+type Codec struct{}
 
-var (
-	_ connect.Codec = Codec{}
-	_ interface {
-		MarshalStable(any) ([]byte, error)
-		IsBinary() bool
-	} = Codec{}
-)
-
-// New is the codec registered under name.
-func New(name string) Codec { return Codec{name: name} }
+var _ connect.StableCodec = Codec{}
 
 // HandlerOptions register the codec on a Connect handler in place of the
-// default protojson one, under both names Connect knows JSON by.
-func HandlerOptions() []connect.HandlerOption {
-	return []connect.HandlerOption{connect.WithCodec(New(Name)), connect.WithCodec(New(nameUTF8))}
+// default protojson one. The list replaces Connect's defaults, so the
+// binary protobuf codec is named beside it.
+func HandlerOptions() []connecthttp.Option {
+	return []connecthttp.Option{connecthttp.WithCodecs(connectproto.NewBinaryCodec(), Codec{})}
 }
 
-func (c Codec) Name() string { return c.name }
+func (Codec) Name() string { return Name }
 
-func (c Codec) Marshal(message any) ([]byte, error) {
+func (c Codec) MarshalWrite(_ context.Context, dst io.Writer, message any) error {
 	m, ok := message.(proto.Message)
 	if !ok {
-		return nil, fmt.Errorf("codec: %T is not a proto message", message)
+		return fmt.Errorf("codec: %T is not a proto message", message)
 	}
-	return Marshal(m)
+	raw, err := Marshal(m)
+	if err != nil {
+		return err
+	}
+	_, err = dst.Write(raw)
+	return err
 }
 
-// MarshalStable is Marshal, which is already compact and ordered by field
-// index: Connect asks for it when a message goes in a URL.
-func (c Codec) MarshalStable(message any) ([]byte, error) { return c.Marshal(message) }
+// MarshalWriteStable is MarshalWrite, which is already compact and ordered
+// by field index: Connect asks for it when a message goes in a URL.
+func (c Codec) MarshalWriteStable(ctx context.Context, dst io.Writer, message any) error {
+	return c.MarshalWrite(ctx, dst, message)
+}
 
 // IsBinary reports that the encoding is text, so Connect may put it in a
 // URL unescaped.
-func (c Codec) IsBinary() bool { return false }
+func (Codec) IsBinary() bool { return false }
 
-func (c Codec) Unmarshal(raw []byte, message any) error {
+func (c Codec) UnmarshalRead(_ context.Context, src io.Reader, message any) error {
+	raw, err := io.ReadAll(src)
+	if err != nil {
+		return err
+	}
+	return c.unmarshal(raw, message)
+}
+
+func (Codec) unmarshal(raw []byte, message any) error {
 	m, ok := message.(proto.Message)
 	if !ok {
 		return fmt.Errorf("codec: %T is not a proto message", message)

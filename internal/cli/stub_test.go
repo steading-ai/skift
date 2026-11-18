@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectproto"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
@@ -185,18 +186,18 @@ func ttlOr(d *durationpb.Duration) time.Duration {
 
 // GraphService.
 
-func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[skiftv1.ApplyPatchRequest]) (*connect.Response[skiftv1.ApplyPatchResponse], error) {
-	s.record(req.Msg)
+func (s *stub) ApplyPatch(_ context.Context, req *skiftv1.ApplyPatchRequest) (*skiftv1.ApplyPatchResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if req.Msg.GetRequestId() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrNoRequestID)
+	if req.GetRequestId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrNoRequestID.Error()).WithCause(domain.ErrNoRequestID)
 	}
-	if req.Msg.GetProject() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrProjectRequired)
+	if req.GetProject() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrProjectRequired.Error()).WithCause(domain.ErrProjectRequired)
 	}
-	res := &skiftv1.ApplyPatchResponse{Aliases: map[string]string{}, RequestId: req.Msg.GetRequestId()}
-	for _, op := range req.Msg.GetOps() {
+	res := &skiftv1.ApplyPatchResponse{Aliases: map[string]string{}, RequestId: req.GetRequestId()}
+	for _, op := range req.GetOps() {
 		switch o := op.GetOp().(type) {
 		case *skiftv1.PatchOp_CreateNode:
 			n := s.newNode(o.CreateNode.GetTitle())
@@ -220,8 +221,8 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[skiftv1.ApplyP
 				res.Aliases[alias] = n.GetReference()
 			}
 		case *skiftv1.PatchOp_CompleteNode:
-			if req.Msg.GetLeaseId() == expiredLease {
-				return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+			if req.GetLeaseId() == expiredLease {
+				return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive.Error()).WithCause(domain.ErrLeaseNotLive)
 			}
 			if len(s.nodes) > 0 {
 				n := s.nodes[0]
@@ -284,18 +285,18 @@ func (s *stub) ApplyPatch(_ context.Context, req *connect.Request[skiftv1.ApplyP
 		case *skiftv1.PatchOp_AddComment, *skiftv1.PatchOp_EstimateNode:
 			// Recorded; nothing to return.
 		default:
-			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("stub: %T", o))
+			return nil, connect.Errorf(connect.CodeUnimplemented, "stub: %T", o)
 		}
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
-func (s *stub) GetNode(_ context.Context, req *connect.Request[skiftv1.GetNodeRequest]) (*connect.Response[skiftv1.GetNodeResponse], error) {
-	s.record(req.Msg)
+func (s *stub) GetNode(_ context.Context, req *skiftv1.GetNodeRequest) (*skiftv1.GetNodeResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.nodes) == 0 {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound.Error()).WithCause(domain.ErrNodeNotFound)
 	}
 	res := &skiftv1.GetNodeResponse{
 		Node:         s.nodes[0],
@@ -315,7 +316,7 @@ func (s *stub) GetNode(_ context.Context, req *connect.Request[skiftv1.GetNodeRe
 	}
 	// The full view is the one that carries content, and cost is content:
 	// the node's current estimate and the rollup over its subtree.
-	if req.Msg.GetView() == skiftv1.View_VIEW_FULL || req.Msg.GetView() == skiftv1.View_VIEW_UNSPECIFIED {
+	if req.GetView() == skiftv1.View_VIEW_FULL || req.GetView() == skiftv1.View_VIEW_UNSPECIFIED {
 		res.Estimate = &skiftv1.Usage{
 			Kind: skiftv1.UsageKind_USAGE_KIND_ESTIMATE, Model: "claude-opus-5",
 			InputTokens: 120000, OutputTokens: 8000, Basis: "two nodes of the same shape",
@@ -325,46 +326,46 @@ func (s *stub) GetNode(_ context.Context, req *connect.Request[skiftv1.GetNodeRe
 			Estimate: []*skiftv1.ModelTotals{{Model: "claude-opus-5", Records: 1, InputTokens: 120000, OutputTokens: 8000}},
 		}
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // GetInputs answers with every node but the last as an input of the last,
 // each carrying a result, which is enough for a spec to check what a
 // command sent and printed.
-func (s *stub) GetInputs(_ context.Context, req *connect.Request[skiftv1.GetInputsRequest]) (*connect.Response[skiftv1.GetInputsResponse], error) {
-	s.record(req.Msg)
+func (s *stub) GetInputs(_ context.Context, req *skiftv1.GetInputsRequest) (*skiftv1.GetInputsResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.nodes) == 0 {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound.Error()).WithCause(domain.ErrNodeNotFound)
 	}
 	res := &skiftv1.GetInputsResponse{}
 	for _, n := range s.nodes[:len(s.nodes)-1] {
 		body := "result of " + n.GetTitle()
 		in := &skiftv1.Input{Node: n, Bytes: int64(len(body))}
-		if req.Msg.GetView() != skiftv1.View_VIEW_SUMMARY && req.Msg.GetView() != skiftv1.View_VIEW_REFS {
+		if req.GetView() != skiftv1.View_VIEW_SUMMARY && req.GetView() != skiftv1.View_VIEW_REFS {
 			in.Result = &skiftv1.Result{Body: body}
 		}
 		res.Inputs = append(res.Inputs, in)
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // ListNodes filters the stub's nodes the way the handler does — status,
 // kind, labels and assignee kind narrow the page, never widen it — and
 // projects each through the requested view, which defaults to a summary.
-func (s *stub) ListNodes(_ context.Context, req *connect.Request[skiftv1.ListNodesRequest]) (*connect.Response[skiftv1.ListNodesResponse], error) {
-	s.record(req.Msg)
+func (s *stub) ListNodes(_ context.Context, req *skiftv1.ListNodesRequest) (*skiftv1.ListNodesResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &skiftv1.ListNodesResponse{}
 	for _, n := range s.nodes {
-		if !matches(n, req.Msg) {
+		if !matches(n, req) {
 			continue
 		}
-		res.Nodes = append(res.Nodes, summarize(n, req.Msg.GetView()))
+		res.Nodes = append(res.Nodes, summarize(n, req.GetView()))
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // matches reports whether a node passes every filter the request sets.
@@ -398,142 +399,141 @@ func summarize(n *skiftv1.Node, view skiftv1.View) *skiftv1.Node {
 	return out
 }
 
-func (s *stub) Explain(_ context.Context, req *connect.Request[skiftv1.ExplainRequest]) (*connect.Response[skiftv1.ExplainResponse], error) {
-	s.record(req.Msg)
+func (s *stub) Explain(_ context.Context, req *skiftv1.ExplainRequest) (*skiftv1.ExplainResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.nodes) < 2 {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrNodeNotFound.Error()).WithCause(domain.ErrNodeNotFound)
 	}
 	reasons := s.reasons
 	if reasons == nil {
 		reasons = []*skiftv1.Reason{{Reason: &skiftv1.Reason_Blocked{Blocked: &skiftv1.BlockedReason{Blocker: s.nodes[0]}}}}
 	}
-	return connect.NewResponse(&skiftv1.ExplainResponse{Node: s.nodes[1], Reasons: reasons}), nil
+	return &skiftv1.ExplainResponse{Node: s.nodes[1], Reasons: reasons}, nil
 }
 
-func (s *stub) Search(_ context.Context, req *connect.Request[skiftv1.SearchRequest]) (*connect.Response[skiftv1.SearchResponse], error) {
-	s.record(req.Msg)
+func (s *stub) Search(_ context.Context, req *skiftv1.SearchRequest) (*skiftv1.SearchResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &skiftv1.SearchResponse{}
 	for _, n := range s.nodes {
-		res.Hits = append(res.Hits, &skiftv1.SearchHit{Node: n, Snippet: "<b>" + req.Msg.GetQuery() + "</b>"})
+		res.Hits = append(res.Hits, &skiftv1.SearchHit{Node: n, Snippet: "<b>" + req.GetQuery() + "</b>"})
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
-func (s *stub) CreateProject(_ context.Context, req *connect.Request[skiftv1.CreateProjectRequest]) (*connect.Response[skiftv1.CreateProjectResponse], error) {
-	s.record(req.Msg)
+func (s *stub) CreateProject(_ context.Context, req *skiftv1.CreateProjectRequest) (*skiftv1.CreateProjectResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// A title of Forbidden is refused the way policy refuses, with a
 	// detail attached, so a spec can see how a denial is rendered.
-	if req.Msg.GetTitle() == "Forbidden" {
-		denied := connect.NewError(connect.CodePermissionDenied, fmt.Errorf("no rule permits agent create_project"))
-		if detail, err := connect.NewErrorDetail(&skiftv1.Project{Slug: "policy", Title: "default bundle"}); err == nil {
-			denied.AddDetail(detail)
+	if req.GetTitle() == "Forbidden" {
+		denied := connect.Errorf(connect.CodePermissionDenied, "no rule permits agent create_project")
+		if detail, err := connectproto.NewErrorDetail(&skiftv1.Project{Slug: "policy", Title: "default bundle"}); err == nil {
+			denied = denied.WithDetail(detail)
 		}
 		return nil, denied
 	}
-	slug := req.Msg.GetSlug()
+	slug := req.GetSlug()
 	if slug == "" {
 		slug = "derived"
 	}
-	p := s.newProject(slug, req.Msg.GetTitle())
-	p.Priority = req.Msg.GetPriority()
-	p.VcsUrl = req.Msg.GetVcsUrl()
-	return connect.NewResponse(&skiftv1.CreateProjectResponse{Project: p}), nil
+	p := s.newProject(slug, req.GetTitle())
+	p.Priority = req.GetPriority()
+	p.VcsUrl = req.GetVcsUrl()
+	return &skiftv1.CreateProjectResponse{Project: p}, nil
 }
 
-func (s *stub) UpdateProject(_ context.Context, req *connect.Request[skiftv1.UpdateProjectRequest]) (*connect.Response[skiftv1.UpdateProjectResponse], error) {
-	s.record(req.Msg)
+func (s *stub) UpdateProject(_ context.Context, req *skiftv1.UpdateProjectRequest) (*skiftv1.UpdateProjectResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, ok := s.projects[req.Msg.GetProject()]
+	p, ok := s.projects[req.GetProject()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound.Error()).WithCause(domain.ErrProjectNotFound)
 	}
-	if req.Msg.VcsUrl != nil {
-		p.VcsUrl = req.Msg.GetVcsUrl()
+	if req.VcsUrl != nil {
+		p.VcsUrl = req.GetVcsUrl()
 	}
-	return connect.NewResponse(&skiftv1.UpdateProjectResponse{Project: p}), nil
+	return &skiftv1.UpdateProjectResponse{Project: p}, nil
 }
 
-func (s *stub) GetProject(_ context.Context, req *connect.Request[skiftv1.GetProjectRequest]) (*connect.Response[skiftv1.GetProjectResponse], error) {
-	s.record(req.Msg)
+func (s *stub) GetProject(_ context.Context, req *skiftv1.GetProjectRequest) (*skiftv1.GetProjectResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, ok := s.projects[req.Msg.GetProject()]
+	p, ok := s.projects[req.GetProject()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, &domain.NotFoundError{
-			Ref: domain.Ref{Project: req.Msg.GetProject()}, Missing: domain.MissingProject,
-		})
+		missing := &domain.NotFoundError{Ref: domain.Ref{Project: req.GetProject()}, Missing: domain.MissingProject}
+		return nil, connect.NewError(connect.CodeNotFound, missing.Error()).WithCause(missing)
 	}
-	return connect.NewResponse(&skiftv1.GetProjectResponse{Project: p}), nil
+	return &skiftv1.GetProjectResponse{Project: p}, nil
 }
 
-func (s *stub) ListProjects(_ context.Context, req *connect.Request[skiftv1.ListProjectsRequest]) (*connect.Response[skiftv1.ListProjectsResponse], error) {
-	s.record(req.Msg)
+func (s *stub) ListProjects(_ context.Context, req *skiftv1.ListProjectsRequest) (*skiftv1.ListProjectsResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &skiftv1.ListProjectsResponse{NextPageToken: "next"}
 	for i := len(s.projectOrder) - 1; i >= 0; i-- {
 		p := s.projects[s.projectOrder[i]]
-		if p.GetArchivedAt() != nil && !req.Msg.GetIncludeArchived() {
+		if p.GetArchivedAt() != nil && !req.GetIncludeArchived() {
 			continue
 		}
 		res.Projects = append(res.Projects, p)
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
-func (s *stub) ArchiveProject(_ context.Context, req *connect.Request[skiftv1.ArchiveProjectRequest]) (*connect.Response[skiftv1.ArchiveProjectResponse], error) {
-	s.record(req.Msg)
+func (s *stub) ArchiveProject(_ context.Context, req *skiftv1.ArchiveProjectRequest) (*skiftv1.ArchiveProjectResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, ok := s.projects[req.Msg.GetProject()]
+	p, ok := s.projects[req.GetProject()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound.Error()).WithCause(domain.ErrProjectNotFound)
 	}
 	p.ArchivedAt = timestamppb.Now()
-	return connect.NewResponse(&skiftv1.ArchiveProjectResponse{Project: p}), nil
+	return &skiftv1.ArchiveProjectResponse{Project: p}, nil
 }
 
-func (s *stub) HoldProject(_ context.Context, req *connect.Request[skiftv1.HoldProjectRequest]) (*connect.Response[skiftv1.HoldProjectResponse], error) {
-	s.record(req.Msg)
+func (s *stub) HoldProject(_ context.Context, req *skiftv1.HoldProjectRequest) (*skiftv1.HoldProjectResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, ok := s.projects[req.Msg.GetProject()]
+	p, ok := s.projects[req.GetProject()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound.Error()).WithCause(domain.ErrProjectNotFound)
 	}
-	p.Hold = &skiftv1.Hold{At: timestamppb.Now(), By: "01HZZZZZZZZZZZZZZZZZZZZZZU", Reason: req.Msg.GetReason()}
-	return connect.NewResponse(&skiftv1.HoldProjectResponse{Project: p, HeldCount: int32(len(s.nodes))}), nil
+	p.Hold = &skiftv1.Hold{At: timestamppb.Now(), By: "01HZZZZZZZZZZZZZZZZZZZZZZU", Reason: req.GetReason()}
+	return &skiftv1.HoldProjectResponse{Project: p, HeldCount: int32(len(s.nodes))}, nil
 }
 
-func (s *stub) UnholdProject(_ context.Context, req *connect.Request[skiftv1.UnholdProjectRequest]) (*connect.Response[skiftv1.UnholdProjectResponse], error) {
-	s.record(req.Msg)
+func (s *stub) UnholdProject(_ context.Context, req *skiftv1.UnholdProjectRequest) (*skiftv1.UnholdProjectResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, ok := s.projects[req.Msg.GetProject()]
+	p, ok := s.projects[req.GetProject()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, domain.ErrProjectNotFound.Error()).WithCause(domain.ErrProjectNotFound)
 	}
 	p.Hold = nil
-	return connect.NewResponse(&skiftv1.UnholdProjectResponse{Project: p}), nil
+	return &skiftv1.UnholdProjectResponse{Project: p}, nil
 }
 
-func (s *stub) Focus(_ context.Context, req *connect.Request[skiftv1.FocusRequest]) (*connect.Response[skiftv1.FocusResponse], error) {
-	s.record(req.Msg)
-	return connect.NewResponse(&skiftv1.FocusResponse{
-		Group: "01HZZZZZZZZZZZZZZZZZZZZZZF", HeldCount: int32(len(req.Msg.GetKeep())),
-	}), nil
+func (s *stub) Focus(_ context.Context, req *skiftv1.FocusRequest) (*skiftv1.FocusResponse, error) {
+	s.record(req)
+	return &skiftv1.FocusResponse{
+		Group: "01HZZZZZZZZZZZZZZZZZZZZZZF", HeldCount: int32(len(req.GetKeep())),
+	}, nil
 }
 
-func (s *stub) ClearFocus(_ context.Context, req *connect.Request[skiftv1.ClearFocusRequest]) (*connect.Response[skiftv1.ClearFocusResponse], error) {
-	s.record(req.Msg)
-	return connect.NewResponse(&skiftv1.ClearFocusResponse{ReleasedCount: 1}), nil
+func (s *stub) ClearFocus(_ context.Context, req *skiftv1.ClearFocusRequest) (*skiftv1.ClearFocusResponse, error) {
+	s.record(req)
+	return &skiftv1.ClearFocusResponse{ReleasedCount: 1}, nil
 }
 
 // WorkService.
@@ -549,8 +549,8 @@ func (s *stub) ready() []*skiftv1.Node {
 	return out
 }
 
-func (s *stub) Ready(_ context.Context, req *connect.Request[skiftv1.ReadyRequest]) (*connect.Response[skiftv1.ReadyResponse], error) {
-	s.record(req.Msg)
+func (s *stub) Ready(_ context.Context, req *skiftv1.ReadyRequest) (*skiftv1.ReadyResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &skiftv1.ReadyResponse{Nodes: s.ready()}
@@ -561,7 +561,7 @@ func (s *stub) Ready(_ context.Context, req *connect.Request[skiftv1.ReadyReques
 			}
 		}
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // stubCommentsHint is the comments hint every node the stub hands out
@@ -572,9 +572,9 @@ func stubCommentsHint() *skiftv1.CommentsHint {
 
 // ClaimNext hands out the first ready node, or waits for one up to the
 // request's wait, bounded like the real handler.
-func (s *stub) ClaimNext(ctx context.Context, req *connect.Request[skiftv1.ClaimNextRequest]) (*connect.Response[skiftv1.ClaimNextResponse], error) {
-	s.record(req.Msg)
-	deadline := time.Now().Add(min(req.Msg.GetWait().AsDuration(), domain.MaxClaimWait))
+func (s *stub) ClaimNext(ctx context.Context, req *skiftv1.ClaimNextRequest) (*skiftv1.ClaimNextResponse, error) {
+	s.record(req)
+	deadline := time.Now().Add(min(req.GetWait().AsDuration(), domain.MaxClaimWait))
 	for {
 		s.mu.Lock()
 		ready := s.ready()
@@ -585,75 +585,75 @@ func (s *stub) ClaimNext(ctx context.Context, req *connect.Request[skiftv1.Claim
 			n.Ready, n.Claimed = false, true
 			s.mu.Lock()
 			id := fmt.Sprintf("01JLEASE%019d", len(s.leases)+1)
-			s.leases[id] = &stubLease{node: n, expiresAt: time.Now().Add(ttlOr(req.Msg.GetTtl()))}
+			s.leases[id] = &stubLease{node: n, expiresAt: time.Now().Add(ttlOr(req.GetTtl()))}
 			l := s.lease(id)
 			s.mu.Unlock()
-			return connect.NewResponse(&skiftv1.ClaimNextResponse{Node: n, Lease: l, Comments: stubCommentsHint()}), nil
+			return &skiftv1.ClaimNextResponse{Node: n, Lease: l, Comments: stubCommentsHint()}, nil
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			return connect.NewResponse(&skiftv1.ClaimNextResponse{}), nil
+			return &skiftv1.ClaimNextResponse{}, nil
 		}
 		select {
 		case <-ctx.Done():
-			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
+			return nil, connect.NewError(connect.CodeCanceled, ctx.Err().Error()).WithCause(ctx.Err())
 		case <-gate:
 		case <-time.After(min(remaining, 20*time.Millisecond)):
 		}
 	}
 }
 
-func (s *stub) Heartbeat(_ context.Context, req *connect.Request[skiftv1.HeartbeatRequest]) (*connect.Response[skiftv1.HeartbeatResponse], error) {
-	s.record(req.Msg)
+func (s *stub) Heartbeat(_ context.Context, req *skiftv1.HeartbeatRequest) (*skiftv1.HeartbeatResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expire()
-	if req.Msg.GetLeaseId() == expiredLease {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+	if req.GetLeaseId() == expiredLease {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive.Error()).WithCause(domain.ErrLeaseNotLive)
 	}
-	if held, ok := s.leases[req.Msg.GetLeaseId()]; ok {
+	if held, ok := s.leases[req.GetLeaseId()]; ok {
 		if held.reason != skiftv1.ReleaseReason_RELEASE_REASON_UNSPECIFIED {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+			return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive.Error()).WithCause(domain.ErrLeaseNotLive)
 		}
-		held.expiresAt = time.Now().Add(ttlOr(req.Msg.GetTtl()))
+		held.expiresAt = time.Now().Add(ttlOr(req.GetTtl()))
 	}
-	return connect.NewResponse(&skiftv1.HeartbeatResponse{Lease: s.lease(req.Msg.GetLeaseId())}), nil
+	return &skiftv1.HeartbeatResponse{Lease: s.lease(req.GetLeaseId())}, nil
 }
 
-func (s *stub) Release(_ context.Context, req *connect.Request[skiftv1.ReleaseRequest]) (*connect.Response[skiftv1.ReleaseResponse], error) {
-	s.record(req.Msg)
+func (s *stub) Release(_ context.Context, req *skiftv1.ReleaseRequest) (*skiftv1.ReleaseResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if held, ok := s.leases[req.Msg.GetLeaseId()]; ok {
-		held.reason = req.Msg.GetReason()
+	if held, ok := s.leases[req.GetLeaseId()]; ok {
+		held.reason = req.GetReason()
 		held.node.Claimed, held.node.Ready = false, true
 	}
-	l := s.lease(req.Msg.GetLeaseId())
-	l.ReleaseReason = req.Msg.GetReason()
-	return connect.NewResponse(&skiftv1.ReleaseResponse{Lease: l}), nil
+	l := s.lease(req.GetLeaseId())
+	l.ReleaseReason = req.GetReason()
+	return &skiftv1.ReleaseResponse{Lease: l}, nil
 }
 
 // ReportUsage records the report and answers with the record the service
 // would have stored, so a spec can check what the command sent.
-func (s *stub) ReportUsage(_ context.Context, req *connect.Request[skiftv1.ReportUsageRequest]) (*connect.Response[skiftv1.ReportUsageResponse], error) {
-	s.record(req.Msg)
+func (s *stub) ReportUsage(_ context.Context, req *skiftv1.ReportUsageRequest) (*skiftv1.ReportUsageResponse, error) {
+	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if req.Msg.GetLeaseId() == expiredLease {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive)
+	if req.GetLeaseId() == expiredLease {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseNotLive.Error()).WithCause(domain.ErrLeaseNotLive)
 	}
-	return connect.NewResponse(&skiftv1.ReportUsageResponse{Usage: &skiftv1.Usage{
-		LeaseId: req.Msg.GetLeaseId(), Model: req.Msg.GetModel(), Kind: skiftv1.UsageKind_USAGE_KIND_ACTUAL,
-		InputTokens: req.Msg.GetInputTokens(), OutputTokens: req.Msg.GetOutputTokens(),
-		CacheReadTokens: req.Msg.GetCacheReadTokens(), CacheWriteTokens: req.Msg.GetCacheWriteTokens(),
+	return &skiftv1.ReportUsageResponse{Usage: &skiftv1.Usage{
+		LeaseId: req.GetLeaseId(), Model: req.GetModel(), Kind: skiftv1.UsageKind_USAGE_KIND_ACTUAL,
+		InputTokens: req.GetInputTokens(), OutputTokens: req.GetOutputTokens(),
+		CacheReadTokens: req.GetCacheReadTokens(), CacheWriteTokens: req.GetCacheWriteTokens(),
 		CreatedAt: timestamppb.Now(),
-	}}), nil
+	}}, nil
 }
 
 // EventService.
 
-func (s *stub) WatchEvents(_ context.Context, req *connect.Request[skiftv1.WatchEventsRequest], stream *connect.ServerStream[skiftv1.WatchEventsResponse]) error {
-	s.record(req.Msg)
+func (s *stub) WatchEvents(_ context.Context, req *skiftv1.WatchEventsRequest, stream skiftv1connect.EventServiceWatchEventsServerStream) error {
+	s.record(req)
 	for i := 1; i <= 2; i++ {
 		if err := stream.Send(&skiftv1.WatchEventsResponse{
 			Event:  &skiftv1.Event{Id: fmt.Sprintf("01JEVENT%018d", i), Op: "create_node", OccurredAt: timestamppb.Now()},

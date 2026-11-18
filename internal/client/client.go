@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 )
@@ -41,7 +42,7 @@ type Client struct {
 // New builds a client for cfg. An Address selects the network transport; a
 // Socket, or nothing, selects the unix socket. Nothing is dialled until the
 // first call.
-func New(cfg Config, opts ...connect.ClientOption) (*Client, error) {
+func New(cfg Config) (*Client, error) {
 	httpClient, transport, target, err := newHTTPClient(cfg)
 	if err != nil {
 		return nil, err
@@ -50,10 +51,13 @@ func New(cfg Config, opts ...connect.ClientOption) (*Client, error) {
 	if transport == TransportHTTP {
 		base = target
 	}
+	// Responses are not size-limited, as the service's requests are not: a
+	// page within the domain's ceilings can exceed Connect's default.
+	rpc := connect.NewClient(connecthttp.NewTransport(httpClient, base, connecthttp.WithReadMaxBytes(0)))
 	return &Client{
-		Graph:     skiftv1connect.NewGraphServiceClient(httpClient, base, opts...),
-		Work:      skiftv1connect.NewWorkServiceClient(httpClient, base, opts...),
-		Events:    skiftv1connect.NewEventServiceClient(httpClient, base, opts...),
+		Graph:     skiftv1connect.NewGraphServiceClient(rpc),
+		Work:      skiftv1connect.NewWorkServiceClient(rpc),
+		Events:    skiftv1connect.NewEventServiceClient(rpc),
 		transport: transport,
 		target:    target,
 	}, nil
