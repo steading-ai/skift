@@ -90,9 +90,28 @@ func argsError(err error, target any) error {
 		name := unknownField.FindStringSubmatch(err.Error())[1]
 		return usage("unknown field %q; fields are %s", name, strings.Join(argFields(target), ", "))
 	case errors.As(err, &typeErr):
-		return usage("%sexpected %s", prefixOf(typeErr.Field), goType(typeErr.Type))
+		return usage("%sexpected %s", prefixOf(fieldPath(typeErr.Field)), goType(typeErr.Type))
 	}
 	return usage("arguments: %v", err)
+}
+
+// fieldPath writes a decoder's dotted field path in the codec's notation,
+// with array indices bracketed: keep.0 becomes keep[0], as ops[0] does
+// there. Every argument struct is decoded from objects and arrays alone,
+// so an all-digit segment is always an index.
+func fieldPath(field string) string {
+	var b strings.Builder
+	for i, seg := range strings.Split(field, ".") {
+		switch {
+		case seg != "" && strings.Trim(seg, "0123456789") == "":
+			b.WriteString("[" + seg + "]")
+		case i > 0:
+			b.WriteString("." + seg)
+		default:
+			b.WriteString(seg)
+		}
+	}
+	return b.String()
 }
 
 // argFields lists the JSON names of a struct's fields, in declaration
