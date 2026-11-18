@@ -167,8 +167,9 @@ func Attach(ctx context.Context, handoff string) (*Postgres, error) {
 
 // URL is the handoff a SynchronizedBeforeSuite passes from the process
 // that called [Start] to the ones that call [Attach]: the superuser URL of
-// the maintenance database, carrying the template's name as its fragment,
-// which no client sends to the server.
+// the maintenance database, carrying the template's name as its fragment.
+// It is not a connection string: pgx, like libpq, reads a # as part of
+// the value before it, so [Attach] strips the fragment before connecting.
 func (p *Postgres) URL() string { return p.adminURL + "#" + p.template }
 
 // Stop removes what this process created: the container, or on a shared

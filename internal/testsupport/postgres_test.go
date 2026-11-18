@@ -128,7 +128,10 @@ var _ = Describe("PostgreSQL harness", Label(testsupport.DBLabel), func() {
 		// before Database() observes the server after the harness dropped
 		// the spec's database.
 		DeferCleanup(func(ctx context.Context) {
-			admin, err := pgx.Connect(ctx, pg.URL())
+			server, err := url.Parse(pg.URL())
+			Expect(err).NotTo(HaveOccurred())
+			server.Fragment = ""
+			admin, err := pgx.Connect(ctx, server.String())
 			Expect(err).NotTo(HaveOccurred())
 			defer admin.Close(ctx) //nolint:errcheck // single-statement session
 			var exists bool
