@@ -48,9 +48,10 @@ func (c docCommand) String() string {
 var (
 	shellFence = regexp.MustCompile("^ {0,3}(```+|~~~+) *([A-Za-z0-9_+-]*)")
 	assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
-	// A flag as cobra prints it: an optional shorthand, the name, the
+	// A flag as cobra prints it: an optional shorthand, the name, an
+	// optional value attached in brackets as a bool's [=true|false], the
 	// type of its value when it takes one, then its usage.
-	helpFlag = regexp.MustCompile(`^\s+(?:-([A-Za-z0-9]), )?--([A-Za-z0-9][A-Za-z0-9-]*)(?: (\S+))?(?:\s{2,}|$)`)
+	helpFlag = regexp.MustCompile(`^\s+(?:-([A-Za-z0-9]), )?--([A-Za-z0-9][A-Za-z0-9-]*)(?:\[=\S*\])?(?: (\S+))?(?:\s{2,}|$)`)
 	helpName = regexp.MustCompile(`^  ([a-z][a-z0-9-]*)\s`)
 )
 
