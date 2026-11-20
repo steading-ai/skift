@@ -11,10 +11,13 @@ import (
 
 func (s *mcpServer) toolset() []*mcpTool {
 	projects, err := s.app.currentProjects()
-	tools := mcptools.New(mcptools.Execution{
-		Graph: s.app.client.Graph, Work: s.app.client.Work, Projects: projects,
+	execution := mcptools.Execution{Projects: projects,
 		Harness: s.harness, AgentRef: s.agentRef, SessionRef: s.sessionRef, Leases: stdioLeaseHooks{s},
-	})
+	}
+	if s.app.client != nil {
+		execution.Graph, execution.Work = s.app.client.Graph, s.app.client.Work
+	}
+	tools := mcptools.New(execution)
 	out := make([]*mcpTool, 0, len(tools))
 	for _, t := range tools {
 		description := t.Description
@@ -29,6 +32,9 @@ rather than continuing.`
 		}
 		out = append(out, &mcpTool{name: t.Name, description: description, schema: t.InputSchema,
 			invoke: func(ctx context.Context, args json.RawMessage) mcptools.Result {
+				if s.unconfigured != nil {
+					return mcptools.Result{IsError: true, Content: []mcptools.Content{{Type: "text", Text: s.unconfiguredText()}}}
+				}
 				if err != nil {
 					return mcptools.Result{IsError: true, Content: []mcptools.Content{{Type: "text", Text: toolErrorText(t.Name, err)}}}
 				}

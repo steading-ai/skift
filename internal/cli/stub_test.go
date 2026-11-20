@@ -60,6 +60,9 @@ type stub struct {
 	// edges are every edge a patch added, which GetNode reports for the
 	// nodes at either end.
 	edges []*skiftv1.Edge
+	// unauthenticated makes ListProjects refuse the caller, as the service
+	// does one it has mapped to no principal.
+	unauthenticated bool
 }
 
 // byRef finds a node by its reference, bare or qualified. Callers hold
@@ -477,6 +480,9 @@ func (s *stub) ListProjects(_ context.Context, req *skiftv1.ListProjectsRequest)
 	s.record(req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.unauthenticated {
+		return nil, connect.NewError(connect.CodeUnauthenticated, "no principal for this caller")
+	}
 	res := &skiftv1.ListProjectsResponse{NextPageToken: "next"}
 	for i := len(s.projectOrder) - 1; i >= 0; i-- {
 		p := s.projects[s.projectOrder[i]]

@@ -47,6 +47,8 @@ Run without a subcommand it is the CLI, a Connect client with JSON output.
 "skift migrate" brings the database to the current schema.
 "skift admin bootstrap" creates the first organization and principal.
 "skift reap" expires stale leases; skift-reap.timer runs it.
+"skift doctor" checks that the CLI, the service, the MCP server and the
+skills are set up.
 
 Node references are "#7" in the current project, "slug#7" in another
 project of the organization, or "org/slug#7" fully qualified. The current
@@ -71,13 +73,14 @@ Output is JSON whenever stdout is not a terminal, and on request with
 
 	pf := root.PersistentFlags()
 	pf.StringVar(&a.configPath, "config", "", "config file (default: $"+client.EnvConfig+", then "+client.DefaultConfigPath()+")")
-	pf.StringVar(&a.flags.Socket, "socket", "", "unix socket of the service (default: $"+client.EnvSocket+", then $XDG_RUNTIME_DIR/skift/skift.sock when it exists, then "+client.SystemSocketPath+")")
+	pf.StringVar(&a.flags.Socket, "socket", "", "unix socket of the service (default: $"+client.EnvSocket+", then $XDG_RUNTIME_DIR/skift/skift.sock when it exists, then "+client.SystemSocketPath+"; on macOS ~/.local/state/skift/skift.sock when $XDG_RUNTIME_DIR is unset)")
 	pf.StringVar(&a.flags.Address, "address", "", "URL of the service over the tailnet or HTTPS, instead of the socket (default: $"+client.EnvAddress+")")
 	pf.StringArrayVarP(&a.projects, "project", "p", nil, "project a bare #7 reference resolves in, or a filter for ready, claim, and list; repeatable (default: $"+client.EnvProject+", or every project the caller may read)")
 	pf.StringVarP(&a.output, "output", "o", "", "output format: json or text (default: json unless stdout is a terminal)")
 
 	root.AddCommand(
 		newVersionCommand(),
+		a.doctorCommand(),
 		a.mcpCommand(),
 		newServeCommand(),
 		newMigrateCommand(),
