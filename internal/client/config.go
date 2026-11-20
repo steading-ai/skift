@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // Environment variables the client reads. Each overrides the config file
@@ -47,18 +48,55 @@ type Config struct {
 const SystemSocketPath = "/run/skift/skift.sock"
 
 // DefaultSocketPath is the socket the client dials when nothing names one:
-// the invoking user's own "skift serve", under XDG_RUNTIME_DIR, when that
+// the invoking user's own "skift serve" at [UserSocketPath], when that
 // socket exists, and the system service's otherwise. A login session on a
 // host running the system service reaches it without configuration, and a
 // user's own instance takes precedence when there is one.
+//
+// On macOS there is no system service, so the user's own socket is the
+// default whether or not it exists yet.
 func DefaultSocketPath() string {
-	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		own := filepath.Join(dir, "skift", "skift.sock")
-		if _, err := os.Stat(own); err == nil {
-			return own
-		}
+	return defaultSocketPath(runtime.GOOS)
+}
+
+func defaultSocketPath(goos string) string {
+	own := userSocketPath(goos)
+	if own == "" {
+		return SystemSocketPath
+	}
+	if goos == "darwin" {
+		return own
+	}
+	if _, err := os.Stat(own); err == nil {
+		return own
 	}
 	return SystemSocketPath
+}
+
+// UserSocketPath is where a user's own "skift serve" listens:
+// skift/skift.sock under $XDG_RUNTIME_DIR. macOS sets no runtime directory,
+// so there it falls back to the XDG state directory, $XDG_STATE_HOME or
+// ~/.local/state. Empty when neither applies.
+func UserSocketPath() string {
+	return userSocketPath(runtime.GOOS)
+}
+
+func userSocketPath(goos string) string {
+	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
+		return filepath.Join(dir, "skift", "skift.sock")
+	}
+	if goos != "darwin" {
+		return ""
+	}
+	dir := os.Getenv("XDG_STATE_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		dir = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(dir, "skift", "skift.sock")
 }
 
 // DefaultConfigPath is $XDG_CONFIG_HOME/skift/config.json, with the XDG

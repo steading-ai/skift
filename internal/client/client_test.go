@@ -140,6 +140,39 @@ var _ = Describe("Client", Label("unit"), func() {
 			GinkgoT().Setenv("XDG_RUNTIME_DIR", "")
 			Expect(client.DefaultSocketPath()).To(Equal(client.SystemSocketPath))
 		})
+
+		Context("on macOS, which sets no runtime directory and runs no system service", func() {
+			BeforeEach(func() {
+				GinkgoT().Setenv("XDG_RUNTIME_DIR", "")
+			})
+
+			It("is the user's own under the XDG state directory, before the service has made it", func() {
+				state := GinkgoT().TempDir()
+				GinkgoT().Setenv("XDG_STATE_HOME", state)
+				own := filepath.Join(state, "skift", "skift.sock")
+				Expect(client.UserSocketPathOn("darwin")).To(Equal(own))
+				Expect(client.DefaultSocketPathOn("darwin")).To(Equal(own))
+			})
+
+			It("falls back to ~/.local/state when XDG_STATE_HOME is unset", func() {
+				home := GinkgoT().TempDir()
+				GinkgoT().Setenv("HOME", home)
+				GinkgoT().Setenv("XDG_STATE_HOME", "")
+				Expect(client.UserSocketPathOn("darwin")).To(Equal(filepath.Join(home, ".local", "state", "skift", "skift.sock")))
+			})
+
+			It("still prefers XDG_RUNTIME_DIR when one is set", func() {
+				dir := GinkgoT().TempDir()
+				GinkgoT().Setenv("XDG_RUNTIME_DIR", dir)
+				Expect(client.UserSocketPathOn("darwin")).To(Equal(filepath.Join(dir, "skift", "skift.sock")))
+			})
+		})
+
+		It("has no user socket on linux without a runtime directory", func() {
+			GinkgoT().Setenv("XDG_RUNTIME_DIR", "")
+			Expect(client.UserSocketPathOn("linux")).To(BeEmpty())
+			Expect(client.DefaultSocketPathOn("linux")).To(Equal(client.SystemSocketPath))
+		})
 	})
 
 	Describe("transport selection", func() {
