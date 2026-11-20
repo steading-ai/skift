@@ -69,6 +69,7 @@ Three reads are easy to confuse. `ready` is what could be worked and claims noth
 
 ## Traps
 
+- **When skift cannot be reached, diagnose it; don't hand it back.** A missing binary, a server that does not answer, or a tool error naming `skift doctor` all go the same way: run `skift doctor --output json`, tell the person what failed and its fix, and with their go-ahead apply the fix yourself. [references/commands.md](references/commands.md#when-skift-cannot-be-reached) has the details.
 - **`update_node` names its target `node`, not `ref`** — as do `drop_node`, `complete_node`, `reopen_node`, `add_comment`. Only `add_edge` differs (`from`/`to`).
 - **Edge direction is "must finish before".** Reverse it and you get a valid graph that is the wrong one; nothing errors.
 - **Giving a node a child takes it out of the ready set** until every child closes.
@@ -85,5 +86,5 @@ Three reads are easy to confuse. `ready` is what could be worked and claims noth
 
 ## References
 
-- [references/commands.md](references/commands.md) — every command with worked examples, the patch operations and aliases, node references, socket and address settings, how identity is resolved
+- [references/commands.md](references/commands.md) — every command with worked examples, the patch operations and aliases, node references, socket and address settings, diagnosing a setup with `skift doctor`, how identity is resolved
 - [references/work-orders.md](references/work-orders.md) — what a node body owes an agent starting with an empty context window, and the template

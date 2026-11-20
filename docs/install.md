@@ -1,14 +1,23 @@
 # How to install skift
 
-This guide shows how to set up skift from nothing: a server, the `skift` CLI on each workstation, and the skills and MCP server in your agent harness. At the end, an agent on a workstation asks the server what is ready and gets an answer.
+This guide shows how to set up skift from nothing: a server, the `skift` CLI on each workstation, and the skills and MCP server in your agent harness. It ends with `skift doctor`, which checks the workstation the way a new shell and a new agent session will find it.
 
-You need:
+Each step starts from what the machine already has and points at that tool's own documentation for anything that isn't skift. An agent following this guide for someone can run every command itself, once that person agrees.
 
-- A Linux host with a container runtime that runs Compose files, such as [Docker Compose](https://docs.docker.com/compose/), for the server.
-- A [Tailscale](https://tailscale.com/docs) tailnet that the server and each workstation join. Workstations reach the server over it.
-- [mise](https://mise.jdx.dev/getting-started.html) on each workstation.
+## Choose where the server runs
 
-## Run the server
+One server holds the plan for every workstation. Pick the first row that fits:
+
+| You have | Run the server |
+|----------|----------------|
+| A server someone else runs | Nothing to run. Get its address, and ask whoever runs it to [bind your workstation](#create-the-first-principal), then [install the CLI](#install-the-cli). |
+| A Linux host with Docker or Podman | [In containers](#run-the-server-in-containers), joined to a [Tailscale](https://tailscale.com/docs) tailnet that every workstation also joins. |
+| A Linux host that runs services under systemd | From the rpm: follow [How to deploy skift from the rpm](deploying.md), then [install the CLI](#install-the-cli). |
+| Only a Mac, for yourself | [As a launch agent](#run-the-server-on-a-mac), on the same Mac you work on. |
+
+## Run the server in containers
+
+You need a container runtime that runs Compose files, such as [Docker Compose](https://docs.docker.com/compose/install/) or [Podman Compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html), and a [Tailscale](https://tailscale.com/docs) tailnet.
 
 On the host, download the compose file of the release you are installing and the settings template that goes with it. Use a [release](https://github.com/steading-ai/skift/releases) that lists `docker-compose.yaml` among its assets:
 
@@ -42,8 +51,6 @@ docker compose --env-file skift.env logs skift
 
 With podman, `podman compose` takes the same arguments. If the host already runs a Compose project named `skift`, such as the development database of a checkout, set `COMPOSE_PROJECT_NAME` to another name for every command in this guide.
 
-On a host that runs its services under systemd, follow [How to deploy skift from the rpm](deploying.md) instead of this section and the next, then continue with [Install the CLI](#install-the-cli).
-
 ## Create the first principal
 
 On a workstation that has joined the tailnet, print its node's stable id:
@@ -63,9 +70,43 @@ docker compose --env-file skift.env run --rm skift \
 
 [Identity by transport](architecture.md#identity-by-transport) describes how a caller becomes a principal, and [Principal](domain-model.md#principal) what one is.
 
+## Run the server on a Mac
+
+This runs your own `skift serve` under launchd, reached over a socket in your home directory, for agents on the same Mac. Install the CLI first, as [the next section](#install-the-cli) describes, then come back here.
+
+You need PostgreSQL that the service can reach. [PostgreSQL's macOS downloads](https://www.postgresql.org/download/macosx/) list the ways to get it, among them Homebrew and Postgres.app. Create a database for skift, and write down its URL, for example `postgres://<you>@localhost:5432/skift`.
+
+Bring the database to the current schema, and make your own uid its first principal:
+
+```sh
+skift admin migrate --database-url <database url>
+skift admin bootstrap "$(id -u)" <organization> --database-url <database url>
+```
+
+Download the launch agent, [ing.stead.skift.plist](../contrib/launchd/ing.stead.skift.plist), into `~/Library/LaunchAgents/`:
+
+```sh
+curl -fsSL -o ~/Library/LaunchAgents/ing.stead.skift.plist \
+  https://raw.githubusercontent.com/steading-ai/skift/v<version>/contrib/launchd/ing.stead.skift.plist
+```
+
+launchd expands neither `~` nor variables, so edit three things in it: the path of `skift` (`command -v skift` prints it), the database URL, and your home directory in the log paths. Then load it:
+
+```sh
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/ing.stead.skift.plist
+```
+
+The service listens on `~/.local/state/skift/skift.sock`, where the CLI and `skift mcp` look by default, so a Mac that runs its own server needs no address configured. Its log is the file the agent names. Apple documents launch agents in [Creating Launch Daemons and Agents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+
 ## Install the CLI
 
-On each workstation:
+The CLI is also the MCP server, so an agent harness needs `skift` on `PATH` too, and a harness starts it outside your interactive shell. Pick the first row that fits:
+
+| You have | Install skift |
+|----------|---------------|
+| [mise](https://mise.jdx.dev) | The command below. |
+| [Homebrew](https://brew.sh), but not mise | Install mise with Homebrew, as [mise's installation guide](https://mise.jdx.dev/installing-mise.html#homebrew) describes, then the command below. |
+| Neither | Install mise as [mise's getting started guide](https://mise.jdx.dev/getting-started.html) describes, then the command below. |
 
 ```sh
 mise use -g packslip:github.com/steading-ai/skift
@@ -79,22 +120,27 @@ mise holds a release back until it is a day old, which is its [minimum release a
 mise use -g packslip:github.com/steading-ai/skift@<version>
 ```
 
-Point the CLI at the server, in your shell's profile:
+mise puts installed tools on `PATH` only once it is activated in your shell. An interactive shell needs [`mise activate`](https://mise.jdx.dev/getting-started.html#activate-mise); an agent harness and anything else that starts `skift` outside one needs mise's [shims](https://mise.jdx.dev/dev-tools/shims.html) on `PATH` as well. `skift doctor`, at the end of this guide, checks the second.
 
-```sh
-export SKIFT_ADDRESS=http://<hostname>.<tailnet>.ts.net
+A release's archives are on its [release page](https://github.com/steading-ai/skift/releases) for any other route; [How to verify a release](verifying-a-release.md) checks one by hand.
+
+## Point the CLI at the server
+
+A Mac running its own server needs nothing here. Otherwise put the server's address in `~/.config/skift/config.json`, where every process reads it, including an MCP server a harness starts:
+
+```json
+{"address": "http://<hostname>.<tailnet>.ts.net"}
 ```
 
-`<hostname>` is the server's `SKIFT_TAILNET_HOSTNAME` and `<tailnet>` your [tailnet name](https://tailscale.com/docs/features/magicdns). The tailnet's [access rules](https://tailscale.com/docs/features/access-control) must let the workstation reach the server on port 80. To set the address for every process, including an MCP server a harness starts outside your shell, put `{"address": "http://<hostname>.<tailnet>.ts.net"}` in `~/.config/skift/config.json` instead.
+`<hostname>` is the server's `SKIFT_TAILNET_HOSTNAME` and `<tailnet>` your [tailnet name](https://tailscale.com/docs/features/magicdns). The tailnet's [access rules](https://tailscale.com/docs/features/access-control) must let the workstation reach the server on port 80. `$SKIFT_ADDRESS` sets the same for one shell, and overrides the file.
 
-Confirm the CLI is installed and reaches the server:
+Confirm the CLI reaches the server:
 
 ```sh
-skift version
 skift project list
 ```
 
-A new server has no projects, so the list is empty. An `unauthenticated` error means this workstation's node is not bound to a principal: run the bootstrap command again with its stable id.
+A new server has no projects, so the list is empty. An `unauthenticated` error means this workstation is not bound to a principal: run the bootstrap command again with its stable id.
 
 ## Connect your agent
 
@@ -133,10 +179,31 @@ Each harness documents where its skills live and how it registers a server:
 
 ## Check it works
 
-Ask the agent:
+Open a new terminal, so the check sees what a fresh shell sees, and run:
+
+```sh
+skift doctor
+```
+
+It checks six things, and says how to fix each one that is not `ok`:
+
+| Check | What it asks |
+|-------|--------------|
+| `binary` | Which skift this is, and its version. |
+| `path` | Whether a login shell finds `skift`, as a harness starting `skift mcp` needs it to. |
+| `config` | Which config file, socket or address the CLI uses, and where that came from. |
+| `service` | Whether the server answers, and knows this workstation. |
+| `mcp` | Whether `skift mcp` starts and lists its tools. |
+| `skills` | Whether the skift skill is installed where a harness reads it. |
+
+It exits non-zero when a check fails, and `skift doctor --output json` prints the same report for an agent to read.
+
+Then start a new agent session and ask it:
 
 ```text
 What is ready in skift?
 ```
 
-It calls the `ready` tool of the skift MCP server, or runs `skift ready`, and reports the ready set. On a new server that set is empty.
+It calls the `ready` tool of the skift MCP server, or runs `skift ready`, and reports the ready set. On a new server that set is empty. If the MCP server cannot reach the service, its tools say so and name `skift doctor`.
+
+Stuck on a step this guide doesn't cover? Ask on the [Steading Discord](https://discord.gg/BjCu2vHgX4).
