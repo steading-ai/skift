@@ -36,12 +36,12 @@ for certificate prerequisites, modern metadata and deployment checks.
 
 ## Requirements (bundled stdio server)
 
-`skift` must be on `PATH` and able to reach a running service. The plugin does not install or build it; [How to install skift](../../docs/install.md) covers the server and the CLI. If `skift` is missing, the MCP server fails to start and the skill still loads, teaching the CLI for a binary that is not there.
+`skift` must be on `PATH` and able to reach a running service. The plugin does not install or build it; [How to install skift](../../docs/install.md) covers the server and the CLI. If `skift` is missing, the MCP server fails to start and the skill still loads, teaching the CLI for a binary that is not there. If `skift` is there but its configuration does not load, the server starts anyway and every tool answers with the error and a pointer to `skift doctor`, which checks all of this and says how to fix each part.
 
-Check before installing:
+Check before installing, and again after:
 
 ```sh
-skift version && skift project list
+skift doctor
 ```
 
 `skift` finds the service through `--socket` / `$SKIFT_SOCKET` (default: your

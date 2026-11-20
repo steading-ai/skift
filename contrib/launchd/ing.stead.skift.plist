@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The skift service as a macOS launch agent: your own "skift serve", run as
+  you, started at login and restarted if it exits on an error.
+
+  It listens on the per-user socket the CLI and "skift mcp" dial by default,
+  $XDG_RUNTIME_DIR/skift/skift.sock, or ~/.local/state/skift/skift.sock
+  where, as under launchd, there is no runtime directory. Callers are
+  identified by their uid on that socket.
+
+  launchd expands neither ~ nor variables, so before loading it replace:
+
+    /path/to/skift          the output of: command -v skift
+    DATABASE_URL's value    a PostgreSQL URL the service can reach
+    /Users/you              your home directory
+
+  Then load it, and check it:
+
+    cp ing.stead.skift.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ing.stead.skift.plist
+    skift doctor
+
+  "launchctl bootout gui/$(id -u)/ing.stead.skift" stops and unloads it.
+  docs/install.md has the rest, including the bootstrap that makes your uid
+  a principal.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ing.stead.skift</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/skift</string>
+    <string>serve</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DATABASE_URL</key>
+    <string>postgres://skift@localhost:5432/skift</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Restart after a crash, not after a clean stop. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>2</integer>
+
+  <!-- skift serve drains in-flight requests for up to 30s on SIGTERM. -->
+  <key>ExitTimeOut</key>
+  <integer>45</integer>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/you/Library/Logs/skift.log</string>
+  <key>StandardOutPath</key>
+  <string>/Users/you/Library/Logs/skift.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
