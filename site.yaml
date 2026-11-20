@@ -9,7 +9,7 @@ summary: >-
   through the same interface: a command line, an API, or an MCP server.
 fit: >-
   Skift suits people whose agents run in more than one session or on more than one machine, and who
-  want one plan all of them work from. It needs Linux and PostgreSQL.
+  want one plan all of them work from. It needs Linux or macOS, and PostgreSQL.
 facts:
   - Open source
   - ISC
@@ -159,15 +159,15 @@ quickstart:
   steps:
     - title: Set it up
       body: >-
-        Paste this into your agent. It reads how skift is installed and walks you through it: one
-        binary, a PostgreSQL database, and a first project.
-        [How to install skift](/docs/install/) is the same path by hand.
-      prompt: true
+        Paste this into your agent. It reads how skift is installed, asks before it changes anything,
+        and does each step for you: the server, the binary, the plugin, and a last check with
+        `skift doctor`. [How to install skift](/docs/install/) is the same path by hand.
+      prompt: setup
     - title: Install the plugin
       body: >-
         For Claude Code. The plugin registers skift's MCP server and teaches your agent to use it.
         [The plugin's README](https://github.com/steading-ai/skift/blob/main/plugin/skift/README.md)
-        covers what it needs and how to check it worked.
+        covers what it needs, and `skift doctor` checks it worked.
         [Agent skills and the MCP server](/docs/agent-skills/) covers every other harness.
       code: |-
         claude plugin marketplace add steading-ai/skift
