@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -1251,12 +1252,39 @@ var _ = Describe("skift mcp", Label("unit"), func() {
 			Expect(m.closeStdin()).To(Equal(0))
 		})
 
-		It("refuses to start on an address that is not a URL", func() {
+	})
+
+	Describe("Scenario: A server whose configuration does not load tells the agent how to diagnose it", func() {
+		It("A server whose configuration does not load tells the agent how to diagnose it", func() {
+			By("given an address that is not a URL")
 			m := startMCP("--address", "skift.tail1234.ts.net")
-			var code int
-			Eventually(m.exit, 10*time.Second).Should(Receive(&code))
-			Expect(code).NotTo(BeZero())
-			Expect(m.stderr.String()).To(ContainSubstring("must be an http or https URL"))
+
+			By("when the client initializes, lists the tools and calls one")
+			init := m.initialize()
+			tools := m.tools()
+			res := m.call("ready", map[string]any{})
+
+			By("then the server is up, its instructions and the tool's error carry the cause, and both name skift doctor")
+			Expect(init["instructions"]).To(ContainSubstring("must be an http or https URL"))
+			Expect(init["instructions"]).To(ContainSubstring("skift doctor"))
+			Expect(tools).To(HaveKey("ready"), "the tools are listed, so the harness shows the server as connected")
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring("must be an http or https URL"))
+			Expect(res.text).To(ContainSubstring("skift doctor"))
+			Expect(m.stderr.String()).To(ContainSubstring("must be an http or https URL"), "the harness's log carries it too")
+			Expect(m.closeStdin()).To(Equal(0))
+		})
+
+		It("reports a config file that does not parse the same way", func() {
+			path := filepath.Join(GinkgoT().TempDir(), "config.json")
+			Expect(os.WriteFile(path, []byte(`{"address": `), 0o600)).To(Succeed())
+			m := startMCP("--config", path)
+			m.initialize()
+			res := m.call("project_list", map[string]any{})
+			Expect(res.isError).To(BeTrue())
+			Expect(res.text).To(ContainSubstring("parse config"))
+			Expect(res.text).To(ContainSubstring("skift doctor"))
+			Expect(m.closeStdin()).To(Equal(0))
 		})
 	})
 

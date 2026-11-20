@@ -160,6 +160,10 @@ type mcpServer struct {
 	app *app
 	log *slog.Logger
 
+	// unconfigured is why the client could not be built, when it could
+	// not. The server still answers, and every tool reports this.
+	unconfigured error
+
 	in  io.Reader
 	out io.Writer
 	// outMu serialises responses; tool calls run concurrently.
@@ -214,27 +218,29 @@ server, which returns their nodes to the ready set.`,
 }
 
 func (a *app) runMCP(cmd *cobra.Command) error {
-	// Configuration and transport errors surface before the server
-	// answers anything; the client itself dials lazily.
-	if _, err := a.connect(); err != nil {
-		return fmt.Errorf("skift mcp: %w", err)
-	}
+	// A configuration that does not load still gets a server: a harness
+	// shows a server that exits at once as failed, with nothing the agent
+	// can read, whereas a tool that answers with the error and the way to
+	// diagnose it is something the agent can act on. The client itself
+	// dials lazily, so an unreachable service surfaces per call either way.
+	_, err := a.connect()
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	return a.newMCPServer(cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()).serve(ctx)
+	return a.newMCPServer(cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), err).serve(ctx)
 }
 
-func (a *app) newMCPServer(in io.Reader, out, diag io.Writer) *mcpServer {
+func (a *app) newMCPServer(in io.Reader, out, diag io.Writer, unconfigured error) *mcpServer {
 	hostname, _ := os.Hostname()
 	s := &mcpServer{
-		app:        a,
-		log:        logging.New(diag, slog.LevelInfo),
-		in:         in,
-		out:        out,
-		sessionRef: client.NewRequestID(),
-		harness:    "mcp",
-		agentRef:   hostname,
-		held:       map[string]*leaseHold{},
+		app:          a,
+		unconfigured: unconfigured,
+		log:          logging.New(diag, slog.LevelInfo),
+		in:           in,
+		out:          out,
+		sessionRef:   client.NewRequestID(),
+		harness:      "mcp",
+		agentRef:     hostname,
+		held:         map[string]*leaseHold{},
 	}
 	s.tools = s.toolset()
 	return s
@@ -243,7 +249,11 @@ func (a *app) newMCPServer(in io.Reader, out, diag io.Writer) *mcpServer {
 // serve runs until stdin closes or ctx is cancelled, then releases every
 // lease still held.
 func (s *mcpServer) serve(ctx context.Context) error {
-	s.log.Info("skift mcp starting", "version", version.String(), "session_ref", s.sessionRef, "transport", s.app.client.Transport(), "target", s.app.client.Target())
+	if s.unconfigured != nil {
+		s.log.Error("skift mcp starting without a service: every tool will report the configuration error", "version", version.String(), "error", s.unconfigured)
+	} else {
+		s.log.Info("skift mcp starting", "version", version.String(), "session_ref", s.sessionRef, "transport", s.app.client.Transport(), "target", s.app.client.Target())
+	}
 
 	// In-flight calls share a context that ends with the session, so a
 	// waiting claim stops when the harness goes away.
@@ -393,10 +403,14 @@ func (s *mcpServer) initialize(raw json.RawMessage) (any, *jsonrpcError) {
 	if project == "" {
 		project = "(none: call project_list for the slugs you may read, then qualify references as slug#7 or pass projects)"
 	}
+	instructions := ""
+	if s.unconfigured != nil {
+		instructions = s.unconfiguredText() + "\n\n"
+	}
 	return mcpInitializeResult{
 		ProtocolVersion: protocol,
 		ServerInfo:      mcpServerInfo{Name: "skift", Version: version.String()},
-		Instructions: fmt.Sprintf(`Skift is a project management system: a graph of work whose nodes become
+		Instructions: instructions + fmt.Sprintf(`Skift is a project management system: a graph of work whose nodes become
 ready when their dependencies are done. Current project: %s. Session: %s.
 
 Typical flow: ready or search to find work, show_node and explain to read
@@ -414,6 +428,14 @@ releases it, and only a user may place or release one.
 kind is a free string skift never interprets, task the default and bug,
 spike and chore the rest of the conventional vocabulary.`, project, s.sessionRef),
 	}, nil
+}
+
+// unconfiguredText is what the model reads when the server has no
+// service: the error, and the command that says how to fix it.
+func (s *mcpServer) unconfiguredText() string {
+	return fmt.Sprintf("skift mcp is running but cannot reach a skift service, because its configuration does not load: %v. "+
+		"Run skift doctor in a shell on this machine: it reports what is wrong and how to fix it. "+
+		"Then restart this MCP server.", s.unconfigured)
 }
 
 // callTool runs one tool. Every failure, whether a bad argument or the
