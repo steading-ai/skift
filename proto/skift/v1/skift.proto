@@ -172,8 +172,8 @@ message Hold {
   google.protobuf.Timestamp at = 1;
   // Output only. Id of the user principal that applied it.
   string by = 2;
-  // Why the work is parked. Always set: a hold nobody can explain is one
-  // nobody dares release.
+  // Why the work is parked, including the conditions for lifting the hold.
+  // Always set.
   string reason = 3;
   // Output only. The focus sweep that placed this hold, if a sweep did.
   // Empty for a hold placed on its own, which is what keeps a sweep from

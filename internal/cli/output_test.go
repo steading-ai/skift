@@ -122,7 +122,7 @@ var _ = Describe("skift text output", Label("unit"), func() {
 	It("says when nothing is ready because work is parked, and marks held nodes in a list", func() {
 		s.newNode("Work")
 		Expect(run(nil, "-p", "platform", "hold", "#1", "--reason", "parked").code).To(Equal(0))
-		Expect(run(nil, "-p", "platform", "ready").stdout.String()).To(Equal("nothing ready; 1 open nodes are held\n"))
+		Expect(run(nil, "-p", "platform", "ready").stdout.String()).To(Equal("nothing ready; open nodes held across selected projects: 1\n"))
 		out := run(nil, "-p", "platform", "node", "list").stdout.String()
 		Expect(out).To(MatchRegexp(`^#1\s+p2\s+held\s+task\s+Work\n$`))
 		Expect(run(nil, "-p", "platform", "unhold", "#1", "--reason", "back").code).To(Equal(0))

@@ -420,8 +420,8 @@ message EstimateNodeOp {
 message HoldNodeOp {
   // Node reference of the node to park.
   string node = 1;
-  // Why the work is parked. Required: a hold nobody can explain is one
-  // nobody dares release.
+  // Why the work is parked, including the conditions for lifting the hold.
+  // Required.
   string reason = 2;
 }
 
@@ -815,7 +815,8 @@ message HoldProjectRequest {
   string request_id = 1;
   // The project, by slug, org/slug, or id.
   string project = 2;
-  // Why the work is parked. Required.
+  // Why the work is parked, including the conditions for lifting the hold.
+  // Required.
   string reason = 3;
 }
 
@@ -918,10 +919,27 @@ message ReadyResponse {
   repeated Node nodes = 1;
   // Token for the next page. Empty when this is the last.
   string next_page_token = 2;
-  // How many open nodes matching the same filters are held rather than
-  // ready. Counted only when the first page is empty, so that an empty
-  // answer says whether the work is finished or parked. Zero otherwise.
+  // Open nodes held across the selected projects, regardless of other
+  // filters. Counted only when the first page is empty. Zero otherwise.
   int32 held_count = 3;
+  // A bounded summary of holds affecting matching open work, only when
+  // the first page is empty. Each hold appears at most once.
+  repeated ReadyHoldBlocker hold_blockers = 4;
+  // Number of holds affecting matching open work, including omitted holds.
+  int64 hold_blocker_count = 5;
+}
+
+// ReadyHoldBlocker identifies a stored hold and its effect on the queue.
+message ReadyHoldBlocker {
+  // The held node (project#number) or held project (project slug).
+  string reference = 1;
+  // Why the hold was placed.
+  string reason = 2;
+  // Number of distinct matching open nodes parked or blocked by the hold,
+  // not counting the held node itself.
+  int64 downstream_count = 3;
+  // A bounded sample of the downstream nodes, as project#number references.
+  repeated string downstream_references = 4;
 }
 
 // ClaimNextRequest asks for the next ready node matching a filter,

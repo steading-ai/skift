@@ -322,7 +322,7 @@ refused.`,
 			return a.setHold(cmd, args[0], reason, requestID, view, false)
 		},
 	}
-	cmd.Flags().StringVar(&reason, "reason", "", "why the work is parked; required")
+	cmd.Flags().StringVar(&reason, "reason", "", "why the work is parked, including the conditions for lifting the hold; required")
 	requestIDFlag(cmd, &requestID)
 	view.bind(cmd)
 	return cmd

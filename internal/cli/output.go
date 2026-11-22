@@ -58,8 +58,10 @@ func (p printer) text(msg proto.Message) error {
 	switch m := msg.(type) {
 	case *skiftv1.ReadyResponse:
 		writeNodes(&b, m.GetNodes())
-		if len(m.GetNodes()) == 0 && m.GetHeldCount() > 0 {
-			fmt.Fprintf(&b, "nothing ready; %d open nodes are held\n", m.GetHeldCount())
+		if len(m.GetHoldBlockers()) > 0 {
+			writeReadyHolds(&b, m)
+		} else if len(m.GetNodes()) == 0 && m.GetHeldCount() > 0 {
+			fmt.Fprintf(&b, "nothing ready; open nodes held across selected projects: %d\n", m.GetHeldCount())
 		}
 		writePageToken(&b, m.GetNextPageToken())
 	case *skiftv1.ListNodesResponse:
@@ -155,6 +157,24 @@ func (p printer) text(msg proto.Message) error {
 	}
 	_, err := io.WriteString(p.w, b.String())
 	return err
+}
+
+func writeReadyHolds(b *strings.Builder, m *skiftv1.ReadyResponse) {
+	b.WriteString("nothing ready; work is held\n")
+	for _, hold := range m.GetHoldBlockers() {
+		fmt.Fprintf(b, "    %s held: %s\n", hold.GetReference(), strings.Join(strings.Fields(hold.GetReason()), " "))
+		if hold.GetDownstreamCount() == 0 {
+			continue
+		}
+		fmt.Fprintf(b, "      downstream (%d): %s", hold.GetDownstreamCount(), strings.Join(hold.GetDownstreamReferences(), ", "))
+		if omitted := hold.GetDownstreamCount() - int64(len(hold.GetDownstreamReferences())); omitted > 0 {
+			fmt.Fprintf(b, ", and %d more", omitted)
+		}
+		b.WriteByte('\n')
+	}
+	if omitted := m.GetHoldBlockerCount() - int64(len(m.GetHoldBlockers())); omitted > 0 {
+		fmt.Fprintf(b, "    %d more holds\n", omitted)
+	}
 }
 
 // writeNodes renders one line per node. A node in the refs view has no

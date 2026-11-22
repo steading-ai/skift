@@ -141,6 +141,14 @@ Readiness is derived, so un-readiness is derivable too: the same anti-join, un-n
 
 This exists because of node limbo. A node disappears when it is blocked by something that will never complete, assigned to a human who never looks, leased by an orchestrator that died, parked by a hold nobody remembers placing, or sitting in a project everyone forgot. Most of those are visible once you can ask. The one worth detecting on its own is a node with no possible path to readiness, which is always a bug rather than a state.
 
+An empty first page of `Ready` also explains holds affecting matching open
+work. It follows dependencies and open child-to-parent waits all the way from
+a hold, names each held ticket or project once, and reports the count and a
+sample of affected downstream tickets. Only projects in the request's scope
+are traversed. Other filters, such as assignee kind and labels, apply to the
+affected work, not the hold itself. The summary does not change readiness and
+its absence does not imply that all work is finished.
+
 ## Hold
 
 A stored decision to park work. A held node leaves the ready set and nothing else about it changes: its status is still `open`, its blockers are still satisfied or not on their own terms, and it returns the moment the hold is released.
@@ -155,7 +163,7 @@ Hold is an eligibility axis, not a stage. A lease already removes a node from th
 
 **Only user principals may hold.** Parking work is a person's call, and a hold is also a way to hide work from other agents. Identity is a trust zone, so an agent running under a person's uid is that person's principal and holds with their authority; a headless agent in its own zone is refused, and the refusal names what to do instead. See [ADR-009](adrs/009-the-default-gate-policy-is-notification.md) and [ADR-006](adrs/006-provenance-not-authority.md).
 
-Every hold and release is an event carrying the principal and the reason. A reason is required, because a hold nobody can explain is one nobody dares release.
+Every hold and release is an event carrying the principal and the reason. A reason is required. When placing a hold, include the conditions for lifting it.
 
 ### Focus
 
