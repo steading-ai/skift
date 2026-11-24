@@ -31,7 +31,7 @@ name: skift
 services:
   postgres:
     # postgres:18, pinned to the multi-arch index digest.
-    image: docker.io/library/postgres:18@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
+    image: docker.io/library/postgres:18@sha256:f5cbc081c25690710f3fc6f4c61a7565382bae01ca0d0f2028a53d7926b85a20
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the env file}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the env file}
