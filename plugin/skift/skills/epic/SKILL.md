@@ -59,7 +59,7 @@ inline patch with `apply_patch` and skip all of this.
 - **`blocked_by` is dependency, never ordering preference.** An edge that only
   encodes a preference serialises work that could have run in parallel, and the
   cost is invisible until someone asks why one node is ever ready.
-- **A gate is work only a person can do** (`assignee_kind: user`). The agent work
+- **A gate is work filed for a person** (`assignee_kind: user`). The agent work
   that makes a gate easy is a *separate node the gate depends on*, never the
   gate's own body.
 - **Size against the calibration that held:** under eight acceptance criteria and

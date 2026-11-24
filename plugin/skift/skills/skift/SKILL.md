@@ -33,7 +33,7 @@ reading; and it is a round trip either way. Put what you want in the claim's
 filters instead of in a query:
 
 ```sh
-skift claim --assignee-kind agent                     # the next node an agent may take
+skift claim --assignee-kind agent                     # the next node filed for an agent
 skift claim --assignee-kind agent --min-priority p1 --label backend --kind bug
 skift claim --assignee-kind agent --wait 30m          # block until one matches
 ```
@@ -41,10 +41,9 @@ skift claim --assignee-kind agent --wait 30m          # block until one matches
 Blocking for work is `claim --wait`. `ready` never claims, and `skift ready
 --wait` answers with an error saying exactly that.
 
-**Filter `assignee_kind: agent` on every claim.** Gates are in the ready set,
-and a claim landing on one is refused whole — `an agent may not claim gate
-01J…` — rather than passing over it for the next candidate. The filter keeps a
-claim from ever selecting one.
+**`assignee_kind` chooses between agent work and gates.** Gates are in the
+ready set, so an unfiltered claim can select one. `--assignee-kind agent` takes
+agent work; `--assignee-kind user` takes a gate.
 
 If nothing is ready, `hold_blockers` names the holds affecting matching work,
 why it is parked, and which downstream tickets are waiting. Use `explain`
@@ -92,8 +91,14 @@ by containment, so parking a node parks everything under it, including work
 filed there later, and a held node still blocks what depends on it.
 
 A predecessor satisfies a dependency by being `done` **or** `dropped` — except a
-**gate** (`assignee_kind: user`), satisfied only by a user completing it. A
-dropped gate still blocks, so an agent cannot drop its own gate and proceed.
+**gate** (`assignee_kind: user`), satisfied only by a user principal completing
+it. A dropped gate still blocks.
+
+**Authorization is the service's, decided from your principal.** You are
+identified by the transport — on a unix socket, by the uid you run as — so an
+agent in a person's session acts with that person's authority. Do not predict
+what you may do or tell the person a call is theirs to make: make the call. A
+refusal names the rule and what to do instead.
 
 ## Which interface
 
@@ -144,28 +149,18 @@ work at all.
   leased, or excluded by a filter. `explain` on a node says who parked it,
   when, and why. Releasing a node's own hold does not release a hold on
   something containing it.
-- **Only a user may hold or release.** Parking work decides what everyone works
-  on next, and an agent that could park could hide work from the people and
-  agents around it. If you think something should be parked, comment where a
-  person will read it and leave it in the ready set.
-- **A gate is not an agent's to take.** A node whose `assignee_kind` is `user`
-  is work only a person can perform — signing up for a service, minting a
-  token, paying — and policy refuses an agent that claims one or completes one,
-  as it refuses reclassifying or unlinking a gate the agent filed itself.
-  Claiming with `--assignee-kind agent` means never meeting one that way; you
-  will still meet them as blockers, and the answer is never to take the gate.
-  Prepare it instead: the agent work that makes the gate easy is a **separate
-  node the gate depends on**.
+- **Preparing a gate is a separate node.** A node whose `assignee_kind` is
+  `user` is a gate: work filed for a person — signing up for a service, minting
+  a token, paying. The agent work that makes the gate easy is a **separate node
+  the gate depends on**, not the gate's own body.
 
   ```
   "Recommend a hosting provider"   →   "Sign up with the chosen provider"
      assignee_kind: agent               assignee_kind: user
   ```
 
-  Two nodes and one `blocks` edge. Claim the recommendation, complete it with
-  what you found, and the person arrives at the gate with your recommendation
-  as its inputs. If you are already holding the work the gate blocks, comment
-  your recommendation on the gate and release with reason `gate`.
+  Two nodes and one `blocks` edge. Complete the recommendation with what you
+  found, and whoever takes the gate arrives with it as their inputs.
 
 ## References
 
