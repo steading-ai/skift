@@ -12,6 +12,24 @@ local linters = new Mapping<String, Step> {
     ["golangci-lint"] = Builtins.golangci_lint
     ["go-vet"] = Builtins.go_vet
     ["buf-lint"] = Builtins.buf_lint
+    // The proto against the newest release, so a break of the public API
+    // (docs/adrs/014-what-the-version-covers.md) is a choice, not an
+    // accident. A candidate (v*-rc.N) is not a release. A checkout with no
+    // release tag has nothing to compare against and passes. The common git
+    // directory holds the tags in a linked worktree as well as a checkout.
+    ["buf-breaking"] {
+        glob = List("proto/**", "buf.yaml", "buf.lock")
+        check = new CommandSpec {
+            command = #"""
+                tag=$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' 2>/dev/null) || {
+                  echo "buf-breaking: no release tag to compare against; skipping"
+                  exit 0
+                }
+                buf breaking --against "$(git rev-parse --git-common-dir)#format=git,tag=$tag"
+                """#
+            effect = "read"
+        }
+    }
     ["jactionlint"] = Builtins.jactionlint
     // .rumdl.toml holds the rule; archive/ is unmaintained by design.
     ["rumdl"] = (Builtins.rumdl) {
