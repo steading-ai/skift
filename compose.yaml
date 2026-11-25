@@ -24,6 +24,12 @@ services:
     # single checkpointer spends most of its time in fsync while every
     # worker queues behind it.
     command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    # An init process as PID 1, not the postmaster. A process started with
+    # `exec` (the health check's pg_isready, psql from make db-reset) that
+    # outlives its session is reparented to PID 1; when the postmaster reaps
+    # one that died of a signal, it takes it for a crashed backend and
+    # restarts every server process, dropping live connections.
+    init: true
     ports:
       - "127.0.0.1:${DB_PORT:?set DB_PORT in .env}:5432"
     volumes:

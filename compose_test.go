@@ -15,9 +15,10 @@ import (
 	"github.com/onsi/gomega/gexec"
 )
 
-// composeProject keeps the specs away from the developer's own stack: a
-// different project name gives separate containers and a separate volume.
-const composeProject = "skift-spec"
+// composeProject keeps the specs away from the developer's own stack and
+// from any other run of the suite: a different project name gives separate
+// containers and a separate volume.
+var composeProject = specName("dev")
 
 // freePort asks the kernel for an unused TCP port on the loopback interface.
 func freePort() int {
@@ -97,11 +98,10 @@ var _ = Describe("Development database", Label("db", "compose"), Ordered, func()
 
 		By("and no running containers")
 		Expect(run(env, "podman", "compose", "down", "-v")).To(gexec.Exit(0))
+		DeferCleanup(func() {
+			Expect(run(env, "podman", "compose", "down", "-v")).To(gexec.Exit(0))
+		})
 		Expect(acceptsConnection(port)).To(HaveOccurred())
-	})
-
-	AfterAll(func() {
-		Expect(run(env, "podman", "compose", "down", "-v")).To(gexec.Exit(0))
 	})
 
 	It("The development database starts from nothing", func() {

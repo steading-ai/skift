@@ -23,8 +23,9 @@ import (
 const deployCompose = "contrib/docker-compose.yaml"
 
 // deployProject keeps a stack the specs start apart from one a person runs
-// from the same file, whose project is skift.
-const deployProject = "skift-contrib-spec"
+// from the same file, whose project is skift, and from any other run of
+// the suite.
+var deployProject = specName("contrib")
 
 // composeFile is the part of a compose file the specs reason about.
 type composeFile struct {
@@ -273,7 +274,8 @@ var _ = Describe("The deployment compose file", Label("unit"), func() {
 // because it compiles skift and builds an image before it starts two
 // containers.
 var _ = Describe("The deployment stack", Label("db", "compose", "slow"), Serial, Ordered, func() {
-	const image = "localhost/skift-contrib-spec:9.9.9"
+	// The run's own tag, so a concurrent run's build cannot replace it.
+	image := "localhost/" + deployProject + ":9.9.9"
 
 	var (
 		dir     string

@@ -77,7 +77,7 @@ make lint
 
 `make lint` is `hk check --all`: hk runs each check in `hk.pkl` as its own step, in parallel. `hk check` alone checks only the files you have changed, and `hk fix` applies the fixes the tools offer, such as formatting. `hk install` wires the same steps, then `make test-unit`, into a pre-commit hook over the files a commit stages; golangci-lint and go vet still check the whole module whenever a Go file is staged, because the package-boundary rules need every package.
 
-Specs labelled `db` need podman. Store specs start their own PostgreSQL through testcontainers rather than using the compose stack, so they never touch your development data. The compose specs at the repository root exercise `make db-up` and `make db-reset` under a separate compose project name (`skift-spec`) on a random port, and remove it when they finish.
+Specs labelled `db` need podman. Store specs start their own PostgreSQL through testcontainers rather than using the compose stack, so they never touch your development data. The compose specs at the repository root exercise `make db-up` and `make db-reset` under a compose project of their own, named `skift-spec-` and a random suffix, on a random port, and remove it when they finish, even when a spec fails. Every name a spec gives podman, a compose project, a container or an image, is new on each run, so suites in parallel worktrees on one machine never share one.
 
 The harness finds the rootless podman socket on its own. Set `DOCKER_HOST` to point it somewhere else.
 
