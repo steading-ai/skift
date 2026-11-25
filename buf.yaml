@@ -8,3 +8,10 @@ lint:
     - STANDARD
     # Every message, field, enum, and value states its meaning.
     - COMMENTS
+# The API is public (docs/adrs/014-what-the-version-covers.md), so a change
+# that breaks it must be deliberate. FILE is buf's strictest set: it covers
+# the binary wire and generated code alike, and the JSON wire's field and
+# enum names too, since a rename or move breaks those.
+breaking:
+  use:
+    - FILE
