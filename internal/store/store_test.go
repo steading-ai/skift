@@ -97,8 +97,12 @@ var _ = Describe("Generated query set", Label("unit"), func() {
 
 	It("scopes every query to one organization, apart from the tenancy root and identity lookup", func() {
 		// The organizations table is the scope itself, and an identity is
-		// how a transport learns which organization it is talking to.
-		unscoped := map[string]bool{"CreateOrganization": true, "GetOrganization": true, "GetOrganizationByName": true, "ListOrganizations": true, "GetPrincipalByIdentity": true}
+		// how a transport learns which organization it is talking to. The
+		// advisory locks and the snapshot boundary read no table at all.
+		unscoped := map[string]bool{
+			"CreateOrganization": true, "GetOrganization": true, "GetOrganizationByName": true, "ListOrganizations": true, "GetPrincipalByIdentity": true,
+			"LockBootstrap": true, "LockNamespaced": true, "SnapshotXMin": true,
+		}
 		for _, q := range loadQueries() {
 			if unscoped[q.name] {
 				continue

@@ -364,3 +364,16 @@ func (q *Queries) NodeHumanTouched(ctx context.Context, arg NodeHumanTouchedPara
 	err := row.Scan(&human_touched)
 	return human_touched, err
 }
+
+const snapshotXMin = `-- name: SnapshotXMin :one
+SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint
+`
+
+// SnapshotXMin is the boundary of the statement's snapshot: the lowest
+// transaction id still in progress, so every id below it has finished.
+func (q *Queries) SnapshotXMin(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, snapshotXMin)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}

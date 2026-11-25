@@ -75,7 +75,7 @@ func (g *graph) holdLock(ctx context.Context) func() {
 	Expect(err).NotTo(HaveOccurred())
 	tx, err := conn.Begin(ctx)
 	Expect(err).NotTo(HaveOccurred())
-	_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, domain.LockNamespace, g.org)
+	err = store.New(tx).LockNamespaced(ctx, store.LockNamespacedParams{Namespace: domain.LockNamespace, Key: g.org})
 	Expect(err).NotTo(HaveOccurred())
 	return func() {
 		Expect(tx.Rollback(ctx)).To(Succeed())

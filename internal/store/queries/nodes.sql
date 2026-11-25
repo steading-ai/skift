@@ -107,3 +107,10 @@ RETURNING *;
 SELECT DISTINCT hold_group::text AS hold_group FROM nodes
 WHERE org_id = $1 AND project_id = $2 AND hold_group IS NOT NULL
 ORDER BY hold_group;
+
+-- LockNode locks one node's row for the rest of the transaction. The lock
+-- is what makes a write's fence hold until commit: a claim selects with
+-- SKIP LOCKED and so cannot take the node while a fenced write is in
+-- flight, and a fenced write cannot proceed on a node a claim is taking.
+-- name: LockNode :exec
+SELECT 1 FROM nodes n WHERE n.org_id = $1 AND n.id = $2 FOR UPDATE;

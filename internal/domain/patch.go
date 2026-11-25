@@ -628,7 +628,7 @@ const lockNamespace = "skift:graph"
 // lockOrganization takes the organization's graph lock for the rest of the
 // transaction. It blocks until any holder commits or rolls back.
 func lockOrganization(ctx context.Context, tx store.Tx, orgID string) error {
-	if _, err := tx.Tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, lockNamespace, orgID); err != nil {
+	if err := tx.LockNamespaced(ctx, store.LockNamespacedParams{Namespace: lockNamespace, Key: orgID}); err != nil {
 		return fmt.Errorf("lock organization graph: %w", err)
 	}
 	return nil
@@ -711,22 +711,6 @@ func newApplier(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID stri
 	return a, nil
 }
 
-// lockNodeSQL locks one node's row for the rest of the transaction. The
-// lock is what makes the fence hold until commit: a claim selects with
-// SKIP LOCKED and so cannot take the node while a fenced write is in
-// flight, and a fenced write cannot proceed on a node a claim is taking.
-const lockNodeSQL = `SELECT 1 FROM nodes n WHERE n.org_id = $1 AND n.id = $2 FOR UPDATE`
-
-// heldBySQL is the id of the node's live lease, or null. It runs as a
-// statement of its own after the lock, never in the same statement: under
-// read committed a statement's snapshot is taken when it starts, and a
-// row that is only locked, not updated, is not re-read once the lock is
-// granted. Joined to the lock, this would miss a lease a claim committed
-// while the lock was waited for.
-const heldBySQL = `
-SELECT (SELECT l.id FROM leases l
-        WHERE l.org_id = $1 AND l.node_id = $2 AND l.released_at IS NULL AND l.expires_at > now())`
-
 // fence admits a write to an existing node: if a live lease holds it, the
 // patch must carry that lease. Nodes the patch created are its own, and a
 // node is checked once per patch.
@@ -734,12 +718,18 @@ func (a *applier) fence(ctx context.Context, nodeID string) error {
 	if a.created[nodeID] || a.fenced[nodeID] {
 		return nil
 	}
-	if _, err := a.tx.Tx.Exec(ctx, lockNodeSQL, a.orgID, nodeID); err != nil {
+	// The lock and the lease read are two statements, in this order; the
+	// store's LockNode and NodeLiveLease say why.
+	if err := a.tx.LockNode(ctx, store.LockNodeParams{OrgID: a.orgID, ID: nodeID}); err != nil {
 		return fmt.Errorf("fence node %s: %w", nodeID, err)
 	}
 	var held *string
-	if err := a.tx.Tx.QueryRow(ctx, heldBySQL, a.orgID, nodeID).Scan(&held); err != nil {
+	switch id, err := a.tx.NodeLiveLease(ctx, store.NodeLiveLeaseParams{OrgID: a.orgID, NodeID: nodeID}); {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
 		return fmt.Errorf("fence node %s: %w", nodeID, err)
+	default:
+		held = &id
 	}
 	a.fenced[nodeID] = true
 	switch {

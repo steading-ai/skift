@@ -314,7 +314,7 @@ const projectsLockNamespace = "skift:projects"
 // rest of the transaction, so two creations with one title cannot both find
 // the same slug free.
 func lockProjects(ctx context.Context, tx store.Tx, orgID string) error {
-	if _, err := tx.Tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, projectsLockNamespace, orgID); err != nil {
+	if err := tx.LockNamespaced(ctx, store.LockNamespacedParams{Namespace: projectsLockNamespace, Key: orgID}); err != nil {
 		return fmt.Errorf("lock organization projects: %w", err)
 	}
 	return nil
