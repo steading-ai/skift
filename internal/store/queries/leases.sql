@@ -82,3 +82,14 @@ UPDATE leases
 SET released_at = now(), release_reason = 'expired'
 WHERE org_id = $1 AND node_id = $2 AND released_at IS NULL AND expires_at <= now()
 RETURNING *;
+
+-- NodeLiveLease is the node's live lease, of which there is at most one,
+-- and no row when there is none. It runs as a statement of its own after
+-- LockNode, never in the same statement: under
+-- read committed a statement's snapshot is taken when it starts, and a row
+-- that is only locked, not updated, is not re-read once the lock is
+-- granted. Joined to the lock, this would miss a lease a claim committed
+-- while the lock was waited for.
+-- name: NodeLiveLease :one
+SELECT l.id FROM leases l
+WHERE l.org_id = $1 AND l.node_id = $2 AND l.released_at IS NULL AND l.expires_at > now();

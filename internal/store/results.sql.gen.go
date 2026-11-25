@@ -43,6 +43,39 @@ func (q *Queries) CreateResult(ctx context.Context, arg CreateResultParams) (Res
 	return i, err
 }
 
+const inputsSize = `-- name: InputsSize :one
+SELECT count(*)::int AS count, coalesce(sum(octet_length(r.body)), 0)::bigint AS bytes
+FROM edges e
+JOIN nodes b ON b.org_id = e.org_id AND b.id = e.from_node
+JOIN LATERAL (
+    SELECT body FROM results
+    WHERE org_id = b.org_id AND node_id = b.id
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+) r ON true
+WHERE e.org_id = $1 AND e.to_node = $2 AND e.kind = 'blocks' AND b.status = 'done'
+`
+
+type InputsSizeParams struct {
+	OrgID  string
+	ToNode string
+}
+
+type InputsSizeRow struct {
+	Count int32
+	Bytes int64
+}
+
+// InputsSize counts the current results of the blocking predecessors of
+// node $2 of organization $1 and adds up their bodies. Only a done
+// predecessor has a current result, which is the newest of its rows.
+func (q *Queries) InputsSize(ctx context.Context, arg InputsSizeParams) (InputsSizeRow, error) {
+	row := q.db.QueryRow(ctx, inputsSize, arg.OrgID, arg.ToNode)
+	var i InputsSizeRow
+	err := row.Scan(&i.Count, &i.Bytes)
+	return i, err
+}
+
 const listResultsForNode = `-- name: ListResultsForNode :many
 SELECT id, org_id, node_id, body, completed_by, created_at FROM results
 WHERE org_id = $1 AND node_id = $2

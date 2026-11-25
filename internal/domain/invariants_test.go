@@ -450,7 +450,7 @@ var _ = Describe("Concurrency and failure", Label(testsupport.DBLabel), func() {
 			g.node(ctx, tx, 104, nil)
 			g.lease(ctx, tx, y, time.Hour)
 		})
-		hold = newPauser(domain.LockNodeSQL)
+		hold = newPauser("-- name: LockNode :exec")
 		patchFirst := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()

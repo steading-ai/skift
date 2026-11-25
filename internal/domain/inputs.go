@@ -37,11 +37,7 @@ func Inputs(ctx context.Context, tx store.Tx, orgID, nodeID string) ([]Input, er
 	} else if err != nil {
 		return nil, fmt.Errorf("read node %s: %w", nodeID, err)
 	}
-	rows, err := tx.Tx.Query(ctx, blockingPredecessors, orgID, nodeID)
-	if err != nil {
-		return nil, fmt.Errorf("read predecessors of node %s: %w", nodeID, err)
-	}
-	predecessors, err := pgx.CollectRows(rows, pgx.RowToStructByName[store.Node])
+	predecessors, err := tx.ListBlockingPredecessors(ctx, store.ListBlockingPredecessorsParams{OrgID: orgID, ToNode: nodeID})
 	if err != nil {
 		return nil, fmt.Errorf("read predecessors of node %s: %w", nodeID, err)
 	}
@@ -63,15 +59,6 @@ func Inputs(ctx context.Context, tx store.Tx, orgID, nodeID string) ([]Input, er
 	}
 	return inputs, nil
 }
-
-// blockingPredecessors are the sources of blocks edges into node $2 of
-// organization $1, whatever their status.
-const blockingPredecessors = `
-SELECT b.*
-FROM edges e
-JOIN nodes b ON b.org_id = e.org_id AND b.id = e.from_node
-WHERE e.org_id = $1 AND e.to_node = $2 AND e.kind = 'blocks'
-ORDER BY b.project_id, b.number`
 
 // OpReadInputs is the action reading a node's inputs is authorized as. It
 // is a read on the node whose inputs are asked for, so it writes no event
@@ -162,25 +149,9 @@ func ReadInputs(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID stri
 // reads the sizes rather than the bodies, so carrying the hint costs
 // nothing the caller would notice.
 func InputsSize(ctx context.Context, tx store.Tx, orgID, nodeID string) (InputsHint, error) {
-	var hint InputsHint
-	row := tx.Tx.QueryRow(ctx, inputsSize, orgID, nodeID)
-	if err := row.Scan(&hint.Count, &hint.Bytes); err != nil {
+	size, err := tx.InputsSize(ctx, store.InputsSizeParams{OrgID: orgID, ToNode: nodeID})
+	if err != nil {
 		return InputsHint{}, fmt.Errorf("size inputs of node %s: %w", nodeID, err)
 	}
-	return hint, nil
+	return InputsHint{Count: int(size.Count), Bytes: size.Bytes}, nil
 }
-
-// inputsSize counts the current results of the blocking predecessors of
-// node $2 of organization $1 and adds up their bodies. Only a done
-// predecessor has a current result, which is the newest of its rows.
-const inputsSize = `
-SELECT count(*)::int AS count, coalesce(sum(octet_length(r.body)), 0)::bigint AS bytes
-FROM edges e
-JOIN nodes b ON b.org_id = e.org_id AND b.id = e.from_node
-JOIN LATERAL (
-    SELECT body FROM results
-    WHERE org_id = b.org_id AND node_id = b.id
-    ORDER BY created_at DESC, id DESC
-    LIMIT 1
-) r ON true
-WHERE e.org_id = $1 AND e.to_node = $2 AND e.kind = 'blocks' AND b.status = 'done'`

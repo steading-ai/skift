@@ -374,8 +374,8 @@ func (w *watcher) after(b batch, n int) position {
 // snapshotXMin is the boundary of the statement's snapshot: the lowest
 // transaction id still in progress, so every id below it has finished.
 func snapshotXMin(ctx context.Context, tx store.Tx) (int64, error) {
-	var xmin int64
-	if err := tx.Tx.QueryRow(ctx, `SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint`).Scan(&xmin); err != nil {
+	xmin, err := tx.SnapshotXMin(ctx)
+	if err != nil {
 		return 0, fmt.Errorf("read snapshot boundary: %w", err)
 	}
 	return xmin, nil

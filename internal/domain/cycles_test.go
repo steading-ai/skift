@@ -5,6 +5,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -347,11 +351,21 @@ var _ = Describe("Cycle detection", Label(testsupport.DBLabel), func() {
 
 	Describe("Bound", func() {
 		// visited counts the rows the walk produces from the given seeds:
-		// one per relation it followed, plus one per seed.
+		// one per relation it followed, plus one per seed. The walk is the
+		// one CheckAcyclic sends, captured on its way to the server, with
+		// its final select replaced by a count of the walk, so the spec
+		// measures the statement that runs rather than a copy of it.
 		visited := func(ctx context.Context, seeds ...string) int {
 			GinkgoHelper()
+			capture := &statementCapture{name: "-- name: FindWaitCycle "}
+			traced := tracedStore(ctx, s.Pool(), capture)
+			Expect(traced.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+				return domain.CheckAcyclic(ctx, tx, g.org, seeds)
+			})).To(Succeed())
+			walk, _, found := strings.Cut(capture.statement(), "\nSELECT r.start")
+			Expect(found).To(BeTrue(), "the cycle check sent no walk")
 			var n int
-			Expect(s.Pool().QueryRow(ctx, domain.WaitReachSQL+` SELECT count(*) FROM reach`, g.org, seeds).Scan(&n)).To(Succeed())
+			Expect(s.Pool().QueryRow(ctx, walk+` SELECT count(*) FROM reach`, g.org, seeds).Scan(&n)).To(Succeed())
 			return n
 		}
 
@@ -411,3 +425,28 @@ var _ = Describe("Cycle detection", Label(testsupport.DBLabel), func() {
 		})
 	})
 })
+
+// statementCapture is a query tracer that keeps the text of the last
+// statement whose SQL contains name.
+type statementCapture struct {
+	name string
+	mu   sync.Mutex
+	sql  string
+}
+
+func (c *statementCapture) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if strings.Contains(data.SQL, c.name) {
+		c.mu.Lock()
+		c.sql = data.SQL
+		c.mu.Unlock()
+	}
+	return ctx
+}
+
+func (*statementCapture) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+func (c *statementCapture) statement() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sql
+}

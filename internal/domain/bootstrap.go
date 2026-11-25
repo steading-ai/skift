@@ -112,7 +112,7 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, params BootstrapParams) 
 	identity := BootstrappedIdentity{Scheme: bootstrapScheme, Value: strconv.FormatUint(uint64(params.UID), 10)}
 	var out Bootstrapped
 	err := store.FromPool(pool).WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
-		if _, err := tx.Tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, bootstrapLock); err != nil {
+		if err := tx.LockBootstrap(ctx, bootstrapLock); err != nil {
 			return fmt.Errorf("lock bootstrap: %w", err)
 		}
 

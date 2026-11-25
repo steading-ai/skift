@@ -63,53 +63,6 @@ func (e *CycleError) Error() string {
 	return b.String()
 }
 
-// waitReach walks the wait relation forward from a set of seed nodes. The
-// relation is the union the Acyclicity section of docs/domain-model.md
-// describes: a node waits for every open-or-not source of a `blocks` edge
-// into it, and a parent waits for every child. Status is ignored on
-// purpose; a done node can be reopened, so the invariant is structural.
-//
-// Rows are (start, node, prev, via): node was reached from start, and the
-// last hop was prev waiting for node because of via. UNION rather than
-// UNION ALL makes the row set the visited set, so a node reached along two
-// paths expands once per relation into it rather than once per path, and
-// the walk is bounded by the relations reachable from the seeds instead of
-// the number of paths through them. A row whose node is its own start with
-// a non-null prev is a closed cycle. Re-expanding it reproduces the rows
-// the seed produced, which the UNION discards, so the walk terminates.
-//
-// Both branches of the step are index lookups: edges_to_node_idx and
-// nodes_parent_id_idx. The organization predicate is static SQL on every
-// table touched.
-const waitReach = `
-WITH RECURSIVE reach(start, node, prev, via) AS (
-    SELECT s.id, s.id, NULL::text, NULL::text
-    FROM unnest($2::text[]) AS s(id)
-  UNION
-    SELECT r.start, w.node, r.node, w.via
-    FROM reach r
-    CROSS JOIN LATERAL (
-        SELECT e.from_node AS node, 'blocks'::text AS via
-        FROM edges e
-        WHERE e.org_id = $1 AND e.to_node = r.node AND e.kind = 'blocks'
-      UNION ALL
-        SELECT c.id, 'parent'::text
-        FROM nodes c
-        WHERE c.org_id = $1 AND c.parent_id = r.node
-    ) w
-)`
-
-// findWaitCycle returns every hop of the walk from any seed that closed a
-// cycle, with the reference of the reached node. It returns no rows when
-// the graph is acyclic, so the common case moves nothing but the verdict.
-const findWaitCycle = waitReach + `
-SELECT r.start, r.node, r.prev, r.via, p.slug, n.number
-FROM reach r
-JOIN nodes n ON n.org_id = $1 AND n.id = r.node
-JOIN projects p ON p.org_id = $1 AND p.id = n.project_id
-WHERE r.start IN (SELECT start FROM reach WHERE node = start AND prev IS NOT NULL)
-ORDER BY r.start, r.node, r.prev`
-
 // CheckAcyclic verifies that the wait relation, as tx now sees it, contains
 // no cycle through any of the touched nodes. It runs once per patch, after
 // every operation has been applied, so it judges the resulting graph rather
@@ -129,30 +82,21 @@ func CheckAcyclic(ctx context.Context, tx store.Tx, orgID string, touched []stri
 	if len(touched) == 0 {
 		return nil
 	}
-	rows, err := tx.Tx.Query(ctx, findWaitCycle, orgID, touched)
+	rows, err := tx.FindWaitCycle(ctx, store.FindWaitCycleParams{OrgID: orgID, Touched: touched})
 	if err != nil {
 		return fmt.Errorf("walk wait relation: %w", err)
 	}
-	defer rows.Close()
-
-	var hops []reachRow
-	for rows.Next() {
-		var r reachRow
-		if err := rows.Scan(&r.start, &r.node, &r.prev, &r.via, &r.ref.Project, &r.ref.Number); err != nil {
-			return fmt.Errorf("scan wait relation: %w", err)
-		}
-		hops = append(hops, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("walk wait relation: %w", err)
-	}
-	if len(hops) == 0 {
+	if len(rows) == 0 {
 		return nil
+	}
+	hops := make([]reachRow, len(rows))
+	for i, r := range rows {
+		hops[i] = reachRow{start: r.Start, node: r.Node, prev: r.Prev, via: r.Via, ref: NodeRef{Project: r.Slug, Number: r.Number}}
 	}
 	return &CycleError{Path: closePath(hops)}
 }
 
-// reachRow is one row of findWaitCycle.
+// reachRow is one row of the store's FindWaitCycle.
 type reachRow struct {
 	start, node string
 	prev, via   *string

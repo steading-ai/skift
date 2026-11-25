@@ -419,6 +419,24 @@ func (q *Queries) ListNodes(ctx context.Context, arg ListNodesParams) ([]Node, e
 	return items, nil
 }
 
+const lockNode = `-- name: LockNode :exec
+SELECT 1 FROM nodes n WHERE n.org_id = $1 AND n.id = $2 FOR UPDATE
+`
+
+type LockNodeParams struct {
+	OrgID string
+	ID    string
+}
+
+// LockNode locks one node's row for the rest of the transaction. The lock
+// is what makes a write's fence hold until commit: a claim selects with
+// SKIP LOCKED and so cannot take the node while a fenced write is in
+// flight, and a fenced write cannot proceed on a node a claim is taking.
+func (q *Queries) LockNode(ctx context.Context, arg LockNodeParams) error {
+	_, err := q.db.Exec(ctx, lockNode, arg.OrgID, arg.ID)
+	return err
+}
+
 const nodeHoldGroups = `-- name: NodeHoldGroups :many
 SELECT DISTINCT hold_group::text AS hold_group FROM nodes
 WHERE org_id = $1 AND project_id = $2 AND hold_group IS NOT NULL

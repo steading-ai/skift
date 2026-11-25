@@ -57,3 +57,8 @@ WHERE org_id = $1
   AND tx_id >= sqlc.arg(min_tx_id)
   AND occurred_at >= sqlc.arg(retained_since)
 ORDER BY tx_id, id;
+
+-- SnapshotXMin is the boundary of the statement's snapshot: the lowest
+-- transaction id still in progress, so every id below it has finished.
+-- name: SnapshotXMin :one
+SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint;
