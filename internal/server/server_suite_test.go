@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/testsupport"
 )
@@ -38,7 +38,7 @@ var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
 	if !dbSpecsSelected() {
 		return nil
 	}
-	started, err := testsupport.Start(ctx, domain.Migrate)
+	started, err := testsupport.Start(ctx, admin.Migrate)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(started.Stop)
 	return []byte(started.URL())

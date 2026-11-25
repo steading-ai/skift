@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/cli"
-	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/testsupport"
 )
 
@@ -26,9 +26,9 @@ func principalRows(ctx context.Context, url string) (principals, identities int)
 	return principals, identities
 }
 
-func bootstrapped(session *gexec.Session) domain.Bootstrapped {
+func bootstrapped(session *gexec.Session) admin.Bootstrapped {
 	GinkgoHelper()
-	var out domain.Bootstrapped
+	var out admin.Bootstrapped
 	Expect(json.Unmarshal(session.Out.Contents(), &out)).To(Succeed(), "stdout: %s", session.Out.Contents())
 	return out
 }
@@ -44,7 +44,7 @@ var _ = Describe("skift admin bootstrap", func() {
 		Expect(first.Organization.Created).To(BeTrue())
 		Expect(first.Principal.Created).To(BeTrue())
 		Expect(first.Principal.Kind).To(Equal("user"))
-		Expect(first.Principal.Identities).To(Equal([]domain.BootstrappedIdentity{{Scheme: "unix", Value: "1000", Created: true}}))
+		Expect(first.Principal.Identities).To(Equal([]admin.BootstrappedIdentity{{Scheme: "unix", Value: "1000", Created: true}}))
 		principals, identities := principalRows(ctx, url)
 		Expect(principals).To(Equal(1))
 		Expect(identities).To(Equal(1))
@@ -78,8 +78,8 @@ var _ = Describe("skift admin bootstrap", func() {
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
 		out := bootstrapped(session)
 		Expect(out.Principal.Identities).To(ConsistOf(
-			domain.BootstrappedIdentity{Scheme: "unix", Value: "1000", Created: true},
-			domain.BootstrappedIdentity{Scheme: "tailscale", Value: "nAbCdEfGh11CNTRL", Created: true},
+			admin.BootstrappedIdentity{Scheme: "unix", Value: "1000", Created: true},
+			admin.BootstrappedIdentity{Scheme: "tailscale", Value: "nAbCdEfGh11CNTRL", Created: true},
 		))
 		principals, identities := principalRows(ctx, url)
 		Expect(principals).To(Equal(1))

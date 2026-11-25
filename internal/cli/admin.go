@@ -11,27 +11,29 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/version"
 )
 
-// newAdminCommand groups the operations on a deployment that no caller of
-// the service can perform, because they are what makes there be a caller
-// at all. Each reaches the database directly, as skift reap does.
+// newAdminCommand groups the operations on a deployment that go around the
+// service: bringing the schema current, and the writes that make there be a
+// caller at all. Each reaches the database directly, through
+// internal/admin. See docs/adrs/016-background-jobs-and-admin.md.
 func newAdminCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "admin",
 		Short: "Administer a deployment directly against its database",
-		Long: `Operations on a deployment that go around the service: the writes that
-have to happen before the service has anyone to serve. Each takes the
-database URL that "skift serve" takes.`,
+		Long: `Operations on a deployment that go around the service: bringing the
+database to the current schema, and the writes that have to happen before
+the service has anyone to serve. Each takes the database URL that
+"skift serve" takes.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(newBootstrapCommand())
+	cmd.AddCommand(newMigrateCommand(), newBootstrapCommand())
 	return cmd
 }
 
@@ -54,7 +56,7 @@ The command is idempotent. An organization already carrying the name is
 adopted rather than duplicated, and so is a principal already holding the
 uid, so an installer can run it on every provision without knowing whether
 it has run before. The database must be at the current schema: run
-"skift migrate" first.
+"skift admin migrate" first.
 
 The uid is the one "skift" will run as: for the invoking user, "$(id -u)".
 
@@ -72,7 +74,7 @@ bound to any other principal is refused.`,
 			if args[1] == "" {
 				return usage("skift admin bootstrap: the organization name must not be empty")
 			}
-			return runBootstrap(cmd, opts, domain.BootstrapParams{UID: uint32(uid), OrgName: args[1], TailscaleNode: opts.tailscaleNode})
+			return runBootstrap(cmd, opts, admin.BootstrapParams{UID: uint32(uid), OrgName: args[1], TailscaleNode: opts.tailscaleNode})
 		},
 	}
 	f := cmd.Flags()
@@ -82,7 +84,7 @@ bound to any other principal is refused.`,
 	return cmd
 }
 
-func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.BootstrapParams) error {
+func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params admin.BootstrapParams) error {
 	var level slog.LevelVar
 	if err := level.UnmarshalText([]byte(opts.logLevel)); err != nil {
 		return fmt.Errorf("skift admin bootstrap: --log-level: %w", err)
@@ -95,14 +97,14 @@ func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.Boots
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	db, err := domain.Open(ctx, opts.databaseURL)
+	db, err := admin.Open(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift admin bootstrap: database url: %w", err)
 	}
 	defer db.Close()
 
 	log.Debug("skift admin bootstrap starting", "version", version.String())
-	out, err := domain.Bootstrap(ctx, db, params)
+	out, err := admin.Bootstrap(ctx, db, params)
 	if err != nil {
 		return fmt.Errorf("skift admin bootstrap: %w", err)
 	}

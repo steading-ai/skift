@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/policy"
@@ -76,7 +77,7 @@ func runReap(cmd *cobra.Command, opts reapOptions) error {
 	if err != nil {
 		return fmt.Errorf("skift reap: %w", err)
 	}
-	db, err := domain.Open(ctx, opts.databaseURL)
+	db, err := admin.Open(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift reap: database url: %w", err)
 	}

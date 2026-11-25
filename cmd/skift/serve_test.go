@@ -209,9 +209,9 @@ var _ = Describe("skift serve and the schema", Label(testsupport.DBLabel), func(
 		By("when skift serve --no-migrate starts against an empty database")
 		session := serve(url, "--no-migrate")
 
-		By("then it exits non-zero naming skift migrate, applies nothing, and leaves no socket")
+		By("then it exits non-zero naming skift admin migrate, applies nothing, and leaves no socket")
 		Eventually(session, 30*time.Second).Should(gexec.Exit(cli.ExitFailure))
-		Expect(string(session.Err.Contents())).To(ContainSubstring("run skift migrate"))
+		Expect(string(session.Err.Contents())).To(ContainSubstring("run skift admin migrate"))
 		Expect(schemaVersion(ctx, url)).To(BeZero())
 		_, err := os.Lstat(socket)
 		Expect(err).To(MatchError(os.ErrNotExist))

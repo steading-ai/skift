@@ -44,7 +44,7 @@ func NewRootCommand(stdout, stderr io.Writer) *cobra.Command {
 Run without a subcommand it is the CLI, a Connect client with JSON output.
 "skift mcp" serves the same client over stdio as an MCP server.
 "skift serve" runs the service: Connect handlers over PostgreSQL.
-"skift migrate" brings the database to the current schema.
+"skift admin migrate" brings the database to the current schema.
 "skift admin bootstrap" creates the first organization and principal.
 "skift reap" expires stale leases; skift-reap.timer runs it.
 
@@ -80,7 +80,6 @@ Output is JSON whenever stdout is not a terminal, and on request with
 		newVersionCommand(),
 		a.mcpCommand(),
 		newServeCommand(),
-		newMigrateCommand(),
 		newAdminCommand(),
 		newReapCommand(),
 		a.projectCommand(),

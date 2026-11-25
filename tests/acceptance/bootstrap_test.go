@@ -35,8 +35,8 @@ func principalCount(ctx context.Context, url string) int {
 	return n
 }
 
-// admin runs one of the binary's database-facing commands to completion.
-func admin(url string, args ...string) *gexec.Session {
+// operate runs one of the binary's database-facing commands to completion.
+func operate(url string, args ...string) *gexec.Session {
 	GinkgoHelper()
 	session, err := gexec.Start(exec.Command(binary, append(args, "--database-url", url)...), GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
@@ -51,12 +51,12 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 		dir := GinkgoT().TempDir()
 		uid := strconv.Itoa(os.Getuid())
 
-		By("when skift migrate runs")
-		session := admin(url, "migrate")
+		By("when skift admin migrate runs")
+		session := operate(url, "admin", "migrate")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
 
 		By("and skift admin bootstrap runs for the caller's user id")
-		session = admin(url, "admin", "bootstrap", uid, "acme")
+		session = operate(url, "admin", "bootstrap", uid, "acme")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
 
 		By("and the service is started, as the unit starts it")
@@ -97,11 +97,11 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 		Expect(serve.ExitCode()).NotTo(BeZero())
 		Expect(string(serve.Err.Contents())).To(SatisfyAll(
 			ContainSubstring("schema is at version 0"),
-			ContainSubstring("run skift migrate"),
+			ContainSubstring("run skift admin migrate"),
 		))
 
 		By("and once migrated, the same command serves")
-		Expect(admin(url, "migrate").ExitCode()).To(BeZero())
+		Expect(operate(url, "admin", "migrate").ExitCode()).To(BeZero())
 		serve = start()
 		DeferCleanup(func() {
 			serve.Terminate().Wait(10 * time.Second)
@@ -114,12 +114,12 @@ var _ = Describe("Bootstrapping a deployment", Label(testsupport.DBLabel), func(
 	It("Scenario: Bootstrap is safe against an already-seeded database", func(ctx SpecContext) {
 		By("given a database that has already been bootstrapped")
 		url := pg.EmptyDatabase(ctx)
-		Expect(admin(url, "migrate").ExitCode()).To(BeZero())
-		Expect(admin(url, "admin", "bootstrap", "1000", "acme").ExitCode()).To(BeZero())
+		Expect(operate(url, "admin", "migrate").ExitCode()).To(BeZero())
+		Expect(operate(url, "admin", "bootstrap", "1000", "acme").ExitCode()).To(BeZero())
 		before := principalCount(ctx, url)
 
 		By("when skift admin bootstrap is run again with the same user id")
-		session := admin(url, "admin", "bootstrap", "1000", "acme")
+		session := operate(url, "admin", "bootstrap", "1000", "acme")
 
 		By("then it exits zero and the principal count is unchanged")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())

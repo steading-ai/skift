@@ -37,10 +37,10 @@ sudo editor /etc/skift/env            # DATABASE_URL=...
 ## Apply the schema
 
 ```sh
-DATABASE_URL=postgres://skift:...@db.example/skift skift migrate
+DATABASE_URL=postgres://skift:...@db.example/skift skift admin migrate
 ```
 
-Use the URL you put in `/etc/skift/env`. `skift migrate` applies every migration the binary carries that the database has not seen, and prints what it applied. A database already at the current schema applies nothing, so it is safe on every deploy.
+Use the URL you put in `/etc/skift/env`. `skift admin migrate` applies every migration the binary carries that the database has not seen, and prints what it applied. A database already at the current schema applies nothing, so it is safe on every deploy.
 
 `skift serve` does the same at start. To make the service refuse a database that is behind instead, pass it `--no-migrate`.
 
@@ -95,7 +95,7 @@ sudo dnf install ./dist/skift-*.$(uname -m).rpm
 sudo systemctl restart skift.service
 ```
 
-The service applies the new release's migrations as it starts, and reports ready only once the schema is current. Don't run `skift migrate` from the new release while the old one is still serving: the old binary would be answering on a schema it was not built for.
+The service applies the new release's migrations as it starts, and reports ready only once the schema is current. Don't run `skift admin migrate` from the new release while the old one is still serving: the old binary would be answering on a schema it was not built for.
 
 ## Go back to an older release
 

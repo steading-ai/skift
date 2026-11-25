@@ -1,4 +1,4 @@
-package domain_test
+package ulid_test
 
 import (
 	"sort"
@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/ulid"
 )
 
 // Ids order rows: a patch's nodes list in creation order because their
@@ -17,7 +17,7 @@ var _ = Describe("Id generation", Label("unit"), func() {
 	It("mints ids that sort in the order they were minted, however fast", func() {
 		ids := make([]string, 0, 2000)
 		for range cap(ids) {
-			ids = append(ids, domain.NewULID())
+			ids = append(ids, ulid.New())
 		}
 		Expect(sort.StringsAreSorted(ids)).To(BeTrue(), "ids minted within one millisecond count up rather than draw again")
 		Expect(ids[0]).NotTo(Equal(ids[1]))
@@ -25,9 +25,9 @@ var _ = Describe("Id generation", Label("unit"), func() {
 	})
 
 	It("carries the clock forward, so an id minted later reads as later", func() {
-		earlier := domain.NewULID()
+		earlier := ulid.New()
 		time.Sleep(3 * time.Millisecond)
-		later := domain.NewULID()
+		later := ulid.New()
 		Expect(later[:10]).NotTo(Equal(earlier[:10]), "the first ten characters are the millisecond")
 		Expect(later > earlier).To(BeTrue())
 	})
@@ -35,7 +35,7 @@ var _ = Describe("Id generation", Label("unit"), func() {
 	It("encodes the millisecond it was minted in its first ten characters", func() {
 		const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 		before := time.Now().UnixMilli()
-		id := domain.NewULID()
+		id := ulid.New()
 		var ms int64
 		for _, c := range id[:10] {
 			ms = ms<<5 | int64(strings.IndexRune(crockford, c))

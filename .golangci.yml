@@ -19,18 +19,22 @@ linters:
     - unparam
   settings:
     # Handlers reach the database through the domain layer, never around it.
-    # The spec harness hands specs a store over their pool. See
-    # docs/adrs/007-core-tech-stack.md.
+    # The admin package operates the deployment (migrations, bootstrap,
+    # opening the database, background jobs) and reaches the store directly;
+    # it is not a handler. The spec harness hands specs a store over their
+    # pool. See docs/adrs/007-core-tech-stack.md and
+    # docs/adrs/016-background-jobs-and-admin.md.
     depguard:
       rules:
-        store-only-from-domain:
+        store-only-from-domain-and-admin:
           files:
             - "!**/internal/domain/**"
+            - "!**/internal/admin/**"
             - "!**/internal/store/**"
             - "!**/internal/testsupport/**"
           deny:
             - pkg: github.com/steading-ai/skift/internal/store
-              desc: only the domain layer may import the store
+              desc: only the domain and admin packages may import the store (docs/adrs/016-background-jobs-and-admin.md)
         # Only the store reaches PostgreSQL: every statement, connection and
         # LISTEN lives there, so no other package can send SQL of its own.
         # Specs and the spec harness lay fixtures with pgx directly. See
