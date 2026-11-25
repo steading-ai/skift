@@ -4,7 +4,7 @@ Eight workflows live here.
 
 [check.yml](../.github/workflows/check.yml) runs on every pull request and every push to `main`, as three jobs side by side. `check` runs `make lint`, then `make cover`: every spec, including the ones that need PostgreSQL (through testcontainers on the runner's Docker) and the acceptance scenarios against the built binary, with the floor in `coverage.baseline` enforced. It is the gate the pre-commit hook applies locally, plus what the hook leaves out for speed. `race` runs `make test-race`, every spec under the race detector. `fuzz` runs `make fuzz`, each fuzz target for a short while. Tools come from `mise.toml` through `jdx/mise-action`, so the versions are the ones a developer runs.
 
-`make lint` reads the workflows too, with [jactionlint](https://jactionlint.jdx.dev): their syntax, expressions and shell, and the mistakes that make a workflow exploitable, such as template injection, persisted credentials and over-broad permissions. It checks `actions.lock` against the actions the workflows use as well.
+`make lint` is `hk check --all`: every step in `hk.pkl`, side by side, the same checks a developer runs. It reads the workflows too, with [jactionlint](https://jactionlint.jdx.dev): their syntax, expressions and shell, and the mistakes that make a workflow exploitable, such as template injection, persisted credentials and over-broad permissions. It checks `actions.lock` against the actions the workflows use as well.
 
 [publish.yml](../.github/workflows/publish.yml) runs on every push to
 `main`: it cross-compiles `skift` for linux/amd64 and linux/arm64 (the same
