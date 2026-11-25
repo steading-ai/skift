@@ -602,6 +602,19 @@ var _ = Describe("Readiness", Label(testsupport.DBLabel), func() {
 			Expect(err).To(MatchError(ContainSubstring(`priority "high"`)))
 		})
 
+		It("refuses a filter value no node can have as the caller's mistake", func(ctx SpecContext) {
+			_, err := g.readySet(ctx, domain.ReadyQuery{AssigneeKind: "robot"})
+			Expect(err).To(MatchError(domain.ErrInvalidFilter))
+			_, err = g.readySet(ctx, domain.ReadyQuery{MinPriority: "high"})
+			Expect(err).To(MatchError(domain.ErrInvalidFilter))
+
+			svc := domain.NewService(g.s, pol)
+			for _, q := range []domain.NodeListQuery{{Status: "lost"}, {AssigneeKind: "robot"}, {MinPriority: "high"}} {
+				_, err = svc.ListNodes(ctx, g.org, q)
+				Expect(err).To(MatchError(domain.ErrInvalidFilter), "%+v", q)
+			}
+		})
+
 		It("combine", func(ctx SpecContext) {
 			Expect(numbers(g.ready(ctx, domain.ReadyQuery{Kinds: []string{"task"}, Labels: []string{"backend"}, MinPriority: "p2"}))).To(Equal([]int64{2}))
 			Expect(g.ready(ctx, domain.ReadyQuery{Kinds: []string{"task"}, Labels: []string{"urgent"}})).To(BeEmpty())

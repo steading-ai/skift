@@ -12,6 +12,11 @@ import (
 // was wrapped on its way out.
 var ErrNoRows = pgx.ErrNoRows
 
+// ErrInvalidFilter is wrapped by every refusal of a filter value no node
+// can have: a status, assignee kind or priority outside its vocabulary.
+// It is the caller's mistake, not the store's.
+var ErrInvalidFilter = errors.New("invalid filter")
+
 // uniqueViolation is the SQLSTATE PostgreSQL reports when an insert or
 // update would duplicate a key a unique constraint or index guards.
 const uniqueViolation = "23505"

@@ -5,11 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect/v2"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -92,12 +95,57 @@ func rejectStatusHeld(f *skiftv1.NodeFilter) error {
 	return nil
 }
 
-// enum is a two-way table between a wire enum and its stored string.
-type enum[E ~int32] map[E]string
+// wireEnum is a generated skift.v1 enum: an int32 that knows its
+// descriptor.
+type wireEnum interface {
+	~int32
+	protoreflect.Enum
+}
 
-// str is the stored string for e; empty for the unspecified value or one
-// the table does not know.
-func (t enum[E]) str(e E) string { return t[e] }
+// filterEnums are the enum fields of a [skiftv1.NodeFilter] as the domain
+// reads them.
+type filterEnums struct {
+	status, assigneeKind, minPriority string
+}
+
+// fromFilterEnums reads f's enum fields, refusing a value skift does not
+// know rather than reading it as no filter, which would widen the
+// results past what the caller asked for.
+func fromFilterEnums(f *skiftv1.NodeFilter) (filterEnums, error) {
+	var out filterEnums
+	var err error
+	if out.status, err = statuses.parse("filter.status", f.GetStatus()); err != nil {
+		return filterEnums{}, err
+	}
+	if out.assigneeKind, err = assigneeKinds.parse("filter.assignee_kind", f.GetAssigneeKind()); err != nil {
+		return filterEnums{}, err
+	}
+	if out.minPriority, err = priorities.parse("filter.min_priority", f.GetMinPriority()); err != nil {
+		return filterEnums{}, err
+	}
+	return out, nil
+}
+
+// enum is a two-way table between a wire enum and its stored string.
+type enum[E wireEnum] map[E]string
+
+// parse is the stored string for e, read from the request field named
+// field: empty for the unspecified value, and an InvalidArgument for a
+// number the table does not know. A client built from a newer schema, or
+// any binary request, sends an enum as its number, and the JSON codec's
+// refusal of an unknown name (ADR-008) never sees it. Read as unset, such
+// a value would take the domain's default: a gate created as agent work, a
+// filter silently dropped.
+func (t enum[E]) parse(field string, e E) (string, error) {
+	if s, ok := t[e]; ok {
+		return s, nil
+	}
+	if e == 0 {
+		return "", nil
+	}
+	return "", connect.Errorf(connect.CodeInvalidArgument, "%s: %d is not a %s; known values are %s",
+		field, int32(e), e.Descriptor().Name(), strings.Join(slices.Sorted(maps.Values(t)), ", "))
+}
 
 // val is the wire value for s; the zero value for empty or unknown.
 func (t enum[E]) val(s string) E {
@@ -162,32 +210,57 @@ func nextPageToken(offset, size, got int) string {
 
 // Requests to domain inputs.
 
-func fromPatch(req *skiftv1.ApplyPatchRequest) domain.Patch {
+// fromPatch is req as the domain applies it, or an InvalidArgument when
+// an operation carries an enum value skift does not know; nothing is
+// applied then.
+func fromPatch(req *skiftv1.ApplyPatchRequest) (domain.Patch, error) {
 	p := domain.Patch{RequestID: req.GetRequestId(), Project: req.GetProject(), LeaseID: req.GetLeaseId()}
-	for _, op := range req.GetOps() {
-		p.Ops = append(p.Ops, fromOp(op))
+	for i, op := range req.GetOps() {
+		o, err := fromOp(fmt.Sprintf("ops[%d]", i), op)
+		if err != nil {
+			return domain.Patch{}, err
+		}
+		p.Ops = append(p.Ops, o)
 	}
-	return p
+	return p, nil
 }
 
-func fromOp(op *skiftv1.PatchOp) domain.Op {
+// fromOp is op as the domain applies it. at names the operation in an
+// error, such as ops[2].
+func fromOp(at string, op *skiftv1.PatchOp) (domain.Op, error) {
 	switch o := op.GetOp().(type) {
 	case *skiftv1.PatchOp_CreateNode:
 		c := o.CreateNode
+		priority, err := priorities.parse(at+".create_node.priority", c.GetPriority())
+		if err != nil {
+			return domain.Op{}, err
+		}
+		assigneeKind, err := assigneeKinds.parse(at+".create_node.assignee_kind", c.GetAssigneeKind())
+		if err != nil {
+			return domain.Op{}, err
+		}
 		return domain.Op{CreateNode: &domain.CreateNode{
 			Alias: c.GetAlias(), Parent: c.GetParent(), BlockedBy: c.GetBlockedBy(),
 			Kind: c.GetKind(), Title: c.GetTitle(), Body: c.GetBody(),
-			Priority: priorities.str(c.GetPriority()), AssigneeKind: assigneeKinds.str(c.GetAssigneeKind()),
+			Priority: priority, AssigneeKind: assigneeKind,
 			Assignee: c.GetAssignee(), Labels: c.GetLabels(),
-		}}
+		}}, nil
 	case *skiftv1.PatchOp_UpdateNode:
 		u := o.UpdateNode
 		up := &domain.UpdateNode{Node: u.GetNode(), Parent: u.Parent, Kind: u.Kind, Title: u.Title, Body: u.Body, Assignee: u.Assignee}
 		if u.Priority != nil {
-			up.Priority = ptr(priorities.str(u.GetPriority()))
+			priority, err := priorities.parse(at+".update_node.priority", u.GetPriority())
+			if err != nil {
+				return domain.Op{}, err
+			}
+			up.Priority = &priority
 		}
 		if u.AssigneeKind != nil {
-			up.AssigneeKind = ptr(assigneeKinds.str(u.GetAssigneeKind()))
+			assigneeKind, err := assigneeKinds.parse(at+".update_node.assignee_kind", u.GetAssigneeKind())
+			if err != nil {
+				return domain.Op{}, err
+			}
+			up.AssigneeKind = &assigneeKind
 		}
 		if u.Labels != nil {
 			labels := u.GetLabels().GetValues()
@@ -196,34 +269,46 @@ func fromOp(op *skiftv1.PatchOp) domain.Op {
 			}
 			up.Labels = &labels
 		}
-		return domain.Op{UpdateNode: up}
+		return domain.Op{UpdateNode: up}, nil
 	case *skiftv1.PatchOp_DropNode:
 		d := o.DropNode
-		return domain.Op{DropNode: &domain.DropNode{Node: d.GetNode(), Reason: dropReasons.str(d.GetReason()), Detail: d.GetDetail(), Cascade: fromCascade(d.GetCascade())}}
+		reason, err := dropReasons.parse(at+".drop_node.reason", d.GetReason())
+		if err != nil {
+			return domain.Op{}, err
+		}
+		return domain.Op{DropNode: &domain.DropNode{Node: d.GetNode(), Reason: reason, Detail: d.GetDetail(), Cascade: fromCascade(d.GetCascade())}}, nil
 	case *skiftv1.PatchOp_CompleteNode:
 		c := o.CompleteNode
-		return domain.Op{CompleteNode: &domain.CompleteNode{Node: c.GetNode(), Result: fromResult(c.GetResult())}}
+		return domain.Op{CompleteNode: &domain.CompleteNode{Node: c.GetNode(), Result: fromResult(c.GetResult())}}, nil
 	case *skiftv1.PatchOp_ReopenNode:
 		r := o.ReopenNode
-		return domain.Op{ReopenNode: &domain.ReopenNode{Node: r.GetNode(), Reason: r.GetReason()}}
+		return domain.Op{ReopenNode: &domain.ReopenNode{Node: r.GetNode(), Reason: r.GetReason()}}, nil
 	case *skiftv1.PatchOp_AddEdge:
 		e := o.AddEdge
-		return domain.Op{AddEdge: &domain.AddEdge{From: e.GetFrom(), To: e.GetTo(), Kind: edgeKinds.str(e.GetKind())}}
+		kind, err := edgeKinds.parse(at+".add_edge.kind", e.GetKind())
+		if err != nil {
+			return domain.Op{}, err
+		}
+		return domain.Op{AddEdge: &domain.AddEdge{From: e.GetFrom(), To: e.GetTo(), Kind: kind}}, nil
 	case *skiftv1.PatchOp_RemoveEdge:
 		e := o.RemoveEdge
-		return domain.Op{RemoveEdge: &domain.RemoveEdge{From: e.GetFrom(), To: e.GetTo(), Kind: edgeKinds.str(e.GetKind())}}
+		kind, err := edgeKinds.parse(at+".remove_edge.kind", e.GetKind())
+		if err != nil {
+			return domain.Op{}, err
+		}
+		return domain.Op{RemoveEdge: &domain.RemoveEdge{From: e.GetFrom(), To: e.GetTo(), Kind: kind}}, nil
 	case *skiftv1.PatchOp_AttachArtifact:
 		a := o.AttachArtifact
-		return domain.Op{AttachArtifact: &domain.AttachArtifact{Node: a.GetNode(), Artifact: fromArtifact(a.GetArtifact())}}
+		return domain.Op{AttachArtifact: &domain.AttachArtifact{Node: a.GetNode(), Artifact: fromArtifact(a.GetArtifact())}}, nil
 	case *skiftv1.PatchOp_AddComment:
 		c := o.AddComment
-		return domain.Op{AddComment: &domain.AddComment{Node: c.GetNode(), Body: c.GetBody(), InReplyTo: c.GetInReplyTo()}}
+		return domain.Op{AddComment: &domain.AddComment{Node: c.GetNode(), Body: c.GetBody(), InReplyTo: c.GetInReplyTo()}}, nil
 	case *skiftv1.PatchOp_EditComment:
 		c := o.EditComment
-		return domain.Op{EditComment: &domain.EditComment{Comment: c.GetCommentId(), Body: c.GetBody()}}
+		return domain.Op{EditComment: &domain.EditComment{Comment: c.GetCommentId(), Body: c.GetBody()}}, nil
 	case *skiftv1.PatchOp_ResolveComment:
 		c := o.ResolveComment
-		return domain.Op{ResolveComment: &domain.ResolveComment{Comment: c.GetCommentId()}}
+		return domain.Op{ResolveComment: &domain.ResolveComment{Comment: c.GetCommentId()}}, nil
 	case *skiftv1.PatchOp_EstimateNode:
 		e := o.EstimateNode
 		return domain.Op{EstimateNode: &domain.EstimateNode{
@@ -232,17 +317,17 @@ func fromOp(op *skiftv1.PatchOp) domain.Op {
 				InputTokens: e.GetInputTokens(), OutputTokens: e.GetOutputTokens(),
 				CacheReadTokens: e.GetCacheReadTokens(), CacheWriteTokens: e.GetCacheWriteTokens(),
 			},
-		}}
+		}}, nil
 	case *skiftv1.PatchOp_HoldNode:
 		h := o.HoldNode
-		return domain.Op{HoldNode: &domain.HoldNode{Node: h.GetNode(), Reason: h.GetReason()}}
+		return domain.Op{HoldNode: &domain.HoldNode{Node: h.GetNode(), Reason: h.GetReason()}}, nil
 	case *skiftv1.PatchOp_UnholdNode:
 		u := o.UnholdNode
-		return domain.Op{UnholdNode: &domain.UnholdNode{Node: u.GetNode(), Reason: u.GetReason()}}
+		return domain.Op{UnholdNode: &domain.UnholdNode{Node: u.GetNode(), Reason: u.GetReason()}}, nil
 	}
 	// An empty operation reaches the domain as one, which rejects it by
 	// index.
-	return domain.Op{}
+	return domain.Op{}, nil
 }
 
 // fromCascade carries the bound a cascading drop stated. Absent on the
@@ -283,8 +368,6 @@ func fromArtifact(a *skiftv1.Artifact) domain.Artifact {
 	}
 	return out
 }
-
-func ptr[T any](v T) *T { return &v }
 
 func deref(s *string) string {
 	if s == nil {

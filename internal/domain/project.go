@@ -28,6 +28,9 @@ const (
 // ErrTitleRequired: a project needs a title to derive its slug from.
 var ErrTitleRequired = errors.New("a project needs a title")
 
+// ErrPriorityInvalid: a project priority outside p0 through p4.
+var ErrPriorityInvalid = errors.New("priority is not p0 through p4")
+
 // ErrVCSURLInvalid: a repository URL that is not an absolute URL.
 var ErrVCSURLInvalid = errors.New("vcs_url is not an absolute URL")
 
@@ -93,7 +96,7 @@ func (g *Service) CreateProject(ctx context.Context, orgID string, actor Actor, 
 		in.Priority = "p2"
 	}
 	if !validPriority(in.Priority) {
-		return nil, fmt.Errorf("priority %q is not p0 through p4", in.Priority)
+		return nil, fmt.Errorf("%w: %q", ErrPriorityInvalid, in.Priority)
 	}
 	if err := validVCSURL(in.VCSURL); err != nil {
 		return nil, err
