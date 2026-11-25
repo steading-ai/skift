@@ -90,6 +90,55 @@ jobs:
 		))
 	})
 
+	It("The domain may not import pgx", func() {
+		By("given a copy of the tree with a file in internal/domain that imports github.com/jackc/pgx/v5")
+		dir := checkout()
+		writeFile(dir, "internal/domain/around.go",
+			"package domain\n\nimport \"github.com/jackc/pgx/v5\"\n\n// Around reaches PostgreSQL around the store.\nvar Around = pgx.ErrNoRows\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then it exits non-zero")
+		Expect(session).NotTo(gexec.Exit(0))
+		By("and its output names the store boundary")
+		Expect(string(session.Out.Contents())).To(SatisfyAll(
+			ContainSubstring("internal/domain/around.go"),
+			ContainSubstring("pgx-only-in-store"),
+		))
+	})
+
+	It("The raw transaction is only for specs", func() {
+		By("given a copy of the tree with a non-test file in internal/domain that calls store.Raw")
+		dir := checkout()
+		writeFile(dir, "internal/domain/around.go",
+			"package domain\n\nimport (\n\t\"context\"\n\n\t\"github.com/steading-ai/skift/internal/store\"\n)\n\n// Around sends SQL around the store.\nfunc Around(ctx context.Context, tx store.Tx) error {\n\t_, err := store.Raw(tx).Exec(ctx, \"SELECT 1\")\n\treturn err\n}\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then it exits non-zero, naming the forbidigo rule")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(SatisfyAll(
+			ContainSubstring("internal/domain/around.go"),
+			ContainSubstring("(forbidigo)"),
+		))
+	})
+
+	It("The domain cannot reach the transaction under the store", func() {
+		By("given a copy of the tree with a domain file that sends SQL on the transaction a store.Tx carries")
+		dir := checkout()
+		writeFile(dir, "internal/domain/around.go",
+			"package domain\n\nimport (\n\t\"context\"\n\n\t\"github.com/steading-ai/skift/internal/store\"\n)\n\n// Around sends SQL around the store.\nfunc Around(ctx context.Context, tx store.Tx) error {\n\t_, err := tx.Tx.Exec(ctx, \"SELECT 1\")\n\treturn err\n}\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then the build fails, because the transaction is not exported")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents()) + string(session.Err.Contents())).To(ContainSubstring("tx.Tx undefined"))
+	})
+
 	It("The interceptor no longer attempts resource-level authorization", func() {
 		By(`given an interceptor importing "internal/policy"`)
 		dir := checkout()

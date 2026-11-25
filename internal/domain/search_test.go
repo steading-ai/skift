@@ -269,7 +269,7 @@ decision := {"allow": allow, "reasons": []}
 			}
 			// Flush this backend's statistics at commit, so the index
 			// scan count below reflects the search just run.
-			_, err = tx.Tx.Exec(ctx, `SELECT pg_stat_force_next_flush()`)
+			_, err = store.Raw(tx).Exec(ctx, `SELECT pg_stat_force_next_flush()`)
 			return err
 		})).To(Succeed())
 		elapsed := time.Since(start)

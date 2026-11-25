@@ -26,7 +26,8 @@ import (
 	tclog "github.com/testcontainers/testcontainers-go/log"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/steading-ai/skift/internal/dbpool"
+	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/store/dbpool"
 )
 
 // postgresImage is the same pinned postgres:18 the development stack in
@@ -373,4 +374,11 @@ func setDefaultEnv(key, value string) {
 	if os.Getenv(key) == "" {
 		os.Setenv(key, value) //nolint:errcheck // fails only on an invalid key
 	}
+}
+
+// Store wraps a spec's pool in the store the domain runs on, for specs in
+// packages that build a [domain.Service] but may not import the store
+// themselves.
+func Store(pool *pgxpool.Pool) *store.Store {
+	return store.FromPool(pool)
 }

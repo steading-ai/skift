@@ -162,7 +162,7 @@ func deploy(ctx context.Context) *deployment {
 	}).Should(Succeed(), "skift serve never bound its socket")
 
 	By("serving the same handlers on the tailnet")
-	svc := domain.NewService(pool, pol)
+	svc := domain.NewService(testsupport.Store(pool), pol)
 	tn := &loopbackTailnet{}
 	srv := server.New(server.Config{
 		SocketPath:      filepath.Join(dir, "laptop.sock"),

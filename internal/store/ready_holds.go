@@ -103,7 +103,7 @@ SELECT h.ref, h.reason, s.downstream_count, s.refs, count(*) OVER ()
 FROM summary s JOIN holds h ON h.id = s.hold_id AND h.project_hold = s.project_hold
 ORDER BY s.downstream_count DESC, h.ref
 LIMIT $%d`, where, len(args)-1, len(args))
-	rows, err := t.Tx.Query(ctx, sql, args...)
+	rows, err := t.tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query ready hold blockers: %w", err)
 	}

@@ -224,7 +224,7 @@ func (h *history) complete() {
 // if it is, as the user, the way a person parks a whole project.
 func (h *history) toggleProjectHold() {
 	h.seq++
-	svc := domain.NewService(h.s.Pool(), pol)
+	svc := domain.NewService(h.s, pol)
 	requestID := fmt.Sprintf("req-%d", h.seq)
 	var err error
 	if h.projectHeld {
@@ -442,7 +442,7 @@ func (h *history) load() *state {
 }
 
 func queryRows[T any](ctx context.Context, tx store.Tx, sql string, args ...any) ([]T, error) {
-	rows, err := tx.Tx.Query(ctx, sql, args...)
+	rows, err := store.Raw(tx).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

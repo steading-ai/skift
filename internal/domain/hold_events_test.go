@@ -25,7 +25,7 @@ var _ = Describe("Sweep events", Label(testsupport.DBLabel), func() {
 	BeforeEach(func(ctx SpecContext) {
 		s = store.FromPool(pg.Database(ctx))
 		g = newGraph(ctx, s)
-		svc = domain.NewService(s.Pool(), pol)
+		svc = domain.NewService(s, pol)
 		user = g.principal(ctx)
 	})
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/policy"
@@ -77,14 +76,14 @@ func runReap(cmd *cobra.Command, opts reapOptions) error {
 	if err != nil {
 		return fmt.Errorf("skift reap: %w", err)
 	}
-	pool, err := dbpool.New(ctx, opts.databaseURL)
+	db, err := domain.Open(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift reap: database url: %w", err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	log.Debug("skift reap starting", "version", version.String(), "policy_version", bundle.Version())
-	reaped, err := domain.NewService(pool, bundle).Reap(ctx, opts.pageSize)
+	reaped, err := domain.NewService(db, bundle).Reap(ctx, opts.pageSize)
 	summary := reapSummary{Organizations: make([]reapOrgSummary, 0, len(reaped))}
 	for _, r := range reaped {
 		org := reapOrgSummary{OrgID: r.OrgID, Expired: len(r.Expired)}

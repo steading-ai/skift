@@ -92,7 +92,8 @@ type Services struct {
 	Events skiftv1connect.EventServiceHandler
 }
 
-// Pinger answers whether the database is reachable. A pgxpool.Pool is one.
+// Pinger answers whether the database is reachable. The handle the
+// domain opens is one.
 type Pinger interface {
 	Ping(context.Context) error
 }

@@ -146,7 +146,7 @@ var _ = Describe("Connect server over the tailnet", func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			svc := domain.NewService(pool, pol)
+			svc := domain.NewService(testsupport.Store(pool), pol)
 			tn := &loopbackTailnet{node: "nLAPTOP01"}
 			r := start(server.Config{
 				Transports: []server.Transport{tn},

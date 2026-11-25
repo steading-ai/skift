@@ -15,11 +15,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
-	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/mcphttp"
@@ -231,17 +229,17 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// The pool connects lazily, so a database that is down at startup is
 	// reported by the health check rather than preventing the service from
 	// listening; systemd would otherwise restart it in a loop.
-	pool, err := dbpool.New(ctx, opts.databaseURL)
+	db, err := domain.Open(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift serve: database url: %w", err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	// Every request is attributed to a principal before a handler sees it:
 	// by unix peer credentials over the socket, by tailscale node over the
 	// tailnet. The handlers reach the graph through the domain alone and
 	// are the same set on both.
-	svc := domain.NewService(pool, bundle)
+	svc := domain.NewService(db, bundle)
 	resolvers := []interceptor.Resolver{interceptor.UnixResolver{}}
 	var transports []server.Transport
 	var nativeHandler http.Handler
@@ -270,7 +268,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		Graph:  server.NewGraphService(svc),
 		Work:   server.NewWorkService(svc),
 		Events: server.NewEventService(svc),
-	}, pool)
+	}, db)
 
 	if opts.mcpHTTP {
 		nativeHandler = newNativeMCPHandler(srv, interceptor.NewAuthenticator(server.NewIdentityLookup(svc), resolvers...))
@@ -306,7 +304,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// the service drains and exits rather than serving over it.
 	fatal := make(chan error, 1)
 	go func() {
-		if err := announceReady(ctx, pool, schemaPreparer(opts), log); err != nil {
+		if err := announceReady(ctx, db, schemaPreparer(opts), log); err != nil {
 			fatal <- err
 			drain()
 		}
@@ -378,10 +376,10 @@ const (
 // It keeps probing until the database answers or the service is shutting
 // down. The database answering and then refusing is returned as the error
 // it refused with; that is the service's to act on, not to retry.
-func announceReady(ctx context.Context, pool *pgxpool.Pool, prepare func(context.Context, *slog.Logger) error, log *slog.Logger) error {
+func announceReady(ctx context.Context, db server.Pinger, prepare func(context.Context, *slog.Logger) error, log *slog.Logger) error {
 	for {
 		probeCtx, cancel := context.WithTimeout(ctx, readyProbe)
-		err := pool.Ping(probeCtx)
+		err := db.Ping(probeCtx)
 		cancel()
 		if err == nil {
 			err = prepare(ctx, log)

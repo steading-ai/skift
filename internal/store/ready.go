@@ -155,7 +155,7 @@ type DerivedRow struct {
 // DeriveNodes computes the derived flags of the nodes ids of organization
 // orgID in one statement, one row per node found.
 func (t Tx) DeriveNodes(ctx context.Context, orgID string, ids []string) ([]DerivedRow, error) {
-	rows, err := t.Tx.Query(ctx, derivedSQL, orgID, ids)
+	rows, err := t.tx.Query(ctx, derivedSQL, orgID, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (t Tx) ReadyNodes(ctx context.Context, orgID string, projects []string, f R
 	if err != nil {
 		return nil, err
 	}
-	rows, err := t.Tx.Query(ctx, sql, args...)
+	rows, err := t.tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query ready set: %w", err)
 	}
@@ -293,7 +293,7 @@ func (t Tx) LockNextReady(ctx context.Context, orgID string, projects []string, 
 	if err != nil {
 		return Node{}, err
 	}
-	rows, err := t.Tx.Query(ctx, sql+" FOR UPDATE OF n SKIP LOCKED", args...)
+	rows, err := t.tx.Query(ctx, sql+" FOR UPDATE OF n SKIP LOCKED", args...)
 	if err != nil {
 		return Node{}, err
 	}
@@ -314,7 +314,7 @@ func (t Tx) EligibleProjects(ctx context.Context, orgID string, projects []strin
 		args = append(args, projects)
 		sql += fmt.Sprintf(" AND n.project_id = ANY($%d::text[])", len(args))
 	}
-	rows, err := t.Tx.Query(ctx, sql, args...)
+	rows, err := t.tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("eligible projects: %w", err)
 	}
@@ -329,7 +329,7 @@ func (t Tx) EligibleProjects(ctx context.Context, orgID string, projects []strin
 // a fresh statement.
 func (t Tx) IsReady(ctx context.Context, orgID, nodeID string) (bool, error) {
 	var ready bool
-	err := t.Tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM nodes n WHERE "+readyWhere+" AND n.id = $2)", orgID, nodeID).Scan(&ready)
+	err := t.tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM nodes n WHERE "+readyWhere+" AND n.id = $2)", orgID, nodeID).Scan(&ready)
 	return ready, err
 }
 
@@ -339,7 +339,7 @@ func (t Tx) HeldCount(ctx context.Context, orgID, projectID string) (int, error)
 	const sql = `SELECT count(*) FROM nodes n
 WHERE n.org_id = $1 AND n.project_id = $2 AND n.status = 'open' AND ` + heldWhere
 	var count int
-	err := t.Tx.QueryRow(ctx, sql, orgID, projectID).Scan(&count)
+	err := t.tx.QueryRow(ctx, sql, orgID, projectID).Scan(&count)
 	return count, err
 }
 
@@ -395,7 +395,7 @@ func (t Tx) OpenChildrenOf(ctx context.Context, orgID, nodeID string) ([]Node, e
 // $1 and collects its rows as T.
 func explainRows[T any](ctx context.Context, t Tx, sub, order, orgID, nodeID string) ([]T, error) {
 	sql := "SELECT x.* FROM nodes n CROSS JOIN LATERAL (" + sub + ") x WHERE n.org_id = $1 AND n.id = $2 " + order
-	rows, err := t.Tx.Query(ctx, sql, orgID, nodeID)
+	rows, err := t.tx.Query(ctx, sql, orgID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("explain node: %w", err)
 	}

@@ -19,16 +19,31 @@ linters:
     - unparam
   settings:
     # Handlers reach the database through the domain layer, never around it.
-    # See docs/adrs/007-core-tech-stack.md.
+    # The spec harness hands specs a store over their pool. See
+    # docs/adrs/007-core-tech-stack.md.
     depguard:
       rules:
         store-only-from-domain:
           files:
             - "!**/internal/domain/**"
             - "!**/internal/store/**"
+            - "!**/internal/testsupport/**"
           deny:
             - pkg: github.com/steading-ai/skift/internal/store
               desc: only the domain layer may import the store
+        # Only the store reaches PostgreSQL: every statement, connection and
+        # LISTEN lives there, so no other package can send SQL of its own.
+        # Specs and the spec harness lay fixtures with pgx directly. See
+        # docs/adrs/013-postgresql-only-through-the-store.md.
+        pgx-only-in-store:
+          files:
+            - "$all"
+            - "!$test"
+            - "!**/internal/store/**"
+            - "!**/internal/testsupport/**"
+          deny:
+            - pkg: github.com/jackc/pgx/v5
+              desc: only the store reaches PostgreSQL (docs/adrs/013-postgresql-only-through-the-store.md)
         # Interceptors authenticate and check methods. Resource-level
         # authorization needs the resolved write set, which exists only
         # inside the domain's transaction. See the Authorization section of
@@ -47,6 +62,12 @@ linters:
       forbid:
         - pattern: ^testing\.
           msg: use Ginkgo and Gomega; testing belongs only in *_suite_test.go and *_fuzz_test.go
+        # The raw transaction and the pool are how specs lay fixtures. In
+        # code that ships they would be a way around the store. See
+        # docs/adrs/013-postgresql-only-through-the-store.md.
+        - pattern: ^store\.(Raw|Store\.Pool)$
+          pkg: ^github\.com/steading-ai/skift/internal/store$
+          msg: for spec fixtures only; SQL that ships lives in the store (docs/adrs/013-postgresql-only-through-the-store.md)
     # Ginkgo and Gomega are written with dot imports by design.
     revive:
       rules:
@@ -60,6 +81,10 @@ linters:
       - path: (_suite|_fuzz)_test\.go$
         linters:
           - forbidigo
+      - path: _test\.go$
+        linters:
+          - forbidigo
+        text: for spec fixtures only
 
 issues:
   # Report every rule that fires on a line. Hiding one violation behind

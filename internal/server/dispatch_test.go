@@ -37,7 +37,7 @@ var _ = Describe("In-process Connect domain boundary", Label(testsupport.DBLabel
 			_, err = pool.Exec(ctx, `INSERT INTO principal_identities(principal_id,scheme,value) VALUES($1,'tailscale',$2)`, p.ID, node)
 			Expect(err).NotTo(HaveOccurred())
 		}
-		svc := domain.NewService(pool, pol)
+		svc := domain.NewService(testsupport.Store(pool), pol)
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(_ context.Context, peer string) (string, error) { return peer, nil })}
 		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(server.NewIdentityLookup(svc), resolver)}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, pool)
 		graph = skiftv1connect.NewGraphServiceClient(srv.InProcessClient())

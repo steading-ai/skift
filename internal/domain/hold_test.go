@@ -185,7 +185,7 @@ var _ = Describe("Focus", Label(testsupport.DBLabel), func() {
 	BeforeEach(func(ctx SpecContext) {
 		s = store.FromPool(pg.Database(ctx))
 		g = newGraph(ctx, s)
-		svc = domain.NewService(s.Pool(), pol)
+		svc = domain.NewService(s, pol)
 	})
 
 	It("A sweep parks everything outside the keep-set and leaves the lineage of what it keeps", func(ctx SpecContext) {
