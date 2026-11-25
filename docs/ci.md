@@ -6,22 +6,9 @@ Eight workflows live here.
 
 `make lint` is `hk check --all`: every step in `hk.pkl`, side by side, the same checks a developer runs. It reads the workflows too, with [jactionlint](https://jactionlint.jdx.dev): their syntax, expressions and shell, and the mistakes that make a workflow exploitable, such as template injection, persisted credentials and over-broad permissions. It checks `actions.lock` against the actions the workflows use as well.
 
-[publish.yml](../.github/workflows/publish.yml) runs on every push to
-`main`: it cross-compiles `skift` for linux/amd64 and linux/arm64 (the same
-`dist/skift-linux-%` build the Makefile uses for the rpm) and pushes a
-multi-arch image to GHCR, built from
-[packaging/Containerfile](../packaging/Containerfile). It does not run on
-pull requests — it publishes, it does not check anything.
+[publish.yml](../.github/workflows/publish.yml) runs on every push to `main`: it cross-compiles `skift` for linux/amd64 and linux/arm64 (the same `dist/skift-linux-%` build the Makefile uses for the rpm) and pushes a multi-arch image to GHCR, built from [packaging/Containerfile](../packaging/Containerfile). It does not run on pull requests — it publishes, it does not check anything.
 
-[site.yml](../.github/workflows/site.yml) builds
-[skift.stead.ing](https://skift.stead.ing/) from this repository and
-publishes it to GitHub Pages. [site.yaml](../site.yaml) writes the front
-page; `README.md` and every Markdown file under `docs/` are the pages
-under `/docs/`. It runs when any of those change: a pull request builds
-the site without publishing it, and a push to `main` publishes. The site's
-code is not here. It is shared by every Steading project and comes from
-[steading-ai/stead.ing](https://github.com/steading-ai/stead.ing), whose
-README documents `site.yaml`.
+[site.yml](../.github/workflows/site.yml) builds [skift.stead.ing](https://skift.stead.ing/) from this repository and publishes it to GitHub Pages. [site.yaml](../site.yaml) writes the front page; `README.md` and every Markdown file under `docs/` are the pages under `/docs/`. It runs when any of those change: a pull request builds the site without publishing it, and a push to `main` publishes. The site's code is not here. It is shared by every Steading project and comes from [steading-ai/stead.ing](https://github.com/steading-ai/stead.ing), whose README documents `site.yaml`.
 
 [actions-lock.yml](../.github/workflows/actions-lock.yml) runs on every pull request and every push to `main`: `gh actions-lock --verify` fails when [actions.lock](../.github/workflows/actions.lock), which pins the commit behind every action the workflows use, no longer matches them or pins a commit that no longer verifies upstream. `gh actions-lock` rewrites it, and Renovate regenerates it with each action it updates.
 
@@ -72,8 +59,7 @@ Every other workflow runs on GitHub's own runners, and for `release.yml`, `relea
 - **Contents:** `skift` at `/usr/local/bin/skift`, on a `scratch` base, and two empty directories it owns: `/run/skift`, where `skift serve` binds its socket, and `/var/lib/skift`, for the tailnet node's state. Nothing else — no shell, no entrypoint, no command. `podman run --rm ghcr.io/steading-ai/skift:<sha> skift version` runs the binary itself as the container's command.
 - **User:** uid and gid 65532, by number; the image has no `/etc/passwd`. Both directories are that user's, mode 0750, and a new volume mounted over either starts out the same way.
 - **TLS:** the image has no CA bundle. The binary carries Mozilla's roots from [`golang.org/x/crypto/x509roots/fallback`](https://pkg.go.dev/golang.org/x/crypto/x509roots/fallback) and uses them only where the system has none, as here.
-- **Auth to build and push:** the workflow's own `GITHUB_TOKEN`, granted
-  `packages: write`. No other secret is involved.
+- **Auth to build and push:** the workflow's own `GITHUB_TOKEN`, granted `packages: write`. No other secret is involved.
 
 ## Reading it from another repository
 

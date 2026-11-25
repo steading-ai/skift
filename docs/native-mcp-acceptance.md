@@ -1,12 +1,8 @@
 # Native MCP acceptance coverage
 
-ADR-011 is the protocol/security authority. Native HTTP accepts only
-`2026-07-28`; older clients must use the retained stdio bridge.
+ADR-011 is the protocol/security authority. Native HTTP accepts only `2026-07-28`; older clients must use the retained stdio bridge.
 
-The executable scenarios use Ginkgo/Gomega. Database specs use real PostgreSQL;
-identity and TLS fixtures are deterministic and never enroll a production node.
-The SDK end-to-end specs compose the real generated Connect handlers and domain
-in process behind a real HTTP listener, not a deployed tsnet service.
+The executable scenarios use Ginkgo/Gomega. Database specs use real PostgreSQL; identity and TLS fixtures are deterministic and never enroll a production node. The SDK end-to-end specs compose the real generated Connect handlers and domain in process behind a real HTTP listener, not a deployed tsnet service.
 
 | Acceptance requirement | Executable coverage |
 |---|---|
@@ -25,12 +21,6 @@ in process behind a real HTTP listener, not a deployed tsnet service.
 
 ## Limits
 
-Tests do not prove live tailnet enrollment, certificate issuance or a successful
-production TLS handshake. See [HTTPS setup](native-mcp-https.md) for prerequisites
-and lazy certificate-acquisition failures. No deployment is part of acceptance.
-A fixture using the supported TLS listener path is not proof of certificate issuance.
+Tests do not prove live tailnet enrollment, certificate issuance or a successful production TLS handshake. See [HTTPS setup](native-mcp-https.md) for prerequisites and lazy certificate-acquisition failures. No deployment is part of acceptance. A fixture using the supported TLS listener path is not proof of certificate issuance.
 
-Full lint/test results belong to the implementation work-order handoff; focused
-package checks alone must not be reported as a green full suite. The complete
-`make test` run also includes the CLI/stdio acceptance suite. Race checks must
-report their selected focus rather than imply every package ran under race.
+Full lint/test results belong to the implementation work-order handoff; focused package checks alone must not be reported as a green full suite. The complete `make test` run also includes the CLI/stdio acceptance suite. Race checks must report their selected focus rather than imply every package ran under race.
