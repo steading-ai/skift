@@ -24,6 +24,7 @@ type nodeOpts struct {
 	labels       []string
 	project      string // project id; the spec's project when empty
 	slug         string // the project's slug; "platform" when empty
+	id           string // the node's id; a random one when empty
 }
 
 // nodeWith inserts node `number` with the given options.
@@ -36,6 +37,9 @@ func (g *graph) nodeWith(ctx context.Context, tx store.Tx, number int64, o nodeO
 	p := store.CreateNodeParams{
 		ID: newULID(), Number: number, OrgID: g.org, ProjectID: project, ParentID: o.parent,
 		Kind: "task", Title: fmt.Sprintf("Node %d", number), Priority: "p2", Labels: []string{},
+	}
+	if o.id != "" {
+		p.ID = o.id
 	}
 	if o.kind != "" {
 		p.Kind = o.kind
@@ -510,9 +514,13 @@ var _ = Describe("Readiness", Label(testsupport.DBLabel), func() {
 	Describe("Ordering by priority then age", func() {
 		It("returns the most urgent first, then the oldest", func(ctx SpecContext) {
 			g.given(ctx, func(ctx context.Context, tx store.Tx) {
-				g.nodeWith(ctx, tx, 1, nodeOpts{priority: "p2"})
+				// Ids break ties after age, and random ids would sort 1 and 3
+				// either way. Give 3, the older, the larger id, so an order
+				// that skipped age would put 1 first every time.
+				prefix := newULID()[:25]
+				g.nodeWith(ctx, tx, 1, nodeOpts{priority: "p2", id: prefix + "0"})
 				g.nodeWith(ctx, tx, 2, nodeOpts{priority: "p0"})
-				g.nodeWith(ctx, tx, 3, nodeOpts{priority: "p2"})
+				g.nodeWith(ctx, tx, 3, nodeOpts{priority: "p2", id: prefix + "Z"})
 				g.nodeWith(ctx, tx, 4, nodeOpts{priority: "p1"})
 				// Age is created_at, not number: make 3 older than 1.
 				for number, age := range map[int64]string{1: "2 hours", 2: "1 hour", 3: "3 hours", 4: "1 hour"} {
