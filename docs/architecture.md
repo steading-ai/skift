@@ -42,11 +42,11 @@ agent / human / orchestrator
      handlers        wire types only
         │
         ▼
-      domain         graph rules: cycles, readiness, leases, aliases
+      domain         the graph's rules and use cases: patches, readiness, leases, holds
         │              policy on the resolved patch, inside its transaction
         │
         ▼
-      store          every SQL statement: sqlc over pgx
+      store          every SQL statement, the pool, LISTEN, River's client
         │
         ▼
     PostgreSQL       nodes, edges, leases, events, usage, comments
@@ -57,6 +57,22 @@ Authentication and resource authorization are separate. The principal intercepto
 The domain owns action/resource authorization. An interceptor cannot know which resources a patch touches: aliases are unresolved and cascades unexpanded until domain applies it. The effective write set is authorized inside the writing transaction, against the snapshot it writes to, and one denial rolls back the patch. Tenant scoping, policy decisions, and lease holder/fencing checks remain in that same path for native MCP and Connect.
 
 Handlers never see the transport, and never reach the store directly. The domain layer owns every rule that makes the graph a graph, as decisions: which question to ask the store, and what the answer means. The store is the only package that reaches PostgreSQL. Every SQL statement, connection, and `LISTEN` lives there, and the domain layer cannot execute SQL at all. See [ADR-013](adrs/013-postgresql-only-through-the-store.md).
+
+## Packages
+
+Three packages sit behind the handlers, each with one purpose:
+
+| Package | Purpose |
+|---|---|
+| `internal/store` | Reaches PostgreSQL: every SQL statement, the connection pool, `LISTEN`, and River's client. |
+| `internal/domain` | States the graph's rules and the use cases built on them. |
+| `internal/admin` | Operates a deployment: migrations, bootstrap, opening the database, and the background jobs with their schedule. |
+
+The store may be imported by the domain and by admin; handlers reach the database only through the domain. pgx and River's drivers are allowed only in the store, and River's core package only in the store and admin. depguard enforces each of these. Operating a deployment is the `skift admin` subcommand: migrations, bootstrap, and listing or running background jobs. See [ADR-016](adrs/016-background-jobs-and-admin.md).
+
+## Background work
+
+Skift's own background work runs inside `skift serve` as [River](https://github.com/riverqueue/river) periodic jobs: expiring stale leases, and keeping event partitions ahead of the clock. River's leader election runs each job once, however many `serve` processes share the database, and every deployment shape gets the jobs because every deployment runs `serve`. River's schema is part of skift's own migrations. River runs skift's maintenance, never work from the graph.
 
 ## Identity by transport
 
@@ -92,14 +108,13 @@ Skift is a wellspring service in homestead terms: it shares the platform Postgre
 wellspring                         grove
   skift.service    ◄── unix socket ── agents, orchestrator
   postgresql
-  skift-reap.timer                 laptop
+                                   laptop
                    ◄── tsnet ────── skift, skift mcp
 ```
 
 | Unit | Does |
 |---|---|
-| `skift.service` | The Connect service. Logs to the journal, notifies readiness with sd_notify |
-| `skift-reap.timer` | Expires stale leases. The only background work in v1 |
+| `skift.service` | The Connect service and its background jobs. Logs to the journal, notifies readiness with sd_notify |
 
 ## Consumers
 
