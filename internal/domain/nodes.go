@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -225,6 +222,28 @@ type NodeListQuery struct {
 	Offset int
 }
 
+// filter is q's filters as the store applies them, over the resolved
+// projects and parent, or why one of them is not valid.
+func (q NodeListQuery) filter(projects []string, parentID string) (store.NodeFilter, error) {
+	switch q.Status {
+	case "", "open", "done", "dropped":
+	default:
+		return store.NodeFilter{}, fmt.Errorf("status %q is not open, done, or dropped", q.Status)
+	}
+	switch q.AssigneeKind {
+	case "", AssigneeAgent, AssigneeUser:
+	default:
+		return store.NodeFilter{}, fmt.Errorf("assignee kind %q is not agent or user", q.AssigneeKind)
+	}
+	if q.MinPriority != "" && !validPriority(q.MinPriority) {
+		return store.NodeFilter{}, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
+	}
+	return store.NodeFilter{
+		Projects: projects, Status: q.Status, Kinds: q.Kinds, AssigneeKind: q.AssigneeKind,
+		Labels: q.Labels, AnyLabels: q.AnyLabels, MinPriority: q.MinPriority, Held: q.Held, ParentID: parentID,
+	}, nil
+}
+
 // ListNodes returns one page of the nodes matching q, ordered by project
 // then by number so a page is stable across any number of projects.
 func (g *Service) ListNodes(ctx context.Context, orgID string, q NodeListQuery) ([]NodeState, error) {
@@ -253,15 +272,15 @@ func (g *Service) ListNodes(ctx context.Context, orgID string, q NodeListQuery) 
 			}
 			parentID = parent.ID
 		}
-		sql, args, err := q.sql(orgID, scope, parentID)
+		f, err := q.filter(scope, parentID)
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Tx.Query(ctx, sql, args...)
+		limit, err := boundPageSize(q.Limit, ActiveLimits())
 		if err != nil {
-			return fmt.Errorf("list nodes: %w", err)
+			return err
 		}
-		nodes, err := pgx.CollectRows(rows, pgx.RowToStructByName[store.Node])
+		nodes, err := tx.FilterNodes(ctx, orgID, f, limit, q.Offset)
 		if err != nil {
 			return fmt.Errorf("list nodes: %w", err)
 		}
@@ -269,65 +288,4 @@ func (g *Service) ListNodes(ctx context.Context, orgID string, q NodeListQuery) 
 		return err
 	})
 	return out, err
-}
-
-// sql renders the listing. $1 is always the organization, so a filter can
-// narrow the page and never widen it.
-func (q NodeListQuery) sql(orgID string, projects []string, parentID string) (string, []any, error) {
-	var b strings.Builder
-	b.WriteString("SELECT n.* FROM nodes n WHERE n.org_id = $1")
-	args := []any{orgID}
-	where := func(clause string, value any) {
-		args = append(args, value)
-		b.WriteString(" AND ")
-		fmt.Fprintf(&b, clause, len(args))
-	}
-	if len(projects) > 0 {
-		where("n.project_id = ANY($%d::text[])", projects)
-	}
-	switch q.Status {
-	case "":
-	case "open", "done", "dropped":
-		where("n.status = $%d", q.Status)
-	default:
-		return "", nil, fmt.Errorf("status %q is not open, done, or dropped", q.Status)
-	}
-	if len(q.Kinds) > 0 {
-		where("n.kind = ANY($%d::text[])", q.Kinds)
-	}
-	switch q.AssigneeKind {
-	case "":
-	case AssigneeAgent:
-		b.WriteString(" AND (n.assignee_kind IS NULL OR n.assignee_kind = 'agent')")
-	case AssigneeUser:
-		b.WriteString(" AND n.assignee_kind = 'user'")
-	default:
-		return "", nil, fmt.Errorf("assignee kind %q is not agent or user", q.AssigneeKind)
-	}
-	if len(q.Labels) > 0 {
-		where("n.labels @> $%d::text[]", q.Labels)
-	}
-	if len(q.AnyLabels) > 0 {
-		where("n.labels && $%d::text[]", q.AnyLabels)
-	}
-	if q.MinPriority != "" {
-		if !validPriority(q.MinPriority) {
-			return "", nil, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
-		}
-		where("n.priority <= $%d", q.MinPriority)
-	}
-	if q.Held {
-		b.WriteString(" AND " + store.HeldWhere)
-	}
-	if parentID != "" {
-		where("n.parent_id = $%d", parentID)
-	}
-	b.WriteString(" ORDER BY n.project_id, n.number")
-	limit, err := boundPageSize(q.Limit, ActiveLimits())
-	if err != nil {
-		return "", nil, err
-	}
-	args = append(args, limit, q.Offset)
-	fmt.Fprintf(&b, " LIMIT $%d OFFSET $%d", len(args)-1, len(args))
-	return b.String(), args, nil
 }

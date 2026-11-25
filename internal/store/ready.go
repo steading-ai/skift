@@ -112,10 +112,6 @@ const readyWhere = `n.org_id = $1 AND n.status = 'open'
 // its nodes without instantiating the walk.
 const heldWhere = `(EXISTS (` + heldProject + `) OR EXISTS (` + heldAncestors + `))`
 
-// HeldWhere is the effectively-held predicate on n, with $1 the
-// organization, for a listing that filters on it.
-const HeldWhere = heldWhere
-
 // derivedSQL computes every flag of a set of nodes in one statement, from
 // the readiness fragments Ready and Explain share. $1 is the organization,
 // $2 the node ids.
@@ -185,12 +181,12 @@ type ReadyFilter struct {
 	ParentID string
 }
 
-// Where appends f's clauses to base, an existing predicate on nodes n
+// clauses appends f's clauses to base, an existing predicate on nodes n
 // whose parameters are args, and returns the predicate with its
 // parameters. A ready query applies them to eligible nodes; the hold
 // summary applies them to the affected work without filtering away its
 // blockers.
-func (f ReadyFilter) Where(base string, args []any) (string, []any, error) {
+func (f ReadyFilter) clauses(base string, args []any) (string, []any, error) {
 	var b strings.Builder
 	b.WriteString(base)
 	// where appends a clause whose single %d is the position of value.
@@ -243,7 +239,7 @@ type ReadyPage struct {
 // The rendered statement selects `n.*` from `nodes n`, so a caller that
 // needs to lock what it reads may append `FOR UPDATE OF n SKIP LOCKED`.
 func readySQL(orgID string, projects []string, f ReadyFilter, page ReadyPage) (string, []any, error) {
-	where, args, err := f.Where(readyWhere, []any{orgID})
+	where, args, err := f.clauses(readyWhere, []any{orgID})
 	if err != nil {
 		return "", nil, err
 	}
@@ -309,7 +305,7 @@ func (t Tx) LockNextReady(ctx context.Context, orgID string, projects []string, 
 // that hold at least one ready node f keeps. It never locks a row, so it
 // never conflicts with `FOR UPDATE`.
 func (t Tx) EligibleProjects(ctx context.Context, orgID string, projects []string, f ReadyFilter) ([]string, error) {
-	where, args, err := f.Where(readyWhere, []any{orgID})
+	where, args, err := f.clauses(readyWhere, []any{orgID})
 	if err != nil {
 		return nil, err
 	}
