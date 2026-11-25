@@ -119,6 +119,41 @@ func DefaultConfigPath() string {
 // and is allowed to be absent; a path given explicitly must exist. Values
 // the caller has from flags go on top with [Config.Override].
 func LoadConfig(path string) (Config, error) {
+	loaded, err := Load(path, Config{})
+	if err != nil {
+		return Config{}, err
+	}
+	return loaded.Config, nil
+}
+
+// Source is where a setting's value came from.
+type Source string
+
+// The places a setting is read from, in rising precedence.
+const (
+	SourceDefault Source = "default"
+	SourceFile    Source = "config file"
+	SourceEnv     Source = "environment"
+	SourceFlag    Source = "flag"
+)
+
+// Loaded is a configuration and where each part of it came from.
+type Loaded struct {
+	Config
+	// Path is the config file consulted, whether or not it exists. Empty
+	// when there is no home directory to find the default under.
+	Path string
+	// Found reports whether the file at Path was read.
+	Found bool
+	// SocketFrom and AddressFrom say which source set Socket and Address;
+	// SourceDefault when none did.
+	SocketFrom, AddressFrom Source
+}
+
+// Load resolves the configuration as [LoadConfig] does and lays flags over
+// it as [Config.Override] does, recording the source of each connection
+// setting. On an error, Path still names the file that failed.
+func Load(path string, flags Config) (Loaded, error) {
 	explicit := path != ""
 	if !explicit {
 		if env := os.Getenv(EnvConfig); env != "" {
@@ -128,27 +163,42 @@ func LoadConfig(path string) (Config, error) {
 		}
 	}
 
-	var cfg Config
+	l := Loaded{Path: path, SocketFrom: SourceDefault, AddressFrom: SourceDefault}
 	if path != "" {
 		raw, err := os.ReadFile(path)
 		switch {
 		case errors.Is(err, os.ErrNotExist) && !explicit:
 			// Nothing configured; every value takes its default.
 		case err != nil:
-			return Config{}, fmt.Errorf("client: read config %s: %w", path, err)
+			return l, fmt.Errorf("client: read config %s: %w", path, err)
 		default:
-			if err := json.Unmarshal(raw, &cfg); err != nil {
-				return Config{}, fmt.Errorf("client: parse config %s: %w", path, err)
+			l.Found = true
+			var file Config
+			if err := json.Unmarshal(raw, &file); err != nil {
+				return l, fmt.Errorf("client: parse config %s: %w", path, err)
 			}
+			l.layer(file, SourceFile)
 		}
 	}
-
-	cfg = cfg.Override(Config{
+	l.layer(Config{
 		Socket:  os.Getenv(EnvSocket),
 		Address: os.Getenv(EnvAddress),
 		Project: os.Getenv(EnvProject),
-	})
-	return cfg, nil
+	}, SourceEnv)
+	l.layer(flags, SourceFlag)
+	return l, nil
+}
+
+// layer overrides l with over, crediting each connection setting over sets
+// to from.
+func (l *Loaded) layer(over Config, from Source) {
+	if over.Socket != "" {
+		l.SocketFrom = from
+	}
+	if over.Address != "" {
+		l.AddressFrom = from
+	}
+	l.Config = l.Override(over)
 }
 
 // Override returns c with every non-empty field of over replacing its own.

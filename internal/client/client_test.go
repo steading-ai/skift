@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
@@ -118,6 +119,89 @@ var _ = Describe("Client", Label("unit"), func() {
 		})
 	})
 
+	Describe("where each setting came from", func() {
+		var dir string
+
+		BeforeEach(func() {
+			dir = GinkgoT().TempDir()
+			GinkgoT().Setenv("XDG_CONFIG_HOME", dir)
+			for _, k := range []string{client.EnvConfig, client.EnvSocket, client.EnvAddress, client.EnvProject} {
+				GinkgoT().Setenv(k, "")
+			}
+		})
+
+		writeConfig := func(body string) string {
+			GinkgoHelper()
+			path := filepath.Join(dir, "skift", "config.json")
+			Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			return path
+		}
+
+		It("is the default for each setting nothing sets, naming the absent file", func() {
+			l, err := client.Load("", client.Config{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.Path).To(Equal(filepath.Join(dir, "skift", "config.json")))
+			Expect(l.Found).To(BeFalse())
+			Expect(l.SocketFrom).To(Equal(client.SourceDefault))
+			Expect(l.AddressFrom).To(Equal(client.SourceDefault))
+		})
+
+		It("credits the file, then the environment over it, then flags over both", func() {
+			path := writeConfig(`{"socket": "/from/file", "address": "http://file.example"}`)
+
+			l, err := client.Load("", client.Config{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.Path).To(Equal(path))
+			Expect(l.Found).To(BeTrue())
+			Expect(l.SocketFrom).To(Equal(client.SourceFile))
+			Expect(l.AddressFrom).To(Equal(client.SourceFile))
+
+			GinkgoT().Setenv(client.EnvAddress, "http://env.example")
+			l, err = client.Load("", client.Config{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.Address).To(Equal("http://env.example"))
+			Expect(l.AddressFrom).To(Equal(client.SourceEnv))
+			Expect(l.SocketFrom).To(Equal(client.SourceFile), "the environment set only the address")
+
+			l, err = client.Load("", client.Config{Socket: "/from/flag", Address: "http://flag.example"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.Config).To(Equal(client.Config{Socket: "/from/flag", Address: "http://flag.example"}))
+			Expect(l.SocketFrom).To(Equal(client.SourceFlag))
+			Expect(l.AddressFrom).To(Equal(client.SourceFlag))
+		})
+
+		It("credits the environment for a setting the file lacks", func() {
+			writeConfig(`{"project": "platform"}`)
+			GinkgoT().Setenv(client.EnvSocket, "/from/env")
+
+			l, err := client.Load("", client.Config{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.SocketFrom).To(Equal(client.SourceEnv))
+			Expect(l.AddressFrom).To(Equal(client.SourceDefault))
+		})
+
+		It("still names the file when it does not parse", func() {
+			path := writeConfig(`{"socket": `)
+
+			l, err := client.Load("", client.Config{})
+			Expect(err).To(MatchError(ContainSubstring("parse config")))
+			Expect(l.Path).To(Equal(path))
+		})
+
+		It("resolves exactly as LoadConfig and Override do", func() {
+			writeConfig(`{"socket": "/from/file", "project": "platform"}`)
+			GinkgoT().Setenv(client.EnvAddress, "http://env.example")
+			flags := client.Config{Project: "flag"}
+
+			cfg, err := client.LoadConfig("")
+			Expect(err).NotTo(HaveOccurred())
+			l, err := client.Load("", flags)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.Config).To(Equal(cfg.Override(flags)))
+		})
+	})
+
 	Describe("the default socket", func() {
 		It("is the user's own when one exists under XDG_RUNTIME_DIR", func() {
 			dir := GinkgoT().TempDir()
@@ -131,14 +215,19 @@ var _ = Describe("Client", Label("unit"), func() {
 			Expect(client.DefaultSocketPath()).To(Equal(own))
 		})
 
-		It("is the system service's when the user has none", func() {
+		It("is the system service's on linux when the user has none", func() {
 			GinkgoT().Setenv("XDG_RUNTIME_DIR", GinkgoT().TempDir())
-			Expect(client.DefaultSocketPath()).To(Equal(client.SystemSocketPath))
+			Expect(client.DefaultSocketPathOn("linux")).To(Equal(client.SystemSocketPath))
 		})
 
-		It("is the system service's without a runtime directory at all", func() {
+		It("is the system service's on linux without a runtime directory at all", func() {
 			GinkgoT().Setenv("XDG_RUNTIME_DIR", "")
-			Expect(client.DefaultSocketPath()).To(Equal(client.SystemSocketPath))
+			Expect(client.DefaultSocketPathOn("linux")).To(Equal(client.SystemSocketPath))
+		})
+
+		It("is the one for this host's OS", func() {
+			GinkgoT().Setenv("XDG_RUNTIME_DIR", "")
+			Expect(client.DefaultSocketPath()).To(Equal(client.DefaultSocketPathOn(runtime.GOOS)))
 		})
 
 		Context("on macOS, which sets no runtime directory and runs no system service", func() {
