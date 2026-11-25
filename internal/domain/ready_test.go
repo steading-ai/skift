@@ -83,7 +83,7 @@ func (g *graph) lease(ctx context.Context, tx store.Tx, ref string, ttl time.Dur
 	Expect(err).NotTo(HaveOccurred())
 	if ttl < 0 {
 		claimed, expires := time.Now().Add(2*ttl), time.Now().Add(ttl)
-		_, err := tx.Tx.Exec(ctx, `UPDATE leases SET claimed_at = $2, expires_at = $3 WHERE id = $1`, l.ID, claimed, expires)
+		_, err := store.Raw(tx).Exec(ctx, `UPDATE leases SET claimed_at = $2, expires_at = $3 WHERE id = $1`, l.ID, claimed, expires)
 		Expect(err).NotTo(HaveOccurred())
 		l.ClaimedAt, l.ExpiresAt = claimed, expires
 	}
@@ -516,7 +516,7 @@ var _ = Describe("Readiness", Label(testsupport.DBLabel), func() {
 				g.nodeWith(ctx, tx, 4, nodeOpts{priority: "p1"})
 				// Age is created_at, not number: make 3 older than 1.
 				for number, age := range map[int64]string{1: "2 hours", 2: "1 hour", 3: "3 hours", 4: "1 hour"} {
-					_, err := tx.Tx.Exec(ctx, `UPDATE nodes SET created_at = now() - $2::interval WHERE org_id = $1 AND number = $3`, g.org, age, number)
+					_, err := store.Raw(tx).Exec(ctx, `UPDATE nodes SET created_at = now() - $2::interval WHERE org_id = $1 AND number = $3`, g.org, age, number)
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})

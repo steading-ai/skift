@@ -40,7 +40,7 @@ func (t Tx) FilterNodes(ctx context.Context, orgID string, f NodeFilter, limit, 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := t.Tx.Query(ctx, sql, args...)
+	rows, err := t.tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

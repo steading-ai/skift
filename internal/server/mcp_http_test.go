@@ -107,7 +107,7 @@ var _ = Describe("HTTP MCP real-domain lease lifetime", Label(testsupport.DBLabe
 	BeforeEach(func(ctx SpecContext) {
 		f = newFixture(ctx)
 		f.project(ctx, "Platform")
-		svc := domain.NewService(f.pool, pol)
+		svc := domain.NewService(testsupport.Store(f.pool), pol)
 		lookup := interceptor.StaticLookup{{Scheme: interceptor.SchemeTailscale, Value: "node"}: f.user}
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(context.Context, string) (string, error) { return "node", nil })}
 		observe := connect.ServerInterceptor(func(next connect.ServerFunc) connect.ServerFunc {
@@ -168,7 +168,7 @@ var _ = Describe("HTTP MCP real-domain lease lifetime", Label(testsupport.DBLabe
 	It("wakes a real waiting HTTP claim on common service drain and leaves committed leases live", func(ctx SpecContext) {
 		f.mustApply(ctx, createOp("task", "Work"))
 		token := httpLeaseID(callHTTPTool(ctx, ts, "claim", map[string]any{"projects": []string{"platform"}}))
-		svc := domain.NewService(f.pool, pol)
+		svc := domain.NewService(testsupport.Store(f.pool), pol)
 		lookup := interceptor.StaticLookup{{Scheme: interceptor.SchemeTailscale, Value: "node"}: f.user}
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(context.Context, string) (string, error) { return "node", nil })}
 		entered := make(chan struct{}, 1)

@@ -83,7 +83,7 @@ var _ = Describe("Native MCP SDK acceptance", Label(testsupport.DBLabel), func()
 			_, err = f.pool.Exec(ctx, `INSERT INTO principal_identities(principal_id,scheme,value) VALUES($1,'tailscale',$2)`, p.ID, node)
 			Expect(err).NotTo(HaveOccurred())
 		}
-		svc := domain.NewService(f.pool, pol)
+		svc := domain.NewService(testsupport.Store(f.pool), pol)
 		lookup := server.NewIdentityLookup(svc)
 		resolver := interceptor.TailscaleResolver{WhoIs: interceptor.WhoIsFunc(func(_ context.Context, peer string) (string, error) { return peer, nil })}
 		srv := server.New(server.Config{Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(lookup, resolver)}}, server.Services{Graph: server.NewGraphService(svc), Work: server.NewWorkService(svc)}, f.pool)

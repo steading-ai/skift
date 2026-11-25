@@ -140,7 +140,7 @@ var _ = Describe("Change stream", Label(testsupport.DBLabel), func() {
 	BeforeEach(func(ctx SpecContext) {
 		s = store.FromPool(pg.Database(ctx))
 		g = newGraph(ctx, s)
-		svc = domain.NewService(s.Pool(), pol)
+		svc = domain.NewService(s, pol)
 		actor = g.principal(ctx)
 	})
 
@@ -319,7 +319,7 @@ allow if {
 decision := {"allow": allow, "reasons": []}
 `)}})
 		Expect(err).NotTo(HaveOccurred())
-		narrow := domain.NewService(s.Pool(), usersOnly)
+		narrow := domain.NewService(s, usersOnly)
 		agent := g.agent(ctx)
 		consumer := g.watch(ctx, narrow, agent, domain.WatchRequest{})
 		opening := consumer.next()

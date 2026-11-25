@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/steading-ai/skift/internal/dbpool"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/version"
@@ -96,14 +95,14 @@ func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params domain.Boots
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	pool, err := dbpool.New(ctx, opts.databaseURL)
+	db, err := domain.Open(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift admin bootstrap: database url: %w", err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	log.Debug("skift admin bootstrap starting", "version", version.String())
-	out, err := domain.Bootstrap(ctx, pool, params)
+	out, err := domain.Bootstrap(ctx, db, params)
 	if err != nil {
 		return fmt.Errorf("skift admin bootstrap: %w", err)
 	}

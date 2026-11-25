@@ -35,7 +35,7 @@ var _ = Describe("Project holds", Label(testsupport.DBLabel), func() {
 	BeforeEach(func(ctx SpecContext) {
 		s = store.FromPool(pg.Database(ctx))
 		g = newGraph(ctx, s)
-		svc = domain.NewService(s.Pool(), pol)
+		svc = domain.NewService(s, pol)
 	})
 
 	It("Holding a project parks its open work, and the decision is recorded once", func(ctx SpecContext) {

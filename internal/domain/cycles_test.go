@@ -110,7 +110,7 @@ func (g *graph) removeEdge(ctx context.Context, tx store.Tx, from, to string) {
 
 func (g *graph) setParent(ctx context.Context, tx store.Tx, child, parent string) {
 	GinkgoHelper()
-	_, err := tx.Tx.Exec(ctx, `UPDATE nodes SET parent_id = $3 WHERE org_id = $1 AND id = $2`, g.org, g.id(child), g.id(parent))
+	_, err := store.Raw(tx).Exec(ctx, `UPDATE nodes SET parent_id = $3 WHERE org_id = $1 AND id = $2`, g.org, g.id(child), g.id(parent))
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -338,7 +338,7 @@ var _ = Describe("Cycle detection", Label(testsupport.DBLabel), func() {
 			g.given(ctx, func(ctx context.Context, tx store.Tx) {
 				one := g.node(ctx, tx, 1, nil)
 				g.node(ctx, tx, 2, &one)
-				_, err := tx.Tx.Exec(ctx, `UPDATE nodes SET status = 'done' WHERE org_id = $1`, g.org)
+				_, err := store.Raw(tx).Exec(ctx, `UPDATE nodes SET status = 'done' WHERE org_id = $1`, g.org)
 				Expect(err).NotTo(HaveOccurred())
 			})
 			err := g.patch(ctx, func(ctx context.Context, tx store.Tx) []string {

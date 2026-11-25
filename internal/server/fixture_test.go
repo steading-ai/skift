@@ -91,7 +91,7 @@ func newFixture(ctx context.Context) *fixture {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	svc := domain.NewService(pool, pol)
+	svc := domain.NewService(testsupport.Store(pool), pol)
 	f.lookup = &switchLookup{principal: f.user}
 	f.run = start(server.Config{
 		Interceptors: []connect.ServerInterceptor{interceptor.NewPrincipal(f.lookup, interceptor.UnixResolver{})},

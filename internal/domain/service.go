@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 	"github.com/steading-ai/skift/internal/store/migrations"
@@ -82,9 +80,16 @@ type Service struct {
 	wake *listener
 }
 
-// NewService wraps pool and pol. The caller owns the pool and closes it.
-func NewService(pool *pgxpool.Pool, pol *policy.Bundle) *Service {
-	s := store.FromPool(pool)
+// Open connects to the database at databaseURL, for a composition root
+// that runs the domain and does not name the store. The caller closes what
+// it returns; until then the pool connects lazily, and its Ping reports a
+// database that is down.
+func Open(ctx context.Context, databaseURL string) (*store.Store, error) {
+	return store.Open(ctx, databaseURL)
+}
+
+// NewService wraps s and pol. The caller owns s and closes it.
+func NewService(s *store.Store, pol *policy.Bundle) *Service {
 	return &Service{
 		s:   s,
 		pol: pol,

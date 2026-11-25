@@ -2,8 +2,9 @@
 // migrations, plus the [Store] that owns the connection pool and the
 // transactions those queries run in.
 //
-// Only the domain layer imports this package (depguard enforces it), and
-// every domain operation runs inside one [Store.WithTx] call, so a partial
+// Only the domain layer and the spec harness import this package, and only
+// this package reaches PostgreSQL (depguard enforces both). Every domain
+// operation runs inside one [Store.WithTx] call, so a partial
 // write never becomes visible. Each query carries its organization predicate
 // in static SQL; nothing a caller passes can widen it. See
 // docs/adrs/006-provenance-not-authority.md.
@@ -17,6 +18,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/steading-ai/skift/internal/store/dbpool"
 )
 
 // DefaultStatementTimeout is how long one statement may run before the
@@ -36,6 +39,27 @@ func FromPool(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, statementTimeout: DefaultStatementTimeout}
 }
 
+// Open opens a pool on databaseURL and wraps it. The store owns that pool:
+// the caller closes it with [Store.Close]. The pool connects lazily, so a
+// database that is down is reported by [Store.Ping], not here.
+func Open(ctx context.Context, databaseURL string) (*Store, error) {
+	pool, err := dbpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	return FromPool(pool), nil
+}
+
+// Close closes the pool, waiting for every connection to be returned.
+func (s *Store) Close() {
+	s.pool.Close()
+}
+
+// Ping reports whether the database answers.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // SetStatementTimeout sets how long one statement may run in any
 // transaction the store opens from now on. Zero or less disables the
 // timeout; a pathological query then runs until the client gives up.
@@ -48,8 +72,10 @@ func (s *Store) StatementTimeout() time.Duration {
 	return s.statementTimeout
 }
 
-// Pool exposes the underlying pool for work that must run outside a
-// transaction, such as LISTEN.
+// Pool exposes the underlying pool, for specs that lay fixtures or watch
+// connections from outside a transaction. Code outside the store never
+// calls it: forbidigo rejects it outside _test.go files. See
+// docs/adrs/013-postgresql-only-through-the-store.md.
 func (s *Store) Pool() *pgxpool.Pool {
 	return s.pool
 }
@@ -61,11 +87,19 @@ func (s *Store) Queries() *Queries {
 }
 
 // Tx is what a transactional operation receives: the generated queries bound
-// to the transaction, plus the transaction itself for statements the query
-// set does not cover, such as advisory locks.
+// to the transaction, and the store's hand-written statements as methods.
+// The transaction itself stays inside the store, so a caller cannot send it
+// SQL of its own. See docs/adrs/013-postgresql-only-through-the-store.md.
 type Tx struct {
 	*Queries
-	Tx pgx.Tx
+	tx pgx.Tx
+}
+
+// Raw is the transaction under tx, for specs that write fixtures no query
+// covers, such as backdating a row. Code outside the store never calls it:
+// forbidigo rejects it outside _test.go files.
+func Raw(tx Tx) pgx.Tx {
+	return tx.tx
 }
 
 // WithTx runs fn in one transaction. A nil return commits; an error or a
@@ -101,7 +135,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(ctx context.Context, tx Tx) 
 			return fmt.Errorf("set statement timeout: %w", err)
 		}
 	}
-	if err = fn(ctx, Tx{Queries: New(tx), Tx: tx}); err != nil {
+	if err = fn(ctx, Tx{Queries: New(tx), tx: tx}); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {

@@ -198,7 +198,7 @@ var _ = Describe("Store", Label(testsupport.DBLabel), func() {
 
 				By("and so does the raw transaction, for statements the query set lacks")
 				var txid int64
-				Expect(tx.Tx.QueryRow(ctx, `SELECT txid_current()`).Scan(&txid)).To(Succeed())
+				Expect(store.Raw(tx).QueryRow(ctx, `SELECT txid_current()`).Scan(&txid)).To(Succeed())
 				Expect(txid).NotTo(BeZero())
 
 				By("while a connection outside the transaction does not")
@@ -214,7 +214,7 @@ var _ = Describe("Store", Label(testsupport.DBLabel), func() {
 			Expect(s.StatementTimeout()).To(Equal(store.DefaultStatementTimeout))
 			Expect(s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 				var timeout string
-				Expect(tx.Tx.QueryRow(ctx, `SHOW statement_timeout`).Scan(&timeout)).To(Succeed())
+				Expect(store.Raw(tx).QueryRow(ctx, `SHOW statement_timeout`).Scan(&timeout)).To(Succeed())
 				Expect(timeout).To(Equal("30s"))
 				return nil
 			})).To(Succeed())
@@ -230,7 +230,7 @@ var _ = Describe("Store", Label(testsupport.DBLabel), func() {
 			start := time.Now()
 			err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 				var n int64
-				return tx.Tx.QueryRow(ctx, `
+				return store.Raw(tx).QueryRow(ctx, `
 					WITH RECURSIVE forever(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM forever)
 					SELECT count(*) FROM forever`).Scan(&n)
 			})
@@ -242,7 +242,7 @@ var _ = Describe("Store", Label(testsupport.DBLabel), func() {
 			By("and the store answers the next transaction")
 			Expect(s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 				var one int
-				return tx.Tx.QueryRow(ctx, `SELECT 1`).Scan(&one)
+				return store.Raw(tx).QueryRow(ctx, `SELECT 1`).Scan(&one)
 			})).To(Succeed())
 		})
 	})

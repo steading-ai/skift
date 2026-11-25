@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/steading-ai/skift/internal/store"
 )
 
@@ -104,13 +102,13 @@ type BootstrappedIdentity struct {
 // that fails with [ErrIdentityElsewhere] and the transaction rolls back.
 // Nor is a tailscale identity held by any other principal; that fails with
 // [ErrIdentityHeld].
-func Bootstrap(ctx context.Context, pool *pgxpool.Pool, params BootstrapParams) (Bootstrapped, error) {
+func Bootstrap(ctx context.Context, s *store.Store, params BootstrapParams) (Bootstrapped, error) {
 	if params.OrgName == "" {
 		return Bootstrapped{}, errors.New("bootstrap: an organization name is required")
 	}
 	identity := BootstrappedIdentity{Scheme: bootstrapScheme, Value: strconv.FormatUint(uint64(params.UID), 10)}
 	var out Bootstrapped
-	err := store.FromPool(pool).WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
+	err := s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 		if err := tx.LockBootstrap(ctx, bootstrapLock); err != nil {
 			return fmt.Errorf("lock bootstrap: %w", err)
 		}

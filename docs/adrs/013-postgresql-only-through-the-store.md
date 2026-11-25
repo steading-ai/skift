@@ -35,7 +35,7 @@ Chosen option: **the store owns all SQL, enforced by the compiler and depguard**
 
 **The boundary.** `internal/store` is the only package that talks to PostgreSQL: every SQL statement, every connection, and `LISTEN`. The domain layer keeps the rules as decisions: patch semantics, policy, fencing order, claim rotation, and the reasons Explain gives. It decides which question to ask and what to do with the answer, and never says how to ask it in SQL. What stays fixed across implementations is the Connect contract and tenancy, not the database.
 
-**Enforcement is structural.** The raw transaction is unexported, so SQL written in the domain layer does not compile. depguard allows `github.com/jackc/pgx/v5` only inside `internal/store`. Specs that need raw SQL for fixtures reach it through `store.Raw`, which forbidigo rejects outside `_test.go` files. An agent that wants new SQL has to edit the store, where review sees it.
+**Enforcement is structural.** The raw transaction is unexported, so SQL written in the domain layer does not compile. depguard allows `github.com/jackc/pgx/v5` only inside `internal/store`, specs, and the spec harness in `internal/testsupport`. Specs that need raw SQL for fixtures reach it through `store.Raw` or the store's pool, which forbidigo rejects outside `_test.go` files. The composition root opens the database through the domain, so it names neither the store nor pgx. An agent that wants new SQL has to edit the store, where review sees it.
 
 **PostgreSQL is used fully, and sqlc where it fits.** sqlc generates plain queries, and is the default. SQL that uses features sqlc cannot parse lives in `.sql` files inside the store, loaded with `go:embed`. There is no query builder.
 
