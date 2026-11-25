@@ -81,6 +81,18 @@ Specs labelled `db` need podman. Store specs start their own PostgreSQL through 
 
 The harness finds the rootless podman socket on its own. Set `DOCKER_HOST` to point it somewhere else.
 
+## Run the mutation tests
+
+```sh
+make mutate DIFF=main         # gremlins over the lines in internal/domain that differ from main
+make mutate PKG=internal/cli  # another package, every line
+make mutate-store DIFF=main   # the store's changed lines, judged by every suite in the module
+```
+
+Mutation testing changes one operator at a time and reruns the specs; a mutant the specs do not notice has lived, and each survivor is either an equivalent change or a missing spec. Read the survivors rather than the score. Runs use the development database from `make db-up` and take minutes to hours, so run nothing else against it meanwhile: contention times mutants out, and a timed-out mutant drops out of the score.
+
+`make mutate` judges a package by its own specs. The store's Go code is exercised by the domain and server specs, so `make mutate-store` runs every suite for each mutant, with `SKIFT_MUTATING=1` set. That variable makes two suites skip themselves: the specs at the repository root, which run `make lint` in copies of the tree, and the acceptance scenarios, which build and serve the binary. Neither reaches the store, and either would cost minutes per mutant.
+
 ## Write a spec that needs the database
 
 Suites run their specs in parallel processes. A suite that needs the database starts one container in its first process through `internal/testsupport`, migrates a template database once, and hands every `db`-labelled spec a fresh clone of it that is dropped when the spec ends:
