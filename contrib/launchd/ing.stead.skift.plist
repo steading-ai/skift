@@ -5,13 +5,18 @@
   you, started at login and restarted if it exits on an error.
 
   It listens on the per-user socket the CLI and "skift mcp" dial by default,
-  $XDG_RUNTIME_DIR/skift/skift.sock, or ~/.local/state/skift/skift.sock
-  where, as under launchd, there is no runtime directory. Callers are
+  $XDG_RUNTIME_DIR/skift/skift.sock, or $XDG_STATE_HOME/skift/skift.sock
+  where there is no runtime directory, and ~/.local/state/skift/skift.sock
+  where neither is set. launchd does not read your shell's profile: if it
+  sets either variable, add the same value under EnvironmentVariables, or
+  the service and the CLI look for different sockets. Callers are
   identified by their uid on that socket.
 
   launchd expands neither ~ nor variables, so before loading it replace:
 
-    /path/to/skift          the output of: command -v skift
+    /path/to/skift          with mise, its shim:
+                            /Users/you/.local/share/mise/shims/skift;
+                            otherwise the output of: command -v skift
     DATABASE_URL's value    a PostgreSQL URL the service can reach
     /Users/you              your home directory
 

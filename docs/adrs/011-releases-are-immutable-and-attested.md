@@ -42,7 +42,7 @@ Rejected: release-plz or semantic-release choosing the version from commit histo
 
 ### 2. Who builds and who publishes
 
-`make release` runs [goreleaser](https://goreleaser.com) with publishing skipped. It compiles `skift` for linux/amd64, linux/arm64 and darwin/arm64 with `CGO_ENABLED=0` and `-trimpath`, archives each, has syft catalogue it, and checksums the result. The build is reproducible: an archive's bytes depend only on the commit, so anyone can rebuild a tag and compare digests. The Makefile computes `VERSION` and goreleaser stamps it. The image is assembled from the linux binaries goreleaser built, not compiled a second time.
+`make release` runs [goreleaser](https://goreleaser.com) with publishing skipped. It compiles `skift` for linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64 with `CGO_ENABLED=0` and `-trimpath`, archives each, has syft catalogue it, and checksums the result. The build is reproducible: an archive's bytes depend only on the commit, so anyone can rebuild a tag and compare digests. The Makefile computes `VERSION` and goreleaser stamps it. The image is assembled from the linux binaries goreleaser built, not compiled a second time.
 
 Creating the release, pushing the image, signing, attesting and tagging belong to the workflow. `make build`, `make package` and `publish.yml` keep the Makefile's own `go build`.
 
@@ -62,7 +62,7 @@ A release carries exactly these:
 | `packslip.sigstore.json` | The signed manifest describing the release |
 | `docker-compose.yaml` | The compose file, pinned to this release's image |
 
-`<os>_<arch>` is `linux_amd64`, `linux_arm64` or `darwin_arm64`.
+`<os>_<arch>` is `linux_amd64`, `linux_arm64`, `darwin_amd64` or `darwin_arm64`.
 
 Rejected: platform names in another convention, such as Rust target triples. The names above are what Go tooling produces and what installers that pick an asset by platform already recognise.
 

@@ -162,7 +162,7 @@ The current project comes from `--project` / `-p`, `$SKIFT_PROJECT`, or the conf
 
 | Setting | Resolution order |
 |---|---|
-| socket | `--socket`, `$SKIFT_SOCKET`, then `$XDG_RUNTIME_DIR/skift/skift.sock` when it exists, then `/run/skift/skift.sock`; on macOS `~/.local/state/skift/skift.sock` when `$XDG_RUNTIME_DIR` is unset |
+| socket | `--socket`, `$SKIFT_SOCKET`, then `$XDG_RUNTIME_DIR/skift/skift.sock` when it exists, then `/run/skift/skift.sock`; on macOS without `$XDG_RUNTIME_DIR`, `$XDG_STATE_HOME/skift/skift.sock`, `~/.local/state` by default |
 | remote service | `--address`, `$SKIFT_ADDRESS` — wins over the socket |
 | config file | `--config`, `$SKIFT_CONFIG`, then `$XDG_CONFIG_HOME/skift/config.json` |
 

@@ -90,13 +90,13 @@ curl -fsSL -o ~/Library/LaunchAgents/ing.stead.skift.plist \
   https://raw.githubusercontent.com/steading-ai/skift/v<version>/contrib/launchd/ing.stead.skift.plist
 ```
 
-launchd expands neither `~` nor variables, so edit three things in it: the path of `skift` (`command -v skift` prints it), the database URL, and your home directory in the log paths. Then load it:
+launchd expands neither `~` nor variables, so edit three things in it: the path of `skift`, the database URL, and your home directory in the log paths. With mise, the path of `skift` is its [shim](https://mise.jdx.dev/dev-tools/shims.html), `/Users/<you>/.local/share/mise/shims/skift`, so the service runs whatever version mise has installed. The path `command -v skift` prints in a shell where mise is activated names one version, and the service stays on it after an upgrade. Then load it:
 
 ```sh
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/ing.stead.skift.plist
 ```
 
-The service listens on `~/.local/state/skift/skift.sock`, where the CLI and `skift mcp` look by default, so a Mac that runs its own server needs no address configured. Its log is the file the agent names. Apple documents launch agents in [Creating Launch Daemons and Agents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+The service listens on `~/.local/state/skift/skift.sock`, where the CLI and `skift mcp` look by default, so a Mac that runs its own server needs no address configured. If your shell sets `XDG_RUNTIME_DIR` or `XDG_STATE_HOME`, the CLI looks under that directory instead, as the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/) has it. launchd doesn't read your shell's profile, so set the same variable in the plist's `EnvironmentVariables` too. Its log is the file the agent names. Apple documents launch agents in [Creating Launch Daemons and Agents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
 
 ## Install the CLI
 
@@ -190,10 +190,10 @@ It checks six things, and says how to fix each one that is not `ok`:
 | Check | What it asks |
 |-------|--------------|
 | `binary` | Which skift this is, and its version. |
-| `path` | Whether a login shell finds `skift`, as a harness starting `skift mcp` needs it to. |
+| `path` | Whether this shell and a login shell both find `skift`, and the same version of it, as a harness starting `skift mcp` needs. |
 | `config` | Which config file, socket or address the CLI uses, and where that came from. |
 | `service` | Whether the server answers, and knows this workstation. |
-| `mcp` | Whether `skift mcp` starts and lists its tools. |
+| `mcp` | Whether `skift mcp` starts, lists its tools, and answers one. |
 | `skills` | Whether the skift skill is installed where a harness reads it. |
 
 It exits non-zero when a check fails, and `skift doctor --output json` prints the same report for an agent to read.
