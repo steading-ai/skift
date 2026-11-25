@@ -48,6 +48,26 @@ linters:
           deny:
             - pkg: github.com/jackc/pgx/v5
               desc: only the store reaches PostgreSQL (docs/adrs/013-postgresql-only-through-the-store.md)
+        # River runs skift's own background jobs. Its PostgreSQL driver
+        # belongs with the pool it runs on, in the store; its core package,
+        # whose workers and schedules carry no pgx types, also belongs in
+        # admin, which owns the schedule. See
+        # docs/adrs/016-background-jobs-and-admin.md.
+        river-drivers-only-in-store:
+          files:
+            - "$all"
+            - "!**/internal/store/**"
+          deny:
+            - pkg: github.com/riverqueue/river/riverdriver
+              desc: River's PostgreSQL driver runs on the store's pool, so only the store builds it (docs/adrs/016-background-jobs-and-admin.md)
+        river-only-in-store-and-admin:
+          files:
+            - "$all"
+            - "!**/internal/store/**"
+            - "!**/internal/admin/**"
+          deny:
+            - pkg: github.com/riverqueue/river
+              desc: background jobs are admin's, run on the store (docs/adrs/016-background-jobs-and-admin.md)
         # Interceptors authenticate and check methods. Resource-level
         # authorization needs the resolved write set, which exists only
         # inside the domain's transaction. See the Authorization section of

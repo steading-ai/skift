@@ -58,9 +58,31 @@ var _ = Describe("Upgrading from every release", Label(testsupport.DBLabel), fun
 			for table, n := range before {
 				Expect(after[table]).To(BeNumerically(">=", n), "rows in %s after upgrading from schema %d", table, v)
 			}
+
+			By("and the tables River runs skift's background jobs on are there")
+			Expect(riverTables(ctx, db)).To(ConsistOf(riverTableNames), "upgraded from released schema %d", v)
 		}
 	})
+
+	It("installs River's tables on an empty database too", func(ctx SpecContext) {
+		Expect(riverTables(ctx, pg.Database(ctx))).To(ConsistOf(riverTableNames))
+	})
 })
+
+// riverTableNames are the tables River's schema leaves once its version
+// 008 is applied: the jobs, the elected leader, the queues, and the
+// notifications River's own listener reads.
+var riverTableNames = []string{"river_job", "river_leader", "river_notification", "river_queue"}
+
+// riverTables names the River tables in the database's schema.
+func riverTables(ctx context.Context, db *pgxpool.Pool) []string {
+	GinkgoHelper()
+	rows, err := db.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename LIKE 'river\_%' ORDER BY tablename`)
+	Expect(err).NotTo(HaveOccurred())
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	Expect(err).NotTo(HaveOccurred())
+	return names
+}
 
 var _ = Describe("Shipped migrations", Label("unit"), func() {
 	It("are never edited, and every new one sorts after them", func() {

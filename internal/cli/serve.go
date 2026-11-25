@@ -301,19 +301,55 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	}()
 
 	// The schema is prepared once the database answers, on the same
-	// path that reports readiness. A database that refuses, by being
-	// behind under --no-migrate or by failing a migration, is fatal:
-	// the service drains and exits rather than serving over it.
+	// path that reports readiness, and the background jobs start once it
+	// is current, since River's tables are part of it. A database that
+	// refuses, by being behind under --no-migrate or by failing a
+	// migration, is fatal: the service drains and exits rather than
+	// serving over it.
+	schedule := append(admin.Schedule(db), extraJobs...)
+	jobs := make(chan *admin.Jobs, 1)
+	prepare := func(ctx context.Context, log *slog.Logger) error {
+		if err := schemaPreparer(opts)(ctx, log); err != nil {
+			return err
+		}
+		// The jobs outlive this call; Stop below ends them on shutdown.
+		started, err := admin.StartJobs(context.WithoutCancel(ctx), db, log, schedule)
+		if err != nil {
+			return err
+		}
+		jobs <- started
+		return nil
+	}
 	fatal := make(chan error, 1)
+	announced := make(chan struct{})
+	readyCtx, stopReady := context.WithCancel(ctx)
+	defer stopReady()
 	go func() {
-		if err := announceReady(ctx, db, schemaPreparer(opts), log); err != nil {
+		defer close(announced)
+		if err := announceReady(readyCtx, db, prepare, log); err != nil {
 			fatal <- err
 			drain()
 		}
 	}()
 
-	if err := srv.Serve(serveCtx); err != nil {
-		return fmt.Errorf("skift serve: %w", err)
+	serveErr := srv.Serve(serveCtx)
+	// Requests have drained; the jobs stop next, before the deferred close
+	// of the pool they run on. Readiness may still be retrying a database
+	// that is down, so stop it and let it settle first.
+	stopReady()
+	<-announced
+	select {
+	case started := <-jobs:
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), opts.shutdownTimeout)
+		err := started.Stop(stopCtx)
+		cancel()
+		if err != nil {
+			log.Warn("stop background jobs", "err", err)
+		}
+	default:
+	}
+	if serveErr != nil {
+		return fmt.Errorf("skift serve: %w", serveErr)
 	}
 	select {
 	case err := <-fatal:
@@ -322,6 +358,10 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 		return nil
 	}
 }
+
+// extraJobs joins [admin.Schedule] in what serve runs. It is set only by
+// specs, through export_test.go, to run a job of their own under serve.
+var extraJobs []admin.Job
 
 // newNativeMCPHandler is shared by the real TLS composition and its integration
 // specs. The dispatcher invokes the same generated handlers and interceptors.

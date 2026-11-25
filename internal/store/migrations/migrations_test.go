@@ -142,7 +142,10 @@ var _ = Describe("Organizations, projects, principals, identities", Label(testsu
 		It("creates no sequence at all", func(ctx SpecContext) {
 			db := pg.Database(ctx)
 			var sequences []string
-			rows, err := db.Query(ctx, `SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND sequencename NOT LIKE 'goose_%'`)
+			// goose's version table and River's job and notification ids
+			// are those tools' own bookkeeping, numbered as they choose;
+			// skift's tables number nothing with a sequence.
+			rows, err := db.Query(ctx, `SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND sequencename NOT LIKE 'goose\_%' AND sequencename NOT LIKE 'river\_%'`)
 			Expect(err).NotTo(HaveOccurred())
 			for rows.Next() {
 				var name string
