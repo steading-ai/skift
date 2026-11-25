@@ -34,22 +34,26 @@ const ExpireLeases = "expire-leases"
 // its TTL by at most this long.
 const expireLeasesEvery = time.Minute
 
-// Schedule is the background work `skift serve` runs. svc applies the
-// graph's rules; log records what each run did.
-func Schedule(svc *domain.Service, log *slog.Logger) []Job {
-	return []Job{{
-		Name:  ExpireLeases,
-		Every: expireLeasesEvery,
-		Run: func(ctx context.Context) error {
-			reaped, err := svc.Reap(ctx, 0)
-			for _, r := range reaped {
-				for _, l := range r.Expired {
-					log.Info("lease expired", "org_id", r.OrgID, "lease_id", l.ID, "node_id", l.NodeID, "holder", l.Holder, "expires_at", l.ExpiresAt)
+// Schedule is the background work `skift serve` runs. db is kept in shape
+// directly, svc applies the graph's rules, and log records what each run
+// did.
+func Schedule(db *store.Store, svc *domain.Service, log *slog.Logger) []Job {
+	return []Job{
+		{
+			Name:  ExpireLeases,
+			Every: expireLeasesEvery,
+			Run: func(ctx context.Context) error {
+				reaped, err := svc.Reap(ctx, 0)
+				for _, r := range reaped {
+					for _, l := range r.Expired {
+						log.Info("lease expired", "org_id", r.OrgID, "lease_id", l.ID, "node_id", l.NodeID, "holder", l.Holder, "expires_at", l.ExpiresAt)
+					}
 				}
-			}
-			return err
+				return err
+			},
 		},
-	}}
+		eventPartitionsJob(db, log),
+	}
 }
 
 // scheduledArgs names the scheduled job one River job runs. Every

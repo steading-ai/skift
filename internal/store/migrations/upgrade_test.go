@@ -61,6 +61,9 @@ var _ = Describe("Upgrading from every release", Label(testsupport.DBLabel), fun
 
 			By("and the tables River runs skift's background jobs on are there")
 			Expect(riverTables(ctx, db)).To(ConsistOf(riverTableNames), "upgraded from released schema %d", v)
+
+			By("and the events partitions reach the horizon the service keeps")
+			Expect(partitions(ctx, db)).To(ContainElements(horizonPartitions(time.Now())), "upgraded from released schema %d", v)
 		}
 	})
 
@@ -191,6 +194,22 @@ func git(args ...string) string {
 	out, err := exec.Command("git", append([]string{"-C", strings.TrimSpace(string(top))}, args...)...).Output()
 	Expect(err).NotTo(HaveOccurred(), "git %s", strings.Join(args, " "))
 	return string(out)
+}
+
+// partitionHorizon is how many monthly events partitions past the current
+// one an upgraded database must have: admin.EventPartitionsAhead, which
+// migration 00028 extends every database to.
+const partitionHorizon = 3
+
+// horizonPartitions names the events partitions from the month holding now
+// to [partitionHorizon] months after it.
+func horizonPartitions(now time.Time) []string {
+	month := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
+	names := make([]string, 0, partitionHorizon+1)
+	for i := 0; i <= partitionHorizon; i++ {
+		names = append(names, partitionName(month.AddDate(0, i, 0)))
+	}
+	return names
 }
 
 // seedFor returns the fixture for a released schema: the one written for

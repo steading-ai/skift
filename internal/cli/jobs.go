@@ -138,7 +138,7 @@ func withOperator(cmd *cobra.Command, who string, opts jobsOptions, do func(ctx 
 		return fmt.Errorf("%s: database url: %w", who, err)
 	}
 	defer db.Close()
-	if err := do(ctx, admin.NewOperator(db, admin.Schedule(domain.NewService(db, bundle), log))); err != nil {
+	if err := do(ctx, admin.NewOperator(db, admin.Schedule(db, domain.NewService(db, bundle), log))); err != nil {
 		return fmt.Errorf("%s: %w", who, err)
 	}
 	return nil
