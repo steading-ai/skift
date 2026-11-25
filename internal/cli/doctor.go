@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,9 +11,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect/v2"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
@@ -47,6 +48,10 @@ const (
 	docMiseShims   = "https://mise.jdx.dev/dev-tools/shims.html"
 )
 
+// doctorExecutable is the binary the mcp check starts. It is a variable
+// because in a spec this process is the test binary, not skift.
+var doctorExecutable = os.Executable
+
 // doctorCheck is one line of the report.
 type doctorCheck struct {
 	Name   string `json:"name"`
@@ -68,11 +73,11 @@ func (a *app) doctorCommand() *cobra.Command {
 		Long: `Check this workstation the way a new shell and a new agent session find it:
 
   binary   this skift, and its version
-  path     whether a login shell finds skift on PATH, as a harness
-           starting "skift mcp" needs it to
+  path     whether this shell and a login shell find skift on PATH, and
+           the same version of it, as a harness starting "skift mcp" needs
   config   the config file, and the socket or address the CLI uses
   service  whether the service answers, and accepts this caller
-  mcp      whether "skift mcp" starts and lists its tools
+  mcp      whether "skift mcp" starts, lists its tools, and answers one
   skills   whether the skift skill is installed where a harness reads it
 
 Each check is ok, warn or fail, and a check that is not ok says what fixes
@@ -91,7 +96,7 @@ func (a *app) runDoctor(cmd *cobra.Command) error {
 		return err
 	}
 	ctx := cmd.Context()
-	self, selfErr := os.Executable()
+	self, selfErr := doctorExecutable()
 
 	report := doctorReport{OK: true}
 	add := func(c doctorCheck) {
@@ -102,8 +107,8 @@ func (a *app) runDoctor(cmd *cobra.Command) error {
 	}
 
 	add(checkBinary(self, selfErr))
-	add(checkPath(ctx, self))
-	_, cfgCheck := a.checkConfig()
+	add(checkPath(ctx))
+	cfgCheck := a.checkConfig()
 	add(cfgCheck)
 	if cfgCheck.Status == doctorFail {
 		add(doctorCheck{Name: "service", Status: doctorFail, Detail: "not checked: the configuration does not load", Fix: "fix the config check first"})
@@ -158,115 +163,163 @@ func checkBinary(self string, err error) doctorCheck {
 	return c
 }
 
-// checkPath asks a login shell where skift is. A harness starts "skift
-// mcp" by name, from an environment much like that shell's and unlike the
-// interactive one the install ran in, so this is the check that catches a
-// tool manager activated only for interactive shells.
-func checkPath(ctx context.Context, self string) doctorCheck {
+// foundSkift is a skift found by name, and the version it reports. Version is
+// empty when it could not be asked.
+type foundSkift struct {
+	path, version string
+}
+
+func (f foundSkift) String() string {
+	if f.version == "" {
+		return f.path + " (which did not report its version)"
+	}
+	return fmt.Sprintf("skift %s at %s", f.version, f.path)
+}
+
+// versionPrefix starts what "skift version" prints.
+const versionPrefix = "skift version "
+
+// checkPath looks for skift by name where a harness does. A harness
+// started from a terminal inherits that terminal's PATH, which is this
+// process's; one started from a desktop or a service manager gets
+// something closer to a login shell's, which does not read the files an
+// interactive shell does. Each copy found is asked its version, because a
+// tool manager's shim is a different file from the binary it runs.
+func checkPath(ctx context.Context) doctorCheck {
 	c := doctorCheck{Name: "path"}
+	ctx, cancel := context.WithTimeout(ctx, doctorTimeout)
+	defer cancel()
+
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	ctx, cancel := context.WithTimeout(ctx, doctorTimeout)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, shell, "-l", "-c", "command -v skift").Output()
-	found := lastLine(string(out))
-	if err != nil || found == "" {
+	here, login := findHere(ctx), findLogin(ctx, shell)
+	shims := "with mise, put its shims on PATH for login shells: " + docMiseShims
+
+	switch {
+	case here == nil && login == nil:
 		c.Status = doctorFail
-		c.Detail = fmt.Sprintf("a login shell (%s -l) does not find skift on PATH, so a harness cannot start skift mcp", shell)
-		c.Fix = "put the directory holding skift on PATH for login shells, not only interactive ones; with mise, use its shims: " + docMiseShims
+		c.Detail = fmt.Sprintf("neither this shell nor a login shell (%s -l) finds skift on PATH, so no harness can start skift mcp", shell)
+		c.Fix = "put the directory holding skift on PATH for login shells as well as interactive ones; " + shims
+		return c
+	case login == nil:
+		c.Status = doctorWarn
+		c.Detail = fmt.Sprintf("this shell finds %s, but a login shell (%s -l) finds no skift, so a harness started outside a terminal cannot start skift mcp", here, shell)
+		c.Fix = "put the directory holding skift on PATH for login shells too; " + shims
+		return c
+	case here == nil:
+		c.Status = doctorWarn
+		c.Detail = fmt.Sprintf("a login shell finds %s, but this shell's PATH has no skift, so a harness started from this terminal cannot start skift mcp", login)
+		c.Fix = "open a new terminal, or put the directory holding skift on this shell's PATH"
 		return c
 	}
+
+	for _, f := range []*foundSkift{here, login} {
+		if f.version != version.String() {
+			c.Status = doctorWarn
+			c.Detail = fmt.Sprintf("this is skift %s, but %s is what a harness starts", version.String(), f)
+			c.Fix = "remove the other copy, or put the one you mean to use first on PATH, so agents and you run the same version"
+			return c
+		}
+	}
 	c.Status = doctorOK
-	c.Detail = "a login shell finds " + found
-	if self != "" && !sameFile(found, self) {
-		c.Status = doctorWarn
-		c.Detail = fmt.Sprintf("a login shell finds %s, not this skift at %s", found, self)
-		c.Fix = "remove the other copy, or put the one you mean to use first on PATH, so agents and you run the same version"
+	c.Detail = "this shell and a login shell find " + login.String()
+	if here.path != login.path {
+		c.Detail += ", also at " + here.path
 	}
 	return c
 }
 
-// lastLine is the last non-blank line of out: a shell's profile can print
-// before the command runs.
+// findHere finds skift on this process's PATH and asks its version.
+func findHere(ctx context.Context) *foundSkift {
+	path, err := exec.LookPath("skift")
+	if err != nil {
+		return nil
+	}
+	f := &foundSkift{path: path}
+	if out, err := exec.CommandContext(ctx, path, "version").Output(); err == nil {
+		f.version = strings.TrimPrefix(lastLine(string(out)), versionPrefix)
+	}
+	return f
+}
+
+// findLogin asks a login shell where skift is and its version. The
+// shell's profile may print before either answer, so the answers are the
+// last path the shell prints and the last version line.
+func findLogin(ctx context.Context, shell string) *foundSkift {
+	out, _ := exec.CommandContext(ctx, shell, "-l", "-c", "command -v skift; skift version").Output()
+	var f foundSkift
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, versionPrefix):
+			f.version = strings.TrimPrefix(line, versionPrefix)
+		case filepath.IsAbs(line):
+			f.path = line
+		}
+	}
+	if f.path == "" {
+		return nil
+	}
+	return &f
+}
+
+// lastLine is the last non-blank line of out.
 func lastLine(out string) string {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	return strings.TrimSpace(lines[len(lines)-1])
 }
 
-// sameFile reports whether a and b are one file, following links: a mise
-// shim and the binary it runs are not, which is reported, but a symlink to
-// this binary is.
-func sameFile(a, b string) bool {
-	ai, err := os.Stat(a)
-	if err != nil {
-		return false
+// sourceName names a source of a connection setting as a person sets it.
+func sourceName(from client.Source, flag, env string) string {
+	switch from {
+	case client.SourceFlag:
+		return "--" + flag
+	case client.SourceEnv:
+		return "$" + env
+	case client.SourceFile:
+		return "the config file"
+	default:
+		return "the default"
 	}
-	bi, err := os.Stat(b)
-	if err != nil {
-		return false
-	}
-	return os.SameFile(ai, bi)
 }
 
 // checkConfig loads the configuration and says where the transport came
-// from. An address set only in the environment is a warning: a harness
-// started outside the shell does not see it.
-func (a *app) checkConfig() (client.Config, doctorCheck) {
+// from. A socket or address set only in the environment is a warning: a
+// harness started outside the shell does not see it.
+func (a *app) checkConfig() doctorCheck {
 	c := doctorCheck{Name: "config"}
-	path := a.configPath
-	if path == "" {
-		path = os.Getenv(client.EnvConfig)
+	l, err := a.loaded()
+	file := l.Path
+	switch {
+	case file == "":
+		file = "(none: no home directory)"
+	case !l.Found:
+		file += " (absent)"
 	}
-	if path == "" {
-		path = client.DefaultConfigPath()
-	}
-	cfg, err := a.config()
 	if err != nil {
 		c.Status = doctorFail
 		c.Detail = err.Error()
-		c.Fix = "correct or remove " + path + "; it holds a JSON object such as {\"address\": \"http://skift.<tailnet>.ts.net\"}"
-		return cfg, c
-	}
-	file := path + " (absent)"
-	var fromFile client.Config
-	if raw, err := os.ReadFile(path); err == nil {
-		file = path
-		_ = json.Unmarshal(raw, &fromFile)
+		c.Fix = "correct or remove " + l.Path + "; it holds a JSON object such as {\"address\": \"http://skift.<tailnet>.ts.net\"}"
+		return c
 	}
 
 	c.Status = doctorOK
-	switch {
-	case cfg.Address != "":
-		source := "the config file"
-		switch {
-		case a.flags.Address != "":
-			source = "--address"
-		case os.Getenv(client.EnvAddress) != "":
-			source = "$" + client.EnvAddress
-		}
-		c.Detail = fmt.Sprintf("address %s, from %s; config file %s", cfg.Address, source, file)
-		if source == "$"+client.EnvAddress && fromFile.Address == "" {
-			c.Status = doctorWarn
-			c.Fix = fmt.Sprintf("a harness that starts skift mcp outside your shell does not see $%s; put {\"address\": %q} in %s", client.EnvAddress, cfg.Address, path)
-		}
-	default:
-		socket := cfg.Socket
-		source := "--socket"
-		switch {
-		case a.flags.Socket != "":
-		case os.Getenv(client.EnvSocket) != "":
-			source = "$" + client.EnvSocket
-		case socket != "":
-			source = "the config file"
-		default:
-			socket = client.DefaultSocketPath()
-			source = "the default"
-		}
-		c.Detail = fmt.Sprintf("socket %s, from %s; config file %s", socket, source, file)
+	key, value, from := "socket", l.Socket, sourceName(l.SocketFrom, "socket", client.EnvSocket)
+	envOnly := l.SocketFrom == client.SourceEnv
+	if l.Address != "" {
+		key, value, from = "address", l.Address, sourceName(l.AddressFrom, "address", client.EnvAddress)
+		envOnly = l.AddressFrom == client.SourceEnv
+	} else if l.SocketFrom == client.SourceDefault {
+		value = client.DefaultSocketPath()
 	}
-	return cfg, c
+	c.Detail = fmt.Sprintf("%s %s, from %s; config file %s", key, value, from, file)
+	if envOnly {
+		c.Status = doctorWarn
+		c.Fix = fmt.Sprintf("a harness that starts skift mcp outside your shell does not see %s; put {%q: %q} in %s", from, key, value, l.Path)
+	}
+	return c
 }
 
 // checkService asks the service for one project: it answers only a caller
@@ -305,14 +358,16 @@ func (a *app) checkService(ctx context.Context) doctorCheck {
 		if cl.Transport() == client.TransportHTTP {
 			c.Fix = "check that this machine is on the tailnet (tailscale status) and that the address is the server's"
 		} else {
-			c.Fix = "start the service, or point skift at one on another machine with an address in " + client.DefaultConfigPath() + "; see " + docInstall
+			l, _ := a.loaded()
+			c.Fix = "start the service, or point skift at one on another machine with an address in " + l.Path + "; see " + docInstall
 		}
 	}
 	return c
 }
 
-// checkMCP starts this binary's MCP server as a harness would and lists
-// its tools. The connection flags given to doctor are passed on, so the
+// checkMCP starts this binary's MCP server as a harness would, lists its
+// tools and calls project_list, the one tool that needs nothing but a
+// service. The connection flags given to doctor are passed on, so the
 // server is checked against the same service.
 func (a *app) checkMCP(ctx context.Context, self string, selfErr error) doctorCheck {
 	c := doctorCheck{Name: "mcp"}
@@ -335,49 +390,88 @@ func (a *app) checkMCP(ctx context.Context, self string, selfErr error) doctorCh
 
 	ctx, cancel := context.WithTimeout(ctx, doctorTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, self, args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.Stdin = strings.NewReader(
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"` + mcpProtocolVersion + `","capabilities":{},"clientInfo":{"name":"skift-doctor","version":"` + version.String() + `"}}}` + "\n" +
-			`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n" +
-			`{"jsonrpc":"2.0","id":2,"method":"tools/list"}` + "\n")
-	out, err := cmd.Output()
-
-	tools := -1
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	scanner.Buffer(make([]byte, 0, 1<<16), 1<<24)
-	for scanner.Scan() {
-		var res struct {
-			ID     int `json:"id"`
-			Result struct {
-				Tools []json.RawMessage `json:"tools"`
-			} `json:"result"`
-		}
-		if json.Unmarshal(scanner.Bytes(), &res) == nil && res.ID == 2 {
-			tools = len(res.Result.Tools)
-		}
-	}
-	if tools > 0 {
-		c.Status = doctorOK
-		c.Detail = fmt.Sprintf("skift mcp started and listed %d tools", tools)
-		return c
-	}
+	tools, called, err := probeMCP(ctx, self, args)
 	c.Status = doctorFail
-	why := strings.TrimSpace(stderr.String())
-	switch {
-	case why != "":
-		why = lastLine(why)
-	case err != nil:
-		why = err.Error()
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		why = "it did not answer in time"
-	default:
-		why = "it listed no tools"
-	}
-	c.Detail = "skift mcp did not start: " + why
 	c.Fix = "fix the checks above; skift mcp reads the same configuration as the CLI"
+	switch {
+	case err != nil:
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			err = fmt.Errorf("it did not answer within %s", doctorTimeout)
+		}
+		c.Detail = "skift mcp did not start: " + err.Error()
+	case tools == 0:
+		c.Detail = "skift mcp started but listed no tools"
+	case called != "":
+		c.Detail = fmt.Sprintf("skift mcp started and listed %d tools, but project_list failed: %s", tools, called)
+	default:
+		c.Status, c.Fix = doctorOK, ""
+		c.Detail = fmt.Sprintf("skift mcp started, listed %d tools, and answered project_list", tools)
+	}
 	return c
+}
+
+// probeMCP runs an MCP session over stdio as a harness does: initialize,
+// tools/list, then a project_list call. called is the tool's error text,
+// empty when it succeeded.
+func probeMCP(ctx context.Context, self string, args []string) (tools int, called string, err error) {
+	cmd := exec.CommandContext(ctx, self, args...)
+	stderr := &syncBuffer{}
+	cmd.Stderr = stderr
+	// why is the server's own account of a failure, when it gave one.
+	why := func(err error) error {
+		if line := lastLine(stderr.String()); line != "" {
+			return errors.New(line)
+		}
+		return err
+	}
+
+	c := mcp.NewClient(&mcp.Implementation{Name: "skift-doctor", Version: version.String()}, nil)
+	session, err := c.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		return 0, "", why(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	list, err := session.ListTools(ctx, nil)
+	if err != nil {
+		return 0, "", why(err)
+	}
+	if len(list.Tools) == 0 {
+		return 0, "", nil
+	}
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "project_list", Arguments: map[string]any{}})
+	if err != nil {
+		return len(list.Tools), "", why(err)
+	}
+	if !res.IsError {
+		return len(list.Tools), "", nil
+	}
+	text := "the tool reported an error"
+	for _, content := range res.Content {
+		if t, ok := content.(*mcp.TextContent); ok {
+			text = strings.SplitN(t.Text, "\n", 2)[0]
+			break
+		}
+	}
+	return len(list.Tools), text, nil
+}
+
+// syncBuffer is a buffer a process writes while doctor may read it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // checkSkills looks for the skift skill where the plugin and the common

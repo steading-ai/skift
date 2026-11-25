@@ -28,20 +28,29 @@ type app struct {
 	// these, and empty means every project the caller may read.
 	projects []string
 
-	cfg    *client.Config
+	cfg    *client.Loaded
 	client *client.Client
 }
 
 // config resolves the configuration once: file, then environment, then
 // flags.
 func (a *app) config() (client.Config, error) {
+	l, err := a.loaded()
+	if err != nil {
+		return client.Config{}, err
+	}
+	return l.Config, nil
+}
+
+// loaded is the configuration as [app.config] resolves it, with where each
+// setting came from. On an error it still names the config file.
+func (a *app) loaded() (client.Loaded, error) {
 	if a.cfg == nil {
-		cfg, err := client.LoadConfig(a.configPath)
+		l, err := client.Load(a.configPath, a.flags)
 		if err != nil {
-			return client.Config{}, err
+			return l, err
 		}
-		cfg = cfg.Override(a.flags)
-		a.cfg = &cfg
+		a.cfg = &l
 	}
 	return *a.cfg, nil
 }
