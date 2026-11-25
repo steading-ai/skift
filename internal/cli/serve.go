@@ -342,6 +342,9 @@ func schemaPreparer(opts serveOptions) func(ctx context.Context, log *slog.Logge
 			if err != nil {
 				return err
 			}
+			if err := status.NotAhead(); err != nil {
+				return err
+			}
 			if status.Pending() {
 				return fmt.Errorf("schema is at version %d but this build expects %d; run skift migrate, or start without --no-migrate", status.Current, status.Latest)
 			}
