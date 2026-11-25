@@ -65,7 +65,18 @@ type history struct {
 	// others keep the alphabet their saved failures were drawn from.
 	projectHolds bool
 	projectHeld  bool
+	// filterFields gives each created node a drawn kind and labels, so a
+	// drawn ready query has something to select. Like projectHolds, only
+	// the properties about holds turn it on.
+	filterFields bool
 }
+
+// Kinds and labels a history with filterFields draws from, and that a
+// drawn query filters by.
+var (
+	historyKinds  = []string{"task", "bug"}
+	historyLabels = []string{"auth", "ui"}
+)
 
 // The generator's alphabet of step kinds, drawn by weight.
 const (
@@ -184,6 +195,14 @@ func (h *history) drawOp(aliases *[]string) domain.Op {
 	op := &domain.CreateNode{Alias: alias, Title: alias}
 	op.AssigneeKind = rapid.SampledFrom([]string{"", domain.AssigneeAgent, domain.AssigneeUser}).Draw(t, "assignee_kind")
 	op.Priority = rapid.SampledFrom([]string{"p0", "p1", "p2", "p3", "p4"}).Draw(t, "priority")
+	if h.filterFields {
+		op.Kind = rapid.SampledFrom(historyKinds).Draw(t, "kind")
+		for _, label := range historyLabels {
+			if rapid.Bool().Draw(t, "label "+label) {
+				op.Labels = append(op.Labels, label)
+			}
+		}
+	}
 	if len(refs) > 0 {
 		if rapid.IntRange(0, 2).Draw(t, "under") == 0 {
 			op.Parent = ref("parent")
@@ -712,13 +731,19 @@ func (h *history) checkDerived(st *state) {
 // the holds in a query of its own rather than composing the readiness
 // fragments, so nothing else ties the two together.
 //
+// The query is drawn: filters select the affected work, not the hold, so
+// everything the summary names downstream must match them.
+//
 // It checks what the summary may claim, not that it is complete: a held
-// node it names downstream must be open and not ready, and a hold it names
-// must exist. Downstream references are a sample capped per hold, so their
-// absence proves nothing. What absence can prove is coarser: when any open
-// node is held, by itself, an ancestor or its project, the summary is not
-// empty.
+// node it names downstream must be open, match the query and not be ready,
+// and a hold it names must exist. Downstream references are a sample
+// capped per hold, so their absence proves nothing; the count each hold
+// reports is bounded instead, by its sample below and by every open,
+// matching, unready node above. What absence can prove is coarser: when
+// any open node that matches is held, by itself, an ancestor or its
+// project, the summary is not empty.
 func (h *history) checkHoldSummary(*state) {
+	q := drawReadyQuery(h.t)
 	var (
 		ready    []store.Node
 		blockers []domain.ReadyHoldBlocker
@@ -728,10 +753,10 @@ func (h *history) checkHoldSummary(*state) {
 	)
 	err := h.s.WithTx(h.ctx, func(ctx context.Context, tx store.Tx) error {
 		var err error
-		if ready, err = domain.ReadySet(ctx, tx, h.org, domain.ReadyQuery{}); err != nil {
+		if ready, err = domain.ReadySet(ctx, tx, h.org, q); err != nil {
 			return err
 		}
-		if blockers, total, err = domain.ReadyHoldBlockers(ctx, tx, h.org, domain.ReadyQuery{}, ""); err != nil {
+		if blockers, total, err = domain.ReadyHoldBlockers(ctx, tx, h.org, q, ""); err != nil {
 			return err
 		}
 		if nodes, err = queryRows[store.Node](ctx, tx, `SELECT * FROM nodes WHERE org_id = $1 ORDER BY id`, h.org); err != nil {
@@ -757,6 +782,12 @@ func (h *history) checkHoldSummary(*state) {
 	for _, p := range projects {
 		projectHeld[p.Slug] = p.HeldAt != nil
 	}
+	var blocked int64
+	for _, n := range nodes {
+		if n.Status == "open" && matchesReadyQuery(n, q) && !inSet[n.ID] {
+			blocked++
+		}
+	}
 	for _, b := range blockers {
 		if n, ok := byRef[b.Reference]; ok {
 			if n.HeldAt == nil {
@@ -772,13 +803,19 @@ func (h *history) checkHoldSummary(*state) {
 				h.fatalf("the hold summary names %s downstream of %s, and no such node exists", ref, b.Reference)
 			case n.Status != "open":
 				h.fatalf("the hold summary names %s downstream of %s, and it is %s", ref, b.Reference, n.Status)
+			case !matchesReadyQuery(n, q):
+				h.fatalf("the hold summary names %s downstream of %s, and it does not match %+v", ref, b.Reference, q)
 			case inSet[n.ID]:
 				h.fatalf("the hold summary names %s downstream of %s, and it is ready", ref, b.Reference)
 			}
 		}
+		if b.DownstreamCount < int64(len(b.DownstreamReferences)) || b.DownstreamCount > blocked {
+			h.fatalf("the hold summary counts %d downstream of %s, outside [%d sampled, %d open, matching and unready]",
+				b.DownstreamCount, b.Reference, len(b.DownstreamReferences), blocked)
+		}
 	}
 	for _, n := range nodes {
-		if n.Status != "open" {
+		if n.Status != "open" || !matchesReadyQuery(n, q) {
 			continue
 		}
 		held := projectHeld["platform"]
@@ -786,9 +823,52 @@ func (h *history) checkHoldSummary(*state) {
 			held = at.HeldAt != nil
 		}
 		if held && total == 0 {
-			h.fatalf("#%d is open and held, and the hold summary is empty", n.Number)
+			h.fatalf("#%d is open, held and matches %+v, and the hold summary is empty", n.Number, q)
 		}
 	}
+}
+
+// drawReadyQuery draws the filters of a ready query over the kinds,
+// labels, assignee kinds and priorities a history with filterFields
+// creates nodes with. Any of them may be left out.
+func drawReadyQuery(t *rapid.T) domain.ReadyQuery {
+	sets := [][]string{nil, {historyLabels[0]}, {historyLabels[1]}, historyLabels}
+	return domain.ReadyQuery{
+		Kinds:        rapid.SampledFrom([][]string{nil, {historyKinds[0]}, {historyKinds[1]}}).Draw(t, "query kinds"),
+		Labels:       rapid.SampledFrom(sets).Draw(t, "query labels"),
+		AnyLabels:    rapid.SampledFrom(sets).Draw(t, "query any labels"),
+		AssigneeKind: rapid.SampledFrom([]string{"", domain.AssigneeAgent, domain.AssigneeUser}).Draw(t, "query assignee kind"),
+		MinPriority:  rapid.SampledFrom([]string{"", "p0", "p1", "p2", "p3", "p4"}).Draw(t, "query min priority"),
+	}
+}
+
+// matchesReadyQuery is whether n passes q's filters, restated from the
+// field documentation on [domain.ReadyQuery] rather than from the SQL that
+// applies them.
+func matchesReadyQuery(n store.Node, q domain.ReadyQuery) bool {
+	if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, n.Kind) {
+		return false
+	}
+	for _, l := range q.Labels {
+		if !slices.Contains(n.Labels, l) {
+			return false
+		}
+	}
+	if len(q.AnyLabels) > 0 && !slices.ContainsFunc(q.AnyLabels, func(l string) bool { return slices.Contains(n.Labels, l) }) {
+		return false
+	}
+	switch kind := derefOr(n.AssigneeKind); q.AssigneeKind {
+	case domain.AssigneeAgent:
+		if kind != "" && kind != domain.AssigneeAgent {
+			return false
+		}
+	case domain.AssigneeUser:
+		if kind != domain.AssigneeUser {
+			return false
+		}
+	}
+	// Priorities are p0 to p4, so text order is urgency order.
+	return q.MinPriority == "" || n.Priority <= q.MinPriority
 }
 
 // derefOr is the string p points at, or "" for nil.
@@ -852,10 +932,12 @@ func run(ctx context.Context, t *rapid.T, s *store.Store, check ...func(*history
 	runHistory(newHistory(ctx, t, s), check...)
 }
 
-// runHolds is run with holding and releasing the project among the steps.
+// runHolds is run with holding and releasing the project among the steps,
+// and with kinds and labels on the nodes it creates.
 func runHolds(ctx context.Context, t *rapid.T, s *store.Store, check ...func(*history, *state)) {
 	h := newHistory(ctx, t, s)
 	h.projectHolds = true
+	h.filterFields = true
 	runHistory(h, check...)
 }
 
