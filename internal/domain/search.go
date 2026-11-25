@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -168,7 +166,7 @@ func searchProject(ctx context.Context, tx store.Tx, orgID, ref string) (store.P
 	} else {
 		p, err = tx.GetProjectBySlug(ctx, store.GetProjectBySlugParams{OrgID: orgID, Slug: ref})
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return p, fmt.Errorf("%s: %w", ref, ErrSearchProjectNotFound)
 	}
 	if err != nil {

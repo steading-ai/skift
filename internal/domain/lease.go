@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
@@ -217,7 +216,11 @@ func Claim(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string
 		switch {
 		case errors.Is(err, errNothingReady):
 			return nil, nil
-		case errors.Is(err, errClaimLost), isKeyConflict(err), isLiveLeaseConflict(err):
+		// Another claim on the same node may have committed first. The
+		// readiness recheck under the row lock makes a live-lease conflict
+		// unreachable in practice; the index is the invariant's backstop,
+		// and a claim losing to it restarts.
+		case errors.Is(err, errClaimLost), store.IsIdempotencyKeyConflict(err), store.IsLiveLeaseConflict(err):
 			continue
 		case err != nil:
 			return nil, auditDenial(ctx, s, orgID, actor, &req.RequestID, err)
@@ -268,7 +271,7 @@ func claimOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID strin
 		var last *string
 		if err == nil {
 			last = &cursor.ProjectID
-		} else if !errors.Is(err, pgx.ErrNoRows) {
+		} else if !errors.Is(err, store.ErrNoRows) {
 			return nil, fmt.Errorf("read claim cursor: %w", err)
 		}
 		chosen := nextProject(last, eligible)
@@ -334,7 +337,7 @@ func lockNextReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery,
 		return store.Node{}, fmt.Errorf("select next ready node: %w", err)
 	}
 	node, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[store.Node])
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return store.Node{}, errNothingReady
 	}
 	if err != nil {
@@ -352,15 +355,6 @@ func isReady(ctx context.Context, tx store.Tx, orgID, nodeID string) (bool, erro
 		return false, fmt.Errorf("recheck readiness: %w", err)
 	}
 	return ready, nil
-}
-
-// isLiveLeaseConflict reports a unique violation on the live-lease index:
-// another claim on the same node committed first. The readiness recheck
-// under the row lock makes this unreachable in practice; the index is the
-// invariant's backstop, and a claim losing to it restarts.
-func isLiveLeaseConflict(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "leases_live_idx"
 }
 
 // ClaimNext is [Claim] that keeps asking until it has a node or the
@@ -406,7 +400,7 @@ func Heartbeat(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID st
 	}
 	return leaseOp(ctx, s, pol, orgID, actor, requestID, leaseID, OpHeartbeatLease, ttl, func(ctx context.Context, tx store.Tx, r *recorder, before store.Lease, node store.Node) (store.Lease, error) {
 		after, err := tx.RenewLease(ctx, store.RenewLeaseParams{OrgID: orgID, ID: before.ID, ExpiresAt: time.Now().Add(boundTTL(ttl))})
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, store.ErrNoRows) {
 			return after, fmt.Errorf("lease %s: %w", before.ID, ErrLeaseNotLive)
 		}
 		if err != nil {
@@ -436,7 +430,7 @@ func Release(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID stri
 	}
 	return leaseOp(ctx, s, pol, orgID, actor, requestID, leaseID, OpReleaseLease, eventReason, func(ctx context.Context, tx store.Tx, r *recorder, before store.Lease, node store.Node) (store.Lease, error) {
 		after, err := tx.ReleaseLiveLease(ctx, store.ReleaseLiveLeaseParams{OrgID: orgID, ID: before.ID, ReleaseReason: &reason})
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, store.ErrNoRows) {
 			return after, fmt.Errorf("lease %s: %w", before.ID, ErrLeaseNotLive)
 		}
 		if err != nil {
@@ -495,7 +489,7 @@ func leaseOp(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID stri
 			change = result
 			return nil
 		})
-		if isKeyConflict(err) && attempt == 0 {
+		if store.IsIdempotencyKeyConflict(err) && attempt == 0 {
 			continue
 		}
 		if err != nil {
@@ -510,7 +504,7 @@ func leaseOp(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID stri
 // principal's is [ErrNotLeaseHolder].
 func heldLease(ctx context.Context, tx store.Tx, orgID string, actor Actor, leaseID string) (store.Lease, error) {
 	lease, err := tx.GetLiveLease(ctx, store.GetLiveLeaseParams{OrgID: orgID, ID: leaseID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return store.Lease{}, fmt.Errorf("lease %s: %w", leaseID, ErrLeaseNotLive)
 	}
 	if err != nil {
@@ -568,7 +562,7 @@ func ExpireLeases(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID
 // it. A live lease is left alone.
 func (r *recorder) expireOn(ctx context.Context, node store.Node) error {
 	unreleased, err := r.tx.GetUnreleasedLease(ctx, store.GetUnreleasedLeaseParams{OrgID: r.orgID, NodeID: node.ID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil
 	}
 	if err != nil {

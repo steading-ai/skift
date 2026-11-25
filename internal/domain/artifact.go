@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/store"
 	"github.com/steading-ai/skift/internal/store/blob"
 )
@@ -375,7 +373,7 @@ func (a *applier) partParams(ctx context.Context, p *Part) (store.CreateArtifact
 		return store.CreateArtifactPartParams{Kind: PartText, Text: &p.Text.Text, MediaType: &mediaType, Size: &size}, nil
 	case p.Blob != nil:
 		blob, err := a.tx.GetBlob(ctx, store.GetBlobParams{OrgID: a.orgID, Digest: p.Blob.Digest})
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, store.ErrNoRows) {
 			return store.CreateArtifactPartParams{}, fmt.Errorf("%s: %w", p.Blob.Digest, ErrBlobNotFound)
 		}
 		if err != nil {
@@ -484,7 +482,7 @@ type BlobInfo struct {
 // reference count.
 func ReadBlob(ctx context.Context, tx store.Tx, orgID, digest string) (*BlobInfo, error) {
 	row, err := tx.GetBlob(ctx, store.GetBlobParams{OrgID: orgID, Digest: digest})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, fmt.Errorf("%s: %w", digest, ErrBlobNotFound)
 	}
 	if err != nil {

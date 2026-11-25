@@ -9,8 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -330,7 +328,7 @@ func freeSlug(ctx context.Context, tx store.Tx, orgID, base string) (string, err
 			candidate = truncateRunes(base, maxSlugLength-len(suffix)) + suffix
 		}
 		_, err := tx.GetProjectBySlug(ctx, store.GetProjectBySlugParams{OrgID: orgID, Slug: candidate})
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, store.ErrNoRows) {
 			return candidate, nil
 		}
 		if err != nil {

@@ -536,7 +536,7 @@ func (e *Explanation) Stuck() bool {
 // number. Project-scoped facts come before node-scoped ones.
 func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanation, error) {
 	node, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, ErrNodeNotFound
 	}
 	if err != nil {

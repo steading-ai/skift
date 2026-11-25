@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/store"
 )
 
@@ -110,7 +108,7 @@ type Thread struct {
 // ReadComment returns one comment with its revisions.
 func ReadComment(ctx context.Context, tx store.Tx, orgID, commentID string) (*CommentHistory, error) {
 	c, err := tx.GetComment(ctx, store.GetCommentParams{OrgID: orgID, ID: commentID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, fmt.Errorf("comment %s: %w", commentID, ErrCommentNotFound)
 	}
 	if err != nil {
@@ -133,7 +131,7 @@ func Comments(ctx context.Context, tx store.Tx, orgID, nodeID string, limit, off
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID}); errors.Is(err, pgx.ErrNoRows) {
+	if _, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID}); errors.Is(err, store.ErrNoRows) {
 		return nil, ErrNodeNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("read node %s: %w", nodeID, err)
@@ -171,7 +169,7 @@ type CommentsHint struct {
 // one row, never the bodies.
 func CommentsSummary(ctx context.Context, tx store.Tx, orgID, nodeID string) (CommentsHint, error) {
 	row, err := tx.LatestUnresolvedComment(ctx, store.LatestUnresolvedCommentParams{OrgID: orgID, NodeID: nodeID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return CommentsHint{}, nil
 	}
 	if err != nil {
@@ -298,7 +296,7 @@ func (a *applier) comment(ctx context.Context, ref string) (store.Comment, error
 		id = bound
 	}
 	c, err := a.tx.GetComment(ctx, store.GetCommentParams{OrgID: a.orgID, ID: id})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return c, fmt.Errorf("comment %s: %w", ref, ErrCommentNotFound)
 	}
 	if err != nil {

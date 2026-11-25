@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/store"
 )
 
@@ -147,7 +145,7 @@ func CurrentEstimate(ctx context.Context, tx store.Tx, orgID, nodeID string) (*s
 		return nil, err
 	}
 	u, err := tx.GetCurrentEstimate(ctx, store.GetCurrentEstimateParams{OrgID: orgID, NodeID: nodeID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -188,7 +186,7 @@ func SubtreeRollup(ctx context.Context, tx store.Tx, orgID, rootID string) (*Rol
 // organization, so a read of an unknown node is not an empty answer.
 func nodeExists(ctx context.Context, tx store.Tx, orgID, nodeID string) error {
 	_, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return ErrNodeNotFound
 	}
 	if err != nil {
