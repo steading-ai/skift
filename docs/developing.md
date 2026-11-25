@@ -87,11 +87,16 @@ The harness finds the rootless podman socket on its own. Set `DOCKER_HOST` to po
 make mutate DIFF=main         # gremlins over the lines in internal/domain that differ from main
 make mutate PKG=internal/cli  # another package, every line
 make mutate-store DIFF=main   # the store's changed lines, judged by every suite in the module
+make mutate-sql               # each rule of the store's SQL, broken in turn
 ```
 
 Mutation testing changes one operator at a time and reruns the specs; a mutant the specs do not notice has lived, and each survivor is either an equivalent change or a missing spec. Read the survivors rather than the score. Runs use the development database from `make db-up` and take minutes to hours, so run nothing else against it meanwhile: contention times mutants out, and a timed-out mutant drops out of the score.
 
 `make mutate` judges a package by its own specs. The store's Go code is exercised by the domain and server specs, so `make mutate-store` runs every suite for each mutant, with `SKIFT_MUTATING=1` set. That variable makes two suites skip themselves: the specs at the repository root, which run `make lint` in copies of the tree, and the acceptance scenarios, which build and serve the binary. Neither reaches the store, and either would cost minutes per mutant.
+
+gremlins mutates Go operators, and the store's rules are SQL: what makes a node ready, which holds an empty ready page reports, which cycles a patch is refused for. `make mutate-sql` breaks each of those rules in turn and runs the store, domain and server specs against it. Each row of the table in `internal/tools/mutatesql/mutants.go` names a file, an exact piece of SQL that occurs in it once, what replaces it, and the rule that breaks. The run prints the spec that killed each mutant, restores every file it changed even when interrupted, and fails if any mutant lives. For a query sqlc generates, the row edits the string in the `.sql.gen.go` file, because that string is what runs.
+
+When you add a rule, add a row that breaks it. When you rewrite a rule's SQL, update its row: the spec "The table applies to the tree" fails in `make test` while any row's text no longer occurs exactly once.
 
 ## Write a spec that needs the database
 

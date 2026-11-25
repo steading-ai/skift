@@ -30,7 +30,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version cover mutate mutate-store test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release image-tags db-up db-down db-reset db-migrate
+.PHONY: all build version cover mutate mutate-store mutate-sql test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release image-tags db-up db-down db-reset db-migrate
 
 all: build
 
@@ -155,9 +155,18 @@ mutate: db-up
 # SKIFT_MUTATING leaves out the two suites that would cost minutes per
 # mutant and never reach the store: the development-environment specs at
 # the root, which run make lint in copies of the tree, and the acceptance
-# scenarios. Generated query code is not mutated.
+# scenarios. Generated query code is not mutated; make mutate-sql judges
+# the SQL itself.
 mutate-store: db-up
 	$(call gremlins_in,internal/store,SKIFT_MUTATING=1,--integration --coverpkg $(MODULE)/internal/store/... --exclude-files '\.gen\.go$$')
+
+# gremlins mutates Go operators, and the store's rules are SQL. mutate-sql
+# breaks each rule in internal/tools/mutatesql/mutants.go in turn, runs the
+# store, domain and server specs against it, and fails unless a spec
+# notices every one. Like mutate, it works in the development database.
+mutate-sql: db-up
+	set -a && . ./.env && set +a && \
+	  SKIFT_TEST_POSTGRES_URL="$$DATABASE_URL" go run ./internal/tools/mutatesql
 
 # Every check tool is a step in hk.pkl; hk runs them concurrently.
 # HK_FLAGS passes options through, such as --no-fail-fast. hk reports on
