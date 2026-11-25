@@ -2,12 +2,11 @@ package domain
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/steading-ai/skift/internal/store"
 )
 
 // The wake signal of the change stream. Migration 00016 raises a
@@ -31,7 +30,7 @@ const (
 // first stream subscribes and closed when the last leaves, and fans each
 // notification out to the subscribers of its organization.
 type listener struct {
-	connect func(ctx context.Context) (*pgx.Conn, error)
+	connect func(ctx context.Context) (*store.Listening, error)
 	log     *slog.Logger
 
 	mu      sync.Mutex
@@ -57,7 +56,7 @@ type session struct {
 	done   chan struct{}
 }
 
-func newListener(connect func(ctx context.Context) (*pgx.Conn, error)) *listener {
+func newListener(connect func(ctx context.Context) (*store.Listening, error)) *listener {
 	return &listener{connect: connect, log: slog.Default(), subs: map[*subscription]struct{}{}}
 }
 
@@ -142,28 +141,21 @@ func (l *listener) run(ctx context.Context, s *session) {
 	}
 }
 
-// listen holds one connection on the channel, calling listening once
-// LISTEN has executed, and returns why the connection ended.
+// listen holds one session on the channel, calling listening once LISTEN
+// has executed, and returns why the session ended.
 func (l *listener) listen(ctx context.Context, listening func()) error {
-	conn, err := l.connect(ctx)
+	session, err := l.connect(ctx)
 	if err != nil {
-		return fmt.Errorf("connect: %w", err)
+		return err
 	}
-	defer func() {
-		closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = conn.Close(closeCtx)
-	}()
-	if _, err := conn.Exec(ctx, "LISTEN "+eventsChannel); err != nil {
-		return fmt.Errorf("listen on %s: %w", eventsChannel, err)
-	}
+	defer session.Close()
 	listening()
 	for {
-		n, err := conn.WaitForNotification(ctx)
+		orgID, err := session.Next(ctx)
 		if err != nil {
 			return err
 		}
-		l.wakeOrg(n.Payload)
+		l.wakeOrg(orgID)
 	}
 }
 
