@@ -62,3 +62,9 @@ ORDER BY tx_id, id;
 -- transaction id still in progress, so every id below it has finished.
 -- name: SnapshotXMin :one
 SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint;
+
+-- Keeps the events table's monthly partitions ahead of the clock: the
+-- partition holding `at` and `ahead` more after it, creating whichever are
+-- missing and returning their names. Partitions belong to no organization.
+-- name: EnsureEventPartitions :many
+SELECT ensure_event_partitions(sqlc.arg(at)::timestamptz, sqlc.arg(ahead)::integer)::text AS partition;

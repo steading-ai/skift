@@ -353,26 +353,35 @@ var _ = Describe("Organizations, projects, principals, identities", Label(testsu
 })
 
 // schema describes every user-visible object in the public schema, in a
-// stable order, so two states can be compared exactly.
+// stable order, so two states can be compared exactly. The events table's
+// monthly partitions, and what hangs off them, are left out: the service
+// keeps them ahead of the clock as time passes, so which months exist says
+// when a database was migrated, not what its schema is.
 func schema(ctx context.Context, db *pgxpool.Pool) []string {
 	GinkgoHelper()
 	rows, err := db.Query(ctx, `
+		WITH partition AS (
+		    SELECT oid, relname FROM pg_class
+		     WHERE relispartition AND relnamespace = 'public'::regnamespace
+		)
 		SELECT 'relation ' || c.relname || ' ' || c.relkind::text
 		  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-		 WHERE n.nspname = 'public'
+		 WHERE n.nspname = 'public' AND NOT c.relispartition
 		UNION ALL
 		SELECT 'column ' || table_name || '.' || column_name || ' ' || data_type
 		       || ' default=' || coalesce(column_default, '') || ' nullable=' || is_nullable
 		  FROM information_schema.columns
-		 WHERE table_schema = 'public'
+		 WHERE table_schema = 'public' AND table_name NOT IN (SELECT relname FROM partition)
 		UNION ALL
 		SELECT 'constraint ' || conrelid::regclass::text || '.' || conname || ' ' || pg_get_constraintdef(oid)
 		  FROM pg_constraint
-		 WHERE connamespace = 'public'::regnamespace
+		 WHERE connamespace = 'public'::regnamespace AND conrelid NOT IN (SELECT oid FROM partition)
 		UNION ALL
-		SELECT 'index ' || indexdef FROM pg_indexes WHERE schemaname = 'public'
+		SELECT 'index ' || indexdef FROM pg_indexes
+		 WHERE schemaname = 'public' AND tablename NOT IN (SELECT relname FROM partition)
 		UNION ALL
-		SELECT 'trigger ' || pg_get_triggerdef(oid) FROM pg_trigger WHERE NOT tgisinternal
+		SELECT 'trigger ' || pg_get_triggerdef(oid) FROM pg_trigger
+		 WHERE NOT tgisinternal AND tgrelid NOT IN (SELECT oid FROM partition)
 		UNION ALL
 		SELECT 'function ' || pg_get_functiondef(oid) FROM pg_proc WHERE pronamespace = 'public'::regnamespace
 		UNION ALL

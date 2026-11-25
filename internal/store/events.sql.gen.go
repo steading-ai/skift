@@ -72,6 +72,38 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 	return i, err
 }
 
+const ensureEventPartitions = `-- name: EnsureEventPartitions :many
+SELECT ensure_event_partitions($1::timestamptz, $2::integer)::text AS partition
+`
+
+type EnsureEventPartitionsParams struct {
+	At    time.Time
+	Ahead int32
+}
+
+// Keeps the events table's monthly partitions ahead of the clock: the
+// partition holding `at` and `ahead` more after it, creating whichever are
+// missing and returning their names. Partitions belong to no organization.
+func (q *Queries) EnsureEventPartitions(ctx context.Context, arg EnsureEventPartitionsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, ensureEventPartitions, arg.At, arg.Ahead)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var partition string
+		if err := rows.Scan(&partition); err != nil {
+			return nil, err
+		}
+		items = append(items, partition)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEventPositionsFrom = `-- name: ListEventPositionsFrom :many
 SELECT tx_id, id FROM events
 WHERE org_id = $1

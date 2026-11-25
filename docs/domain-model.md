@@ -405,6 +405,8 @@ PostgreSQL `LISTEN`/`NOTIFY` is the wake signal, not the transport. The notifica
 
 Events are time-partitioned, and **audit retention and delivery replay are different windows.** The audit record is kept indefinitely, which is what [principle 7](core-principles.md) means. The window a consumer may resume from is bounded, and a cursor older than it is rejected so the consumer resynchronizes rather than silently skipping.
 
+Each partition holds one calendar month, in UTC, and an event whose month has no partition cannot be written, so every write depends on the months ahead being in place. The service keeps them three months past the current one: a daily background job extends them, `skift serve` extends them before it reports ready, and the upgrade that introduced the job extended every existing database at once. Nothing an operator runs keeps them; a deployment that runs `skift serve` stays ahead of the clock.
+
 ### Orchestrators do not use it
 
 Readiness is derived, so a node becoming ready produces no event of its own: it became ready because a *different* node completed. Emitting derived readiness events would mean storing derived state, which [principle 1](core-principles.md) forbids, and it would drift.
