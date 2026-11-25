@@ -224,6 +224,53 @@ checksum_source = "mise-versions"
 url = "https://github.com/docker/compose/releases/download/v5.8.0/docker-compose-windows-x86_64.exe"
 url_api = "https://api.github.com/repos/docker/compose/releases/assets/759067226"
 
+[[tools."github:sbdchd/squawk"]]
+version = "2.74.0"
+backend = "github:sbdchd/squawk"
+specifiers = ["2.74.0"]
+
+[tools."github:sbdchd/squawk"."platforms.linux-arm64"]
+checksum = "sha256:89aacf30e03ab578b4c750a111fbfc9eb9077ea5a485b22cc5d8f8be03aa815d"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-linux-arm64"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780924358"
+
+[tools."github:sbdchd/squawk"."platforms.linux-arm64-musl"]
+checksum = "sha256:02950a4dd427f99c1efdd447e9a87c4f7512994795c6350f5c206225d4d8a703"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-linux-musl-arm64"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780924460"
+
+[tools."github:sbdchd/squawk"."platforms.linux-x64"]
+checksum = "sha256:62e2df12169cfdc77bb5f151261cdce419db9b72c49816d6fbcc421314bf1083"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-linux-x64"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780925631"
+
+[tools."github:sbdchd/squawk"."platforms.linux-x64-musl"]
+checksum = "sha256:ad69ad8c5dc3791a2cf30b8682ae80d626530e2842279ef4ec4fd75f0d104b69"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-linux-musl-x64"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780922230"
+
+[tools."github:sbdchd/squawk"."platforms.macos-arm64"]
+checksum = "sha256:026890261715b55cd5bbc591ce763b485d72fff5252a5bf2bd035b9f8ea54f09"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-darwin-arm64"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780940832"
+
+[tools."github:sbdchd/squawk"."platforms.macos-x64"]
+checksum = "sha256:3f296928f6e33b1c0384fa5e34600b6e35f3f571d336b15e040dd50305d15fd7"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-darwin-x64"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780931572"
+
+[tools."github:sbdchd/squawk"."platforms.windows-x64"]
+checksum = "sha256:70af7e77b585c5bceff9aa3d96725779f78f3c85345087134bba5d7201e3bb1b"
+checksum_source = "mise-versions"
+url = "https://github.com/sbdchd/squawk/releases/download/v2.74.0/squawk-windows-x64.exe"
+url_api = "https://api.github.com/repos/sbdchd/squawk/releases/assets/780917960"
+
 [[tools.go]]
 version = "1.27.4"
 backend = "core:go"

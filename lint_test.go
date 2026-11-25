@@ -46,6 +46,19 @@ func makeLint(dir string) *gexec.Session {
 	return session.Wait(4 * time.Minute)
 }
 
+// hkStep runs one hk check step over every file in the given checkout, for a
+// spec about that step alone when the change it makes would also, rightly,
+// trip another step.
+func hkStep(dir, step string) *gexec.Session {
+	GinkgoHelper()
+	git(dir, "init", "--quiet")
+	cmd := exec.Command("hk", "check", "--all", "--step", step)
+	cmd.Dir = dir
+	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+	Expect(err).NotTo(HaveOccurred())
+	return session.Wait(4 * time.Minute)
+}
+
 var _ = Describe("Lint and package boundaries", Label("unit", "slow"), func() {
 	It("make lint passes on the current tree", func() {
 		Expect(makeLint(checkout())).To(gexec.Exit(0))
@@ -208,6 +221,52 @@ SELECT count(*) FROM nodes WHERE org_id = $1;
 		By("then it fails naming docs/vision.md")
 		Expect(session).NotTo(gexec.Exit(0))
 		Expect(string(session.Out.Contents())).To(ContainSubstring("docs/vision.md"))
+	})
+
+	It("A migration that builds an index on an existing table without CONCURRENTLY fails lint", func() {
+		By("given a copy of the tree with a new migration indexing the existing nodes table")
+		dir := checkout()
+		writeFile(dir, "internal/store/migrations/00099_index_nodes.sql",
+			"-- +goose Up\n-- A probe for the migration linter.\nCREATE INDEX nodes_probe_idx ON nodes (title);\n\n-- +goose Down\nDROP INDEX nodes_probe_idx;\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then it fails naming the file, the line, and the rule")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(SatisfyAll(
+			ContainSubstring("internal/store/migrations/00099_index_nodes.sql:3:"),
+			ContainSubstring("require-concurrent-index-creation"),
+		))
+	})
+
+	It("A migration may index a table it creates without CONCURRENTLY", func() {
+		By("given a copy of the tree with a new migration that creates a table and indexes it")
+		dir := checkout()
+		writeFile(dir, "internal/store/migrations/00099_probe_table.sql",
+			"-- +goose Up\nCREATE TABLE probe (id text PRIMARY KEY, title text NOT NULL);\nCREATE INDEX probe_title_idx ON probe (title);\n\n-- +goose Down\nDROP TABLE probe;\n")
+
+		By("when the migration linter runs")
+		// A new table also changes sqlc's generated models, which the
+		// generated-code step rightly reports, so this runs the squawk step
+		// alone.
+		session := hkStep(dir, "squawk")
+
+		By("then it passes")
+		Expect(session).To(gexec.Exit(0))
+	})
+
+	It("A migration goose runs outside a transaction may build an index concurrently", func() {
+		By("given a copy of the tree with a NO TRANSACTION migration that rebuilds an index concurrently")
+		dir := checkout()
+		writeFile(dir, "internal/store/migrations/00099_index_concurrently.sql",
+			"-- +goose NO TRANSACTION\n-- +goose Up\nDROP INDEX CONCURRENTLY IF EXISTS nodes_probe_idx;\nCREATE INDEX CONCURRENTLY IF NOT EXISTS nodes_probe_idx ON nodes (title);\n\n-- +goose Down\nDROP INDEX CONCURRENTLY IF EXISTS nodes_probe_idx;\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then it passes")
+		Expect(session).To(gexec.Exit(0))
 	})
 
 	It("Specs stay in Ginkgo", func() {
