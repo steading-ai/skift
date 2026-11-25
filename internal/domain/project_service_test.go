@@ -161,6 +161,36 @@ var _ = Describe("Project service", Label(testsupport.DBLabel), func() {
 	})
 
 	Describe("ListNodes", func() {
+		It("Unassigned work is agent work in a listing", func(ctx SpecContext) {
+			By("given an agent-assigned node, an unassigned node, and a user gate")
+			g.given(ctx, func(ctx context.Context, tx store.Tx) {
+				g.nodeWith(ctx, tx, 1, nodeOpts{assigneeKind: domain.AssigneeAgent})
+				g.nodeWith(ctx, tx, 2, nodeOpts{})
+				g.nodeWith(ctx, tx, 3, nodeOpts{assigneeKind: domain.AssigneeUser})
+			})
+
+			By("when I list nodes filtered to agent work")
+			states, err := svc.ListNodes(ctx, g.org, domain.NodeListQuery{AssigneeKind: domain.AssigneeAgent})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("then the agent-assigned and unassigned nodes are listed")
+			Expect(stateNumbers(states)).To(Equal([]int64{1, 2}))
+
+			By("and the gate is not")
+			Expect(stateNumbers(states)).NotTo(ContainElement(int64(3)))
+		})
+
+		It("lists only gates when filtered to user work", func(ctx SpecContext) {
+			g.given(ctx, func(ctx context.Context, tx store.Tx) {
+				g.nodeWith(ctx, tx, 1, nodeOpts{assigneeKind: domain.AssigneeAgent})
+				g.nodeWith(ctx, tx, 2, nodeOpts{})
+				g.nodeWith(ctx, tx, 3, nodeOpts{assigneeKind: domain.AssigneeUser})
+			})
+			states, err := svc.ListNodes(ctx, g.org, domain.NodeListQuery{AssigneeKind: domain.AssigneeUser})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stateNumbers(states)).To(Equal([]int64{3}))
+		})
+
 		It("narrows by status, kind, labels, priority, hold, and parent, and refuses a filter it cannot read", func(ctx SpecContext) {
 			By("given an epic with a spike and a task under it, and a done sibling")
 			g.given(ctx, func(ctx context.Context, tx store.Tx) {
