@@ -25,7 +25,7 @@ type reapSummary struct {
 // and returns its summary.
 func reap(url string) reapSummary {
 	GinkgoHelper()
-	session := admin(url, "reap")
+	session := operate(url, "reap")
 	Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
 	var summary reapSummary
 	Expect(json.Unmarshal(session.Out.Contents(), &summary)).To(Succeed(), "stdout: %s", session.Out.Contents())

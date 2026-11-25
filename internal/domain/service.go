@@ -8,7 +8,6 @@ import (
 
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
-	"github.com/steading-ai/skift/internal/store/migrations"
 )
 
 // The rows the domain hands back, named here so that a caller outside the
@@ -37,36 +36,6 @@ var ErrProjectRequired = errors.New("a project is required")
 // principal holds the identity.
 var ErrPrincipalNotFound = errors.New("principal not found")
 
-// Migrate brings the database at databaseURL to the current schema. It is
-// the store's migrator, reachable from here because only the domain imports
-// the store.
-func Migrate(ctx context.Context, databaseURL string) error {
-	return migrations.Migrate(ctx, databaseURL)
-}
-
-// MigrationReport is what one [ApplyMigrations] did.
-type MigrationReport = migrations.Report
-
-// SchemaStatus is where a database stands against the schema the binary
-// carries.
-type SchemaStatus = migrations.Status
-
-// ErrDatabaseUnreachable is what [ApplyMigrations] and [InspectSchema]
-// fail with when the database does not answer, as opposed to answering
-// and refusing.
-var ErrDatabaseUnreachable = migrations.ErrUnreachable
-
-// ApplyMigrations is [Migrate] reporting which migrations it applied.
-func ApplyMigrations(ctx context.Context, databaseURL string) (MigrationReport, error) {
-	return migrations.Apply(ctx, databaseURL)
-}
-
-// InspectSchema reads the schema version of the database without changing
-// it, for a caller that must refuse a database that is behind.
-func InspectSchema(ctx context.Context, databaseURL string) (SchemaStatus, error) {
-	return migrations.Inspect(ctx, databaseURL)
-}
-
 // Service is the domain as a handler sees it: every operation the wire
 // contract needs, over one database and one policy bundle, with no store
 // type in any signature that a caller must name. Each method runs in its
@@ -78,14 +47,6 @@ type Service struct {
 	// open stream. Its connection is opened outside the pool on the same
 	// configuration, so a stream never holds a pooled connection idle.
 	wake *listener
-}
-
-// Open connects to the database at databaseURL, for a composition root
-// that runs the domain and does not name the store. The caller closes what
-// it returns; until then the pool connects lazily, and its Ping reports a
-// database that is down.
-func Open(ctx context.Context, databaseURL string) (*store.Store, error) {
-	return store.Open(ctx, databaseURL)
 }
 
 // NewService wraps s and pol. The caller owns s and closes it.

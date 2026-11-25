@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 
-	"github.com/steading-ai/skift/internal/domain"
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/testsupport"
 )
 
@@ -58,7 +58,7 @@ var _ = SynchronizedBeforeSuite(func(ctx context.Context) []byte {
 
 	state := suiteState{Binary: bin}
 	if dbSpecsSelected() {
-		started, err := testsupport.Start(ctx, domain.Migrate)
+		started, err := testsupport.Start(ctx, admin.Migrate)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(started.Stop)
 		state.AdminURL = started.URL()

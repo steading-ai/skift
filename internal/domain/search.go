@@ -8,6 +8,7 @@ import (
 
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/ulid"
 )
 
 // Lexical search over node titles and bodies, results, and comments,
@@ -175,17 +176,5 @@ func searchProject(ctx context.Context, tx store.Tx, orgID, ref string) (store.P
 	return p, nil
 }
 
-// isULID reports whether s is shaped like an id: 26 characters of the
-// ULID alphabet with a leading character that keeps the timestamp in
-// range, as the schema's is_ulid checks.
-func isULID(s string) bool {
-	if len(s) != 26 || s[0] > '7' {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if !strings.ContainsRune(crockford, rune(s[i])) {
-			return false
-		}
-	}
-	return true
-}
+// isULID reports whether s is shaped like an id. See [ulid.Valid].
+func isULID(s string) bool { return ulid.Valid(s) }

@@ -26,7 +26,7 @@ Your contract is the node's **Acceptance criteria** and **Scenarios**. Every cri
 
 ```
 cmd/skift/       binary entrypoint; one binary, three faces (CLI, MCP server, service)
-internal/        application code; only internal/domain may import internal/store, and only internal/store reaches PostgreSQL
+internal/        application code; only internal/domain and internal/admin may import internal/store, and only internal/store reaches PostgreSQL
 proto/, gen/     the wire contract and its generated Go. The proto is the domain model
 policy/          the default authorization bundle, in Rego, with its own spec suite
 docs/            the design, which is authoritative, and the guides
@@ -71,7 +71,7 @@ make lint && make test
 
 In Claude Code, `.claude/settings.json` runs `hk agent stop-hook` when an agent ends its turn: hk's checks over the files that differ from `HEAD` must pass, or the turn goes on with the failure. A turn that ends in a commit checks nothing. To turn it off for yourself, set Claude Code's `disableAllHooks` in `.claude/settings.local.json`. `HK_SKIP_HOOK=check` also silences it, but it turns `make lint` into a no-op too.
 
-Specs are Ginkgo and Gomega. Two lint rules carry design decisions rather than style. `depguard` stops anything but `internal/domain` importing `internal/store`, and anything but `internal/store` importing pgx, so only the store reaches PostgreSQL. `forbidigo` keeps `testing` out of everything but `*_suite_test.go`, and `store.Raw` and `Store.Pool` out of everything but specs. If either fires, the fix is the code, not the config.
+Specs are Ginkgo and Gomega. Two lint rules carry design decisions rather than style. `depguard` stops anything but `internal/domain` and `internal/admin` importing `internal/store`, and anything but `internal/store` importing pgx, so only the store reaches PostgreSQL. `forbidigo` keeps `testing` out of everything but `*_suite_test.go`, and `store.Raw` and `Store.Pool` out of everything but specs. If either fires, the fix is the code, not the config.
 
 ## Change hygiene
 

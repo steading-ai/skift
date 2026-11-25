@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/mcphttp"
@@ -116,7 +117,7 @@ The service brings the database to the current schema once it answers,
 and reports itself ready only then, so a deployment needs no migration
 step of its own. With --no-migrate it applies nothing and instead refuses
 to serve a database that is behind the schema the binary carries; run
-"skift migrate" first.
+"skift admin migrate" first.
 
 Logs go to stderr as structured records. Under systemd they carry journal
 priorities, and under a Type=notify unit the service reports itself ready
@@ -229,7 +230,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// The pool connects lazily, so a database that is down at startup is
 	// reported by the health check rather than preventing the service from
 	// listening; systemd would otherwise restart it in a loop.
-	db, err := domain.Open(ctx, opts.databaseURL)
+	db, err := admin.Open(ctx, opts.databaseURL)
 	if err != nil {
 		return fmt.Errorf("skift serve: database url: %w", err)
 	}
@@ -338,7 +339,7 @@ func newNativeMCPHandler(srv *server.Server, auth *interceptor.Authenticator) ht
 func schemaPreparer(opts serveOptions) func(ctx context.Context, log *slog.Logger) error {
 	if opts.noMigrate {
 		return func(ctx context.Context, log *slog.Logger) error {
-			status, err := domain.InspectSchema(ctx, opts.databaseURL)
+			status, err := admin.InspectSchema(ctx, opts.databaseURL)
 			if err != nil {
 				return err
 			}
@@ -346,14 +347,14 @@ func schemaPreparer(opts serveOptions) func(ctx context.Context, log *slog.Logge
 				return err
 			}
 			if status.Pending() {
-				return fmt.Errorf("schema is at version %d but this build expects %d; run skift migrate, or start without --no-migrate", status.Current, status.Latest)
+				return fmt.Errorf("schema is at version %d but this build expects %d; run skift admin migrate, or start without --no-migrate", status.Current, status.Latest)
 			}
 			log.Info("schema current", "schema_version", status.Current)
 			return nil
 		}
 	}
 	return func(ctx context.Context, log *slog.Logger) error {
-		report, err := domain.ApplyMigrations(ctx, opts.databaseURL)
+		report, err := admin.ApplyMigrations(ctx, opts.databaseURL)
 		if err != nil {
 			return err
 		}
@@ -391,7 +392,7 @@ func announceReady(ctx context.Context, db server.Pinger, prepare func(context.C
 				notify(log, sdnotify.Ready, sdnotify.Status("serving"))
 				return nil
 			}
-			if !errors.Is(err, domain.ErrDatabaseUnreachable) {
+			if !errors.Is(err, admin.ErrDatabaseUnreachable) {
 				log.Error("database refused; not serving", "err", err)
 				return err
 			}

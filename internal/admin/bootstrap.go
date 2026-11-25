@@ -1,4 +1,4 @@
-package domain
+package admin
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/steading-ai/skift/internal/store"
+	"github.com/steading-ai/skift/internal/ulid"
 )
 
 // No RPC creates an organization, a principal, or an identity: a caller
@@ -16,7 +17,7 @@ import (
 
 // The identity schemes of a caller on the unix socket and on the tailnet,
 // and the kind of the principal bootstrap creates. All are spelled here
-// rather than imported from the server package, which the domain does not
+// rather than imported from the server package, which admin does not
 // depend on.
 const (
 	bootstrapScheme    = "unix"
@@ -116,7 +117,7 @@ func Bootstrap(ctx context.Context, s *store.Store, params BootstrapParams) (Boo
 		org, err := tx.GetOrganizationByName(ctx, params.OrgName)
 		switch {
 		case errors.Is(err, store.ErrNoRows):
-			org, err = tx.CreateOrganization(ctx, store.CreateOrganizationParams{ID: newULID(), Name: params.OrgName})
+			org, err = tx.CreateOrganization(ctx, store.CreateOrganizationParams{ID: ulid.New(), Name: params.OrgName})
 			if err != nil {
 				return fmt.Errorf("create organization: %w", err)
 			}
@@ -129,7 +130,7 @@ func Bootstrap(ctx context.Context, s *store.Store, params BootstrapParams) (Boo
 		principal, err := tx.GetPrincipalByIdentity(ctx, store.GetPrincipalByIdentityParams{Scheme: identity.Scheme, Value: identity.Value})
 		switch {
 		case errors.Is(err, store.ErrNoRows):
-			principal, err = tx.CreatePrincipal(ctx, store.CreatePrincipalParams{ID: newULID(), OrgID: org.ID, Kind: bootstrapKind})
+			principal, err = tx.CreatePrincipal(ctx, store.CreatePrincipalParams{ID: ulid.New(), OrgID: org.ID, Kind: bootstrapKind})
 			if err != nil {
 				return fmt.Errorf("create principal: %w", err)
 			}

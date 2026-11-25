@@ -15,7 +15,7 @@ import (
 	"github.com/steading-ai/skift/internal/testsupport"
 )
 
-// migrateReport mirrors what skift migrate prints.
+// migrateReport mirrors what skift admin migrate prints.
 type migrateReport struct {
 	Applied []int64 `json:"applied"`
 	Version int64   `json:"version"`
@@ -60,13 +60,13 @@ func newerSchema(latest int64) string {
 	return fmt.Sprintf("schema %d is newer than this build's %d: restore the pre-upgrade backup or install a newer skift", latest+1, latest)
 }
 
-var _ = Describe("skift migrate", func() {
+var _ = Describe("skift admin migrate", func() {
 	It("refuses a database migrated by a newer skift, naming both versions", Label(testsupport.DBLabel), func(ctx SpecContext) {
 		url := pg.Database(ctx).Config().ConnString()
 		latest := markAhead(ctx, url)
 
-		By("when skift migrate runs against a database ahead of it")
-		session := skift(binary, "migrate", "--database-url", url)
+		By("when skift admin migrate runs against a database ahead of it")
+		session := skift(binary, "admin", "migrate", "--database-url", url)
 
 		By("then it exits non-zero, names both versions, and changes nothing")
 		Expect(session.ExitCode()).To(Equal(cli.ExitFailure))
@@ -77,8 +77,8 @@ var _ = Describe("skift migrate", func() {
 	It("brings an empty database to the current schema, and a second run applies nothing", Label(testsupport.DBLabel), func(ctx SpecContext) {
 		url := pg.EmptyDatabase(ctx)
 
-		By("when skift migrate runs against an empty database")
-		session := skift(binary, "migrate", "--database-url", url)
+		By("when skift admin migrate runs against an empty database")
+		session := skift(binary, "admin", "migrate", "--database-url", url)
 
 		By("then it exits zero and reports every migration applied")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
@@ -88,8 +88,8 @@ var _ = Describe("skift migrate", func() {
 		Expect(first.Version).To(Equal(first.Applied[len(first.Applied)-1]))
 		Expect(schemaVersion(ctx, url)).To(Equal(first.Version))
 
-		By("when skift migrate runs a second time")
-		session = skift(binary, "migrate", "--database-url", url)
+		By("when skift admin migrate runs a second time")
+		session = skift(binary, "admin", "migrate", "--database-url", url)
 
 		By("then it exits zero, applies nothing, and the schema is where it was")
 		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
@@ -101,7 +101,7 @@ var _ = Describe("skift migrate", func() {
 	})
 
 	It("fails without a database URL", Label("unit"), func() {
-		cmd := exec.Command(binary, "migrate")
+		cmd := exec.Command(binary, "admin", "migrate")
 		cmd.Env = []string{"PATH=/usr/bin:/bin"}
 		session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 		Expect(err).NotTo(HaveOccurred())

@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	skiftv1 "github.com/steading-ai/skift/gen/skift/v1"
+	"github.com/steading-ai/skift/internal/admin"
 	"github.com/steading-ai/skift/internal/cli"
 	"github.com/steading-ai/skift/internal/client"
 	"github.com/steading-ai/skift/internal/codec"
@@ -66,7 +67,7 @@ const (
 // one organization with an agent reachable over the socket and a user
 // reachable over the tailnet.
 func migrateAndSeed(ctx context.Context, databaseURL string) error {
-	if err := domain.Migrate(ctx, databaseURL); err != nil {
+	if err := admin.Migrate(ctx, databaseURL); err != nil {
 		return err
 	}
 	conn, err := pgx.Connect(ctx, databaseURL)
