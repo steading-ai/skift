@@ -217,6 +217,25 @@ var _ = Describe("skift serve and the schema", Label(testsupport.DBLabel), func(
 		Expect(err).To(MatchError(os.ErrNotExist))
 	})
 
+	DescribeTable("refuses a database migrated by a newer skift, naming both versions",
+		func(ctx SpecContext, flags ...string) {
+			url := pg.Database(ctx).Config().ConnString()
+			latest := markAhead(ctx, url)
+
+			By("when skift serve starts against a database ahead of it")
+			session := serve(url, flags...)
+
+			By("then it exits non-zero naming both versions, and leaves no socket")
+			Eventually(session, 30*time.Second).Should(gexec.Exit(cli.ExitFailure))
+			Expect(string(session.Err.Contents())).To(ContainSubstring(newerSchema(latest)))
+			Expect(schemaVersion(ctx, url)).To(Equal(latest + 1))
+			_, err := os.Lstat(socket)
+			Expect(err).To(MatchError(os.ErrNotExist))
+		},
+		Entry("when it migrates at start"),
+		Entry("with --no-migrate", "--no-migrate"),
+	)
+
 	It("with --no-migrate serves a database that is already current", func(ctx SpecContext) {
 		url := pg.Database(ctx).Config().ConnString()
 		session := serve(url, "--no-migrate")

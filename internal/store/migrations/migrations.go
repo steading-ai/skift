@@ -11,10 +11,14 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"math/rand/v2"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
 // FS holds every migration, in goose's `NNNNN_name.sql` layout.
@@ -27,27 +31,73 @@ var FS embed.FS
 // failed, and wait for the one without retrying the other.
 var ErrUnreachable = errors.New("database unreachable")
 
+// LockTimeout is how long one migration statement may wait for a lock
+// before PostgreSQL cancels it with SQLSTATE 55P03. A statement waiting for
+// a table's ACCESS EXCLUSIVE lock blocks every query queued behind it, so
+// the wait is kept short and the run retried rather than left to stall
+// the service. It is set on the migration connection, so it covers
+// transactional and NO TRANSACTION migrations alike. See
+// docs/adrs/015-upgrades-and-migrations.md.
+const LockTimeout = 2 * time.Second
+
+// RetryBudget bounds the time [Migrator.Apply] spends retrying after lock
+// timeouts. Together with the migrations themselves it must fit inside
+// serve's start-up, which systemd bounds at 90 seconds by default, so a
+// run that cannot get its locks fails with time to report why.
+const RetryBudget = 60 * time.Second
+
+// lockID is the session advisory lock that admits one migrating process at
+// a time. It is skift's own rather than goose's default, so another goose
+// user in the same database never waits on skift: the bytes of "skift".
+const lockID int64 = 0x736b696674
+
+// lockWaitProbes is how many one-second probes a process makes for the
+// migration lock before giving up: as long as another process's run may
+// take, retries included.
+const lockWaitProbes = 60
+
+// lockNotAvailable is PostgreSQL's SQLSTATE for a lock_timeout expiring.
+// https://www.postgresql.org/docs/current/errcodes-appendix.html
+const lockNotAvailable = "55P03"
+
 // Migrator applies migrations to one database.
 type Migrator struct {
-	provider *goose.Provider
+	provider    *goose.Provider
+	retryBudget time.Duration
+	// lockTimeouts counts the lock timeouts the last Apply retried after,
+	// for the specs.
+	lockTimeouts int
 }
 
 // Open connects to databaseURL and prepares a Migrator over [FS]. Close it
 // when done.
+//
+// The connection runs with [LockTimeout] and no statement timeout: a
+// migration may take long, but may not wait long for a lock. goose holds a
+// session advisory lock for each run, so two processes never apply the
+// same migration; PostgreSQL releases it when the session ends, so a
+// process that dies mid-run leaves no stale lock.
 func Open(ctx context.Context, databaseURL string) (*Migrator, error) {
 	cfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+	cfg.RuntimeParams["lock_timeout"] = fmt.Sprintf("%dms", LockTimeout.Milliseconds())
+	cfg.RuntimeParams["statement_timeout"] = "0"
+	locker, err := lock.NewPostgresSessionLocker(lock.WithLockID(lockID), lock.WithLockTimeout(1, lockWaitProbes))
+	if err != nil {
+		return nil, fmt.Errorf("prepare migration lock: %w", err)
+	}
 	db := stdlib.OpenDB(*cfg)
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, FS, goose.WithLogger(goose.NopLogger()))
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, FS,
+		goose.WithLogger(goose.NopLogger()), goose.WithSessionLocker(locker))
 	if err != nil {
 		return nil, joinClose(fmt.Errorf("prepare migrations: %w", err), db)
 	}
 	if err := provider.Ping(ctx); err != nil {
 		return nil, joinClose(fmt.Errorf("connect to database: %w: %w", ErrUnreachable, err), db)
 	}
-	return &Migrator{provider: provider}, nil
+	return &Migrator{provider: provider, retryBudget: RetryBudget}, nil
 }
 
 // Close releases the connection.
@@ -63,15 +113,59 @@ func (m *Migrator) Up(ctx context.Context) error {
 
 // Apply applies every pending migration and returns the versions it
 // applied, oldest first; none when the database was already current.
+//
+// It refuses a database whose schema is newer than the binary's with a
+// [*SchemaAheadError], before applying anything. A migration that hits
+// [LockTimeout] rolls back alone, since goose runs each in its own
+// transaction; Apply then backs off and runs again, which recomputes what
+// is pending, until the run succeeds or [RetryBudget] is spent.
 func (m *Migrator) Apply(ctx context.Context) ([]int64, error) {
-	results, err := m.provider.Up(ctx)
-	applied := make([]int64, 0, len(results))
-	for _, r := range results {
-		if r.Error == nil {
-			applied = append(applied, r.Source.Version)
+	current, err := m.Version(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read schema version: %w", err)
+	}
+	if err := (Status{Current: current, Latest: m.Latest()}).NotAhead(); err != nil {
+		return nil, err
+	}
+	m.lockTimeouts = 0
+	deadline := time.Now().Add(m.retryBudget)
+	applied := []int64{}
+	for attempt := 0; ; attempt++ {
+		results, err := m.provider.Up(ctx)
+		for _, r := range results {
+			if r.Error == nil {
+				applied = append(applied, r.Source.Version)
+			}
+		}
+		if err == nil || !isLockTimeout(err) {
+			return applied, err
+		}
+		m.lockTimeouts++
+		wait := backoff(attempt)
+		if time.Now().Add(wait).After(deadline) {
+			return applied, fmt.Errorf("gave up waiting for locks after %d tries within %s: %w", attempt+1, m.retryBudget, err)
+		}
+		select {
+		case <-ctx.Done():
+			return applied, ctx.Err()
+		case <-time.After(wait):
 		}
 	}
-	return applied, err
+}
+
+// backoff is the wait before retry number attempt+1: exponential from a
+// quarter second, capped at eight, with full jitter so that processes
+// retrying together spread out.
+func backoff(attempt int) time.Duration {
+	ceiling := min(250*time.Millisecond<<min(attempt, 5), 8*time.Second)
+	return time.Duration(rand.Int64N(int64(ceiling))) + time.Millisecond
+}
+
+// isLockTimeout reports whether err is a statement cancelled by
+// lock_timeout.
+func isLockTimeout(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == lockNotAvailable
 }
 
 // UpTo applies pending migrations up to and including version.
@@ -167,6 +261,36 @@ type Status struct {
 
 // Pending reports whether the database is behind the binary.
 func (s Status) Pending() bool { return s.Current < s.Latest }
+
+// Ahead reports whether the database carries migrations the binary does
+// not: it was migrated by a newer skift. goose ignores versions above its
+// own newest, so without this check an older binary would serve a schema
+// it does not know.
+func (s Status) Ahead() bool { return s.Current > s.Latest }
+
+// NotAhead is nil unless the database is [Status.Ahead], when it is a
+// [*SchemaAheadError] naming both versions.
+func (s Status) NotAhead() error {
+	if s.Ahead() {
+		return &SchemaAheadError{Current: s.Current, Latest: s.Latest}
+	}
+	return nil
+}
+
+// SchemaAheadError refuses a database migrated by a newer skift. A
+// downgrade means restoring the backup taken before the upgrade, so the
+// error names that and the other way out. See
+// docs/adrs/015-upgrades-and-migrations.md.
+type SchemaAheadError struct {
+	// Current is the database's schema version.
+	Current int64
+	// Latest is the newest migration this binary carries.
+	Latest int64
+}
+
+func (e *SchemaAheadError) Error() string {
+	return fmt.Sprintf("schema %d is newer than this build's %d: restore the pre-upgrade backup or install a newer skift", e.Current, e.Latest)
+}
 
 // Inspect reads the schema version of the database at databaseURL without
 // changing it. A database that does not answer fails with [ErrUnreachable].
