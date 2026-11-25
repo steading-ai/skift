@@ -138,16 +138,12 @@ mutate: db-up
 	  SKIFT_TEST_POSTGRES_URL="$$DATABASE_URL" SKIFT_PROPERTY_CHECKS=$(PROPERTY_CHECKS) GOFLAGS=-count=1 \
 	  gremlins unleash $(MUTATE_FLAGS) ./internal/domain
 
+# Every check tool is a step in hk.pkl; hk runs them concurrently.
+# HK_FLAGS passes options through, such as --no-fail-fast. hk reports on
+# stderr; lint's findings go to stdout, where lint_test.go reads them.
 lint:
-	jactionlint
-	go vet ./...
-	golangci-lint run ./...
-	buf lint
-	opa check --strict policy
-	opa fmt --fail --list policy
-	goreleaser check --quiet
 	hk validate
-	$(MAKE) --no-print-directory check-generated
+	hk check --all $(HK_FLAGS) 2>&1
 
 # Generated code is committed, so a consumer needs no proto or SQL toolchain.
 # Proto output and the descriptor set internal/protodoc reads are

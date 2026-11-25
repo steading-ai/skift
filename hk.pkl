@@ -1,29 +1,74 @@
 amends "package://github.com/jdx/hk/releases/download/v2.13.0/hk@2.13.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.13.0/hk@2.13.0#/Builtins.pkl"
 
-// The gate before a commit is `make lint`, then the specs that need no
-// database. CI runs the same lint and every spec. Both steps run over the
-// whole tree rather than the staged files, because the lint rules that matter
-// here (depguard, forbidigo) are about package boundaries, not individual
-// files.
-local checks = new Mapping<String, Step> {
-    ["lint"] {
-        glob = List("**/*.go", "**/*.proto", "**/*.sql", "**/*.rego", "go.mod", "go.sum", ".golangci.yml", "buf.yaml", "buf.gen.yaml", "buf.lock", "sqlc.yaml", "Makefile")
-        check = "make lint"
+// One step per check tool, so hk runs them concurrently and runs each only
+// when a file it covers is selected. `make lint` is `hk check --all`, which
+// is what CI runs; `hk fix` applies the fixes the tools offer.
+//
+// golangci-lint and go vet run over the whole module whenever any Go file is
+// selected, not over the selected files alone: depguard and forbidigo are
+// about package boundaries, which no single file shows.
+local linters = new Mapping<String, Step> {
+    ["golangci-lint"] = Builtins.golangci_lint
+    ["go-vet"] = Builtins.go_vet
+    ["buf-lint"] = Builtins.buf_lint
+    ["jactionlint"] = Builtins.jactionlint
+    ["opa"] {
+        glob = "policy/**/*.rego"
+        check = new CommandSpec {
+            command = "opa check --strict policy && opa fmt --fail --list policy"
+            effect = "read"
+        }
+        fix = new CommandSpec {
+            command = "opa fmt --write policy"
+            effect = "write"
+        }
     }
-    ["test-unit"] {
-        glob = List("**/*.go", "**/*.rego", "go.mod", "go.sum", "Makefile")
-        check = "make test-unit"
-        depends = "lint"
+    ["goreleaser"] {
+        glob = ".goreleaser.yaml"
+        check = new CommandSpec {
+            command = "goreleaser check --quiet"
+            effect = "read"
+        }
+    }
+    // Generated code is committed, so the proto, the queries, the migrations
+    // sqlc reads, and the generator configuration are each a reason to check
+    // that the generated tree is current.
+    ["generated"] {
+        glob = List("proto/**", "gen/**", "internal/store/**/*.sql", "internal/store/**/*.gen.go", "internal/protodoc/descriptors.binpb", "sqlc.yaml", "buf.yaml", "buf.gen.yaml", "buf.lock")
+        check = new CommandSpec {
+            command = "make --no-print-directory check-generated"
+            effect = "read"
+        }
     }
 }
 
 hooks {
+    // The gate before a commit: the linters, then the specs that need no
+    // database.
     ["pre-commit"] {
         fix = false
         stash = "git"
-        steps = checks
+        steps {
+            ...linters
+            ["test-unit"] {
+                glob = List("**/*.go", "**/*.rego", "go.mod", "go.sum", "Makefile")
+                check = new CommandSpec {
+                    command = "make test-unit"
+                    effect = "read"
+                }
+                // Waits for every linter, as it waited for the single lint
+                // step before the linters were split out: a commit lint
+                // rejects does not also pay for the specs.
+                depends = linters.keys.toList()
+            }
+        }
     }
     ["check"] {
-        steps = checks
+        steps = linters
+    }
+    ["fix"] {
+        fix = true
+        steps = linters
     }
 }

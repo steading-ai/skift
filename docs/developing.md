@@ -92,8 +92,7 @@ make test-db     # specs labelled "db"
 make lint
 ```
 
-`hk install` wires `make lint` and `make test-unit` into a pre-commit hook
-(see `hk.pkl`); `hk check` runs the same steps by hand.
+`make lint` is `hk check --all`: hk runs each check in `hk.pkl` as its own step, in parallel. `hk check` alone checks only the files you have changed, and `hk fix` applies the fixes the tools offer, such as formatting. `hk install` wires the same steps, then `make test-unit`, into a pre-commit hook over the files a commit stages; golangci-lint and go vet still check the whole module whenever a Go file is staged, because the package-boundary rules need every package.
 
 Specs labelled `db` need podman. Store specs start their own PostgreSQL
 through testcontainers rather than using the compose stack, so they never
