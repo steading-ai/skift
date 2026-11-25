@@ -138,6 +138,24 @@ jobs:
 		))
 	})
 
+	It("A one-shot command may not open the database without checking its schema", func() {
+		By("given a copy of the tree with a CLI file that opens the database through admin.Open")
+		dir := checkout()
+		writeFile(dir, "internal/cli/unchecked.go",
+			"package cli\n\nimport (\n\t\"context\"\n\n\t\"github.com/steading-ai/skift/internal/admin\"\n)\n\n// unchecked opens the database without checking the schema.\nfunc unchecked(ctx context.Context, url string) error {\n\tdb, err := admin.Open(ctx, url)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdb.Close()\n\treturn nil\n}\n\nvar _ = unchecked\n")
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then it exits non-zero, naming the file and the forbidigo rule")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(SatisfyAll(
+			ContainSubstring("internal/cli/unchecked.go"),
+			ContainSubstring("admin.OpenCurrent"),
+			ContainSubstring("(forbidigo)"),
+		))
+	})
+
 	It("The domain cannot reach the transaction under the store", func() {
 		By("given a copy of the tree with a domain file that sends SQL on the transaction a store.Tx carries")
 		dir := checkout()
