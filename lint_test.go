@@ -269,6 +269,78 @@ SELECT count(*) FROM nodes WHERE org_id = $1;
 		Expect(session).To(gexec.Exit(0))
 	})
 
+	Describe("The public API against the newest release", func() {
+		// release commits a copy of the tree and tags it as a release, so
+		// the buf-breaking step has a version to compare against. A copy
+		// starts with no history and no tags.
+		release := func() string {
+			GinkgoHelper()
+			dir := checkout()
+			git(dir, "init", "--quiet")
+			git(dir, "add", "--all")
+			git(dir, "commit", "--quiet", "--message", "the release")
+			git(dir, "tag", "v9.9.9")
+			return dir
+		}
+		const removed = "  int64 hold_blocker_count = 5;\n"
+
+		It("Removing a field fails lint, naming it", func() {
+			By("given a copy of the tree tagged as a release")
+			dir := release()
+
+			By("and a field removed from a message since that release")
+			path := filepath.Join(dir, "proto/skift/v1/service.proto")
+			proto, err := os.ReadFile(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(proto)).To(ContainSubstring(removed))
+			Expect(os.WriteFile(path, []byte(strings.Replace(string(proto), removed, "", 1)), 0o644)).To(Succeed())
+
+			By(`when I run "make lint"`)
+			session := makeLint(dir)
+
+			By("then it fails, naming the field")
+			Expect(session).NotTo(gexec.Exit(0))
+			Expect(string(session.Out.Contents())).To(ContainSubstring("hold_blocker_count"))
+
+			By("and the buf-breaking step is what names it, not the stale generated code")
+			step := hkStep(dir, "buf-breaking")
+			Expect(step).NotTo(gexec.Exit(0))
+			Expect(string(step.Out.Contents()) + string(step.Err.Contents())).To(SatisfyAll(
+				ContainSubstring("hold_blocker_count"),
+				ContainSubstring("ReadyResponse"),
+			))
+		})
+
+		It("Adding a field is not a break", func() {
+			By("given a copy of the tree tagged as a release")
+			dir := release()
+
+			By("and a field added to a message since that release")
+			appendToFile(dir, "proto/skift/v1/service.proto", "\n// AddedAfterRelease exists only in this spec.\nmessage AddedAfterRelease {\n  // A field no release has.\n  string note = 1;\n}\n")
+
+			By("when the buf-breaking step runs")
+			// The step alone: a new message also leaves the generated code
+			// stale, which the generated-code step reports, not this one.
+			session := hkStep(dir, "buf-breaking")
+
+			By("then it passes")
+			Expect(session).To(gexec.Exit(0))
+		})
+
+		It("A copy with no release tag has nothing to compare against", func() {
+			By("given a copy of the tree with no tags")
+			dir := checkout()
+			git(dir, "init", "--quiet")
+
+			By("when the buf-breaking step runs")
+			session := hkStep(dir, "buf-breaking")
+
+			By("then it passes, saying it skipped")
+			Expect(session).To(gexec.Exit(0))
+			Expect(string(session.Out.Contents()) + string(session.Err.Contents())).To(ContainSubstring("no release tag"))
+		})
+	})
+
 	It("Specs stay in Ginkgo", func() {
 		By(`given a test file that is not a suite bootstrap importing "testing"`)
 		dir := checkout()
