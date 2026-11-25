@@ -11,6 +11,8 @@ require (
 	github.com/onsi/gomega v1.44.0
 	github.com/open-policy-agent/opa v1.22.4
 	github.com/pressly/goose/v3 v3.30.1
+	github.com/riverqueue/river v0.51.2
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	github.com/testcontainers/testcontainers-go v0.45.0
@@ -97,6 +99,9 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/riverqueue/river/riverdriver v0.51.2 // indirect
+	github.com/riverqueue/river/rivershared v0.51.2 // indirect
+	github.com/riverqueue/river/rivertype v0.51.2 // indirect
 	github.com/safchain/ethtool v0.7.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
@@ -110,6 +115,10 @@ require (
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
 	github.com/tailscale/wireguard-go v0.0.0-20261106233718-9e0ab45c16ca // indirect
+	github.com/tidwall/gjson v1.20.0 // indirect
+	github.com/tidwall/match v1.2.0 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
