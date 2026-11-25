@@ -8,7 +8,7 @@ workflows:
     '.github/workflows/check.yml':
         - 'jdx/mise-action@v5.3.0'
         - 'useblacksmith/checkout@v1.8.3'
-        - 'useblacksmith/stickydisk@v1.7.2'
+        - 'useblacksmith/stickydisk@v1.8.0'
     '.github/workflows/publish.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-go@v7.1.0'
@@ -134,8 +134,8 @@ dependencies:
         commit: 'sha1-75c49b6ed30ce59336e9252425796cfcfac155f8'
         owner_id: 156274793
         repo_id: 1107788336
-    'useblacksmith/stickydisk@v1.7.2':
-        ref: 'v1.7.2'
-        commit: 'sha1-3f6be1451e3cad893b778bc93495c80452a5da26'
+    'useblacksmith/stickydisk@v1.8.0':
+        ref: 'v1.8.0'
+        commit: 'sha1-61dac6a8aa5927f7d3343d9dbdc8153787d08a1c'
         owner_id: 156274793
         repo_id: 899799214
