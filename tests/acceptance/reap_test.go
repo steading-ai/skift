@@ -82,6 +82,10 @@ var _ = Describe("Expiring leases", Label(testsupport.DBLabel), func() {
 	It("Scenario: Stale leases expire in a container install", func(ctx SpecContext) {
 		By("given skift serve running with no reaper timer")
 		d := deploy(ctx)
+		// serve runs expire-leases once as it starts. Waiting that run out
+		// first means the expiry below is the scheduled run's, a minute on,
+		// not the start-up run reaching the lease before the spec looks.
+		startRunDone(d)
 
 		By("and a lease whose TTL has passed")
 		node, lease := claimAbandoned(d)
@@ -121,19 +125,19 @@ var _ = Describe("Expiring leases", Label(testsupport.DBLabel), func() {
 		d := deploy(ctx)
 
 		By("when skift admin jobs list runs")
-		var statuses []jobStatus
+		By("then it names expire-leases, every minute, with a completed run")
+		// The start-up run is listed as soon as it is scheduled, and shows
+		// as running until it finishes, so the list is read until it has.
 		Eventually(func(g Gomega) {
 			session := operate(d.databaseURL, "admin", "jobs", "list")
 			g.Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+			var statuses []jobStatus
 			g.Expect(json.Unmarshal(session.Out.Contents(), &statuses)).To(Succeed())
-			g.Expect(statuses).To(ContainElement(HaveField("LastRun", Not(BeNil()))))
+			g.Expect(statuses).To(ContainElement(SatisfyAll(
+				HaveField("Name", "expire-leases"),
+				HaveField("Every", "1m0s"),
+				HaveField("LastRun.Outcome", "completed"),
+			)))
 		}, 30*time.Second, time.Second).Should(Succeed())
-
-		By("then it names expire-leases, every minute, with a completed run")
-		Expect(statuses).To(ContainElement(SatisfyAll(
-			HaveField("Name", "expire-leases"),
-			HaveField("Every", "1m0s"),
-			HaveField("LastRun.Outcome", "completed"),
-		)))
 	})
 })
