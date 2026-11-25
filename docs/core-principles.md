@@ -52,9 +52,9 @@ The audit record is kept indefinitely. The window from which a stream consumer m
 
 ## 8. Fit for one server, shaped for a thousand
 
-Every table carries its organization and project from the first migration. Every query is scoped by them. Storage, transport, and identity are swappable behind interfaces. Nothing else is built for scale until scale demands it.
+Every table carries its organization and project from the first migration. Every query is scoped by them. Transport and identity sit behind interfaces and can be replaced. Storage is not: PostgreSQL is a commitment, and its features are used fully. What stays fixed while components change is the Connect contract and tenancy. Nothing else is built for scale until scale demands it.
 
-**Says no to**: Retrofitting tenancy. A query that can scan across organizations. Organization management, SSO, or billing before a second organization exists.
+**Says no to**: Retrofitting tenancy. A query that can scan across organizations. A storage interface with one implementation. Organization management, SSO, or billing before a second organization exists.
 
 ## 9. Provenance is not client-assertable, and the store never confers authority
 

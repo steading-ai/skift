@@ -46,7 +46,7 @@ agent / human / orchestrator
         │              policy on the resolved patch, inside its transaction
         │
         ▼
-      store          sqlc over pgx
+      store          every SQL statement: sqlc over pgx
         │
         ▼
     PostgreSQL       nodes, edges, leases, events, usage, comments
@@ -56,7 +56,7 @@ Authentication and resource authorization are separate. The principal intercepto
 
 The domain owns action/resource authorization. An interceptor cannot know which resources a patch touches: aliases are unresolved and cascades unexpanded until domain applies it. The effective write set is authorized inside the writing transaction, against the snapshot it writes to, and one denial rolls back the patch. Tenant scoping, policy decisions, and lease holder/fencing checks remain in that same path for native MCP and Connect.
 
-Handlers never see the transport, and never reach the store directly. The domain layer owns every rule that makes the graph a graph, which is what keeps a second storage backend possible and what makes the rules testable without a server.
+Handlers never see the transport, and never reach the store directly. The domain layer owns every rule that makes the graph a graph, as decisions: which question to ask the store, and what the answer means. The store is the only package that reaches PostgreSQL. Every SQL statement, connection, and `LISTEN` lives there, and the domain layer cannot execute SQL at all. See [ADR-013](adrs/013-postgresql-only-through-the-store.md).
 
 ## Identity by transport
 

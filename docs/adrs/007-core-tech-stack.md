@@ -78,3 +78,5 @@ Two lint rules carry design decisions rather than style:
 ## More Information
 
 Revisit the no-queue decision if background work grows beyond lease expiry. The retrieval service, which does need a queue, is a separate program.
+
+[ADR-013](013-postgresql-only-through-the-store.md) amends this decision: it settles that only the store reaches PostgreSQL, and makes sqlc the default for plain queries rather than the only way to write one.
