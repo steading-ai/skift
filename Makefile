@@ -30,7 +30,7 @@ COMPOSE := podman compose
 # Silence podman's "executing external compose provider" banner.
 export PODMAN_COMPOSE_WARNING_LOGS = false
 
-.PHONY: all build version cover mutate test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release image-tags db-up db-down db-reset db-migrate
+.PHONY: all build version cover mutate mutate-store test test-unit test-db test-acceptance test-policy lint check-generated generate clean package release image-tags db-up db-down db-reset db-migrate
 
 all: build
 
@@ -130,13 +130,34 @@ cover: test-policy
 # mutant pays for a full run; PROPERTY_CHECKS=100 keeps the invariants in
 # play at a third of the cost, and 1000 is the suite's own strength.
 # DIFF=<branch or commit> mutates only the lines that diff touches, which
-# is the everyday case.
+# is the everyday case. PKG names the package; internal/domain by default.
+#
+# gremlins v0.6.0 keys the lines a diff touches by the repository-relative
+# paths git prints, but looks each mutant up by its package-relative name,
+# so from the module root every mutant is skipped and the run reports
+# nothing runnable. gremlins therefore runs from inside the package, with
+# git told to print paths relative to it, and is given the package's
+# absolute path, because a relative one fails its module lookup. Drop the
+# workaround when gremlins matches the two.
 PROPERTY_CHECKS ?= 100
+PKG ?= internal/domain
 MUTATE_FLAGS := $(if $(DIFF),--diff $(DIFF),)
-mutate: db-up
-	set -a && . ./.env && set +a && \
+gremlins_in = set -a && . ./.env && set +a && cd $(1) && \
 	  SKIFT_TEST_POSTGRES_URL="$$DATABASE_URL" SKIFT_PROPERTY_CHECKS=$(PROPERTY_CHECKS) GOFLAGS=-count=1 \
-	  gremlins unleash $(MUTATE_FLAGS) ./internal/domain
+	  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.relative GIT_CONFIG_VALUE_0=true $(2) \
+	  gremlins unleash $(MUTATE_FLAGS) $(3) "$$PWD"
+mutate: db-up
+	$(call gremlins_in,$(PKG))
+
+# The store holds the SQL the domain composes its rules from, and the
+# domain and server specs are what exercise it, so a store mutant is
+# judged against every suite in the module rather than the store's own.
+# SKIFT_MUTATING leaves out the two suites that would cost minutes per
+# mutant and never reach the store: the development-environment specs at
+# the root, which run make lint in copies of the tree, and the acceptance
+# scenarios. Generated query code is not mutated.
+mutate-store: db-up
+	$(call gremlins_in,internal/store,SKIFT_MUTATING=1,--integration --coverpkg $(MODULE)/internal/store/... --exclude-files '\.gen\.go$$')
 
 # Every check tool is a step in hk.pkl; hk runs them concurrently.
 # HK_FLAGS passes options through, such as --no-fail-fast. hk reports on

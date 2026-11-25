@@ -9,6 +9,7 @@ package acceptance_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -20,6 +21,9 @@ import (
 )
 
 func TestAcceptance(t *testing.T) {
+	if os.Getenv("SKIFT_MUTATING") != "" {
+		t.Skip("SKIFT_MUTATING is set: a mutation run leaves out the end-to-end scenarios, which build and serve the binary")
+	}
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "acceptance")
 }

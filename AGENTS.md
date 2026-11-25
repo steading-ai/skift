@@ -54,7 +54,8 @@ make test-acceptance    # the end-to-end scenarios
 make cover              # statement coverage of hand-written code, gated by coverage.baseline
 make test-race          # all specs under the race detector
 make fuzz               # the fuzz targets in *_fuzz_test.go, FUZZ_TIME each
-make mutate             # mutation testing over internal/domain; slow, read the survivors. DIFF=main for changed lines only
+make mutate             # mutation testing over PKG (internal/domain by default); slow, read the survivors. DIFF=main for changed lines only
+make mutate-store       # the same over internal/store, each mutant judged by every suite but the root specs and the acceptance scenarios
 make lint               # hk check --all: each step in hk.pkl in parallel (golangci-lint, go vet, buf, jactionlint, rumdl over Markdown, opa, goreleaser, generated code); hk fix applies their fixes
 make release            # what a release uploads: archives, SBOMs and checksums, in dist/release/
 make generate           # buf and sqlc codegen; commit the output
