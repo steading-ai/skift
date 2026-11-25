@@ -46,7 +46,7 @@ Run without a subcommand it is the CLI, a Connect client with JSON output.
 "skift serve" runs the service: Connect handlers over PostgreSQL.
 "skift admin migrate" brings the database to the current schema.
 "skift admin bootstrap" creates the first organization and principal.
-"skift reap" expires stale leases; skift-reap.timer runs it.
+"skift admin jobs" lists and runs the background jobs serve runs.
 "skift doctor" checks that the CLI, the service, the MCP server and the
 skills are set up.
 
@@ -84,7 +84,6 @@ Output is JSON whenever stdout is not a terminal, and on request with
 		a.mcpCommand(),
 		newServeCommand(),
 		newAdminCommand(),
-		newReapCommand(),
 		a.projectCommand(),
 		a.nodeCommand(),
 		a.patchCommand(),

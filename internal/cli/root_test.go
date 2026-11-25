@@ -45,7 +45,7 @@ var _ = Describe("root command", Label("unit"), func() {
 		for _, c := range root.Commands() {
 			names = append(names, c.Name())
 		}
-		Expect(names).To(ConsistOf("version", "doctor", "mcp", "serve", "admin", "reap",
+		Expect(names).To(ConsistOf("version", "doctor", "mcp", "serve", "admin",
 			"project", "node", "patch", "create", "update", "link", "drop", "ready", "explain", "inputs",
 			"claim", "heartbeat", "release", "complete", "estimate", "usage", "comment", "search", "events",
 			"hold", "unhold", "focus"))
@@ -72,26 +72,28 @@ var _ = Describe("root command", Label("unit"), func() {
 		})
 	})
 
-	Describe("reap", func() {
+	Describe("admin jobs", func() {
 		It("requires a database URL", func() {
 			GinkgoT().Setenv("DATABASE_URL", "")
-			err := execute("reap")
+			err := execute("admin", "jobs", "list")
 			Expect(err).To(MatchError(ContainSubstring("database URL is required")))
 		})
 
 		It("rejects an unknown log level", func() {
-			err := execute("reap", "--database-url", "postgres://127.0.0.1:1/skift", "--log-level", "loud")
+			err := execute("admin", "jobs", "list", "--database-url", "postgres://127.0.0.1:1/skift", "--log-level", "loud")
 			Expect(err).To(MatchError(ContainSubstring("--log-level")))
 		})
 
-		It("takes no arguments", func() {
-			err := execute("reap", "now", "--database-url", "postgres://127.0.0.1:1/skift")
+		It("runs exactly one named job", func() {
+			err := execute("admin", "jobs", "run", "--database-url", "postgres://127.0.0.1:1/skift")
+			Expect(err).To(HaveOccurred())
+			err = execute("admin", "jobs", "run", "expire-leases", "now", "--database-url", "postgres://127.0.0.1:1/skift")
 			Expect(err).To(HaveOccurred())
 		})
 
-		It("reports a database it cannot reach, and prints no summary", func() {
-			err := execute("reap", "--database-url", unreachableDB)
-			Expect(err).To(MatchError(ContainSubstring("skift reap:")))
+		It("reports a database it cannot reach, and prints nothing", func() {
+			err := execute("admin", "jobs", "list", "--database-url", unreachableDB)
+			Expect(err).To(MatchError(ContainSubstring("skift admin jobs list:")))
 			Expect(stdout.String()).To(BeEmpty())
 		})
 	})

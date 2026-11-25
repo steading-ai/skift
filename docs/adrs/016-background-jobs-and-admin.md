@@ -9,7 +9,7 @@ date: 2026-11-25
 
 [ADR-007](007-core-tech-stack.md) chose no async job queue in v1: "The only background work is lease expiry, which is a systemd timer invoking the binary." It named its own trigger: revisit the decision if background work grows beyond lease expiry. It has. Event partitions must be kept ahead of the clock, or every write fails once the last one is behind, and more work of that kind is expected.
 
-The timer has a gap of its own. Only the rpm installs `skift-reap.timer`. The compose file runs `skift serve` and nothing else, and a launchd install runs `serve` alone too, so on those deployments stale leases are never expired.
+The timer has a gap of its own. Only the rpm installs the reaper's systemd timer. The compose file runs `skift serve` and nothing else, and a launchd install runs `serve` alone too, so on those deployments stale leases are never expired.
 
 The domain layer has also become three packages in one. Because depguard lets only the domain import the store, everything that needs the database landed there, whether or not it is a rule of the graph: the graph's rules and use cases, application services, and operational plumbing such as applying migrations, opening the database, bootstrapping the first principal, and reaping leases. Its package comment had stopped being true.
 
@@ -54,7 +54,7 @@ The store builds River's client from its own pool with River's pgx driver, and e
 - River's core package is allowed only in `internal/store` and `internal/admin`. A worker and a periodic job carry no PostgreSQL types, so admin defines them without importing pgx.
 - The domain imports neither River nor anything that opens a connection.
 
-**The CLI follows the packages.** Operating a deployment lives under `skift admin`: `skift admin migrate`, `skift admin jobs list`, and `skift admin jobs run <job> [--wait]`, which enqueues the job into River so that a manual run takes the same path as a scheduled one. The root `skift migrate` and `skift reap` commands go away. Before 1.0 a minor release may change the CLI without a deprecation period, so their removal is a line in the release notes.
+**The CLI follows the packages.** Operating a deployment lives under `skift admin`: `skift admin migrate`, `skift admin jobs list`, and `skift admin jobs run <job> [--wait]`, which enqueues the job into River so that a manual run takes the same path as a scheduled one. The root `migrate` and `reap` commands go away. Before 1.0 a minor release may change the CLI without a deprecation period, so their removal is a line in the release notes.
 
 ### Consequences
 

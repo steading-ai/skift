@@ -1,8 +1,11 @@
 package acceptance_test
 
 import (
+	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,57 +14,126 @@ import (
 	"github.com/steading-ai/skift/internal/testsupport"
 )
 
-// reapSummary is what one run of skift reap prints.
-type reapSummary struct {
-	Expired       int `json:"expired"`
-	Organizations []struct {
-		OrgID   string   `json:"org_id"`
-		Expired int      `json:"expired"`
-		Leases  []string `json:"leases"`
-	} `json:"organizations"`
+// jobRun mirrors one run as skift admin jobs prints it.
+type jobRun struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Outcome string `json:"outcome"`
+	Error   string `json:"error"`
 }
 
-// reap runs the expiry timer's command against the scenario's database
-// and returns its summary.
-func reap(url string) reapSummary {
-	GinkgoHelper()
-	session := operate(url, "reap")
-	Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
-	var summary reapSummary
-	Expect(json.Unmarshal(session.Out.Contents(), &summary)).To(Succeed(), "stdout: %s", session.Out.Contents())
-	return summary
+// jobStatus mirrors one job as skift admin jobs list prints it.
+type jobStatus struct {
+	Name    string  `json:"name"`
+	Every   string  `json:"every"`
+	LastRun *jobRun `json:"last_run"`
 }
 
+// Lease expiry is a background job serve runs itself, so it happens in
+// every deployment shape, with no timer beside the service. See
+// docs/adrs/016-background-jobs-and-admin.md.
 var _ = Describe("Expiring leases", Label(testsupport.DBLabel), func() {
-	It("Scenario: The expiry timer reclaims an abandoned lease", func(ctx SpecContext) {
-		d := deploy(ctx)
-
-		By("given a node claimed under a one-second lease that is never renewed")
+	// claimAbandoned claims the only node under a one-second lease that is
+	// never renewed, waits for the lease's TTL to pass, and returns the node
+	// and the lease's id.
+	claimAbandoned := func(d *deployment) (*skiftv1.Node, string) {
+		GinkgoHelper()
 		d.laptop.createProject("Platform")
 		res := d.laptop.patch(request(platform, createOpWith(&skiftv1.CreateNodeOp{Alias: "a", Title: "Work"})))
 		node := res.GetNodes()[0]
 		claimed := d.host.claim("--ttl", "1s")
 		Expect(claimed.GetNode().GetNumber()).To(Equal(node.GetNumber()))
-		Expect(d.host.ready()).To(BeEmpty())
+		time.Sleep(1500 * time.Millisecond)
+		return node, claimed.GetLease().GetId()
+	}
 
-		By("when skift reap runs against the database once the TTL has passed, as the timer runs it")
-		var summary reapSummary
-		Eventually(func() int {
-			summary = reap(d.databaseURL)
-			return summary.Expired
-		}, 15*time.Second, time.Second).Should(Equal(1))
+	// releaseReason is why the lease was released, read straight from the
+	// database: empty while it is unreleased. A lease past its TTL already
+	// leaves the ready set, so readiness alone cannot show the job ran.
+	releaseReason := func(ctx context.Context, url, leaseID string) string {
+		GinkgoHelper()
+		conn, err := pgx.Connect(ctx, url)
+		Expect(err).NotTo(HaveOccurred())
+		defer conn.Close(ctx) //nolint:errcheck // single-statement session
+		var reason *string
+		Expect(conn.QueryRow(ctx, `SELECT release_reason FROM leases WHERE id = $1`, leaseID).Scan(&reason)).To(Succeed())
+		if reason == nil {
+			return ""
+		}
+		return *reason
+	}
 
-		By("then the run names the lease it released, under its organization")
-		Expect(summary.Organizations).To(HaveLen(1))
-		Expect(summary.Organizations[0].OrgID).To(Equal(orgID))
-		Expect(summary.Organizations[0].Expired).To(Equal(1))
-		Expect(summary.Organizations[0].Leases).To(Equal([]string{claimed.GetLease().GetId()}))
+	// startRunDone waits until serve has made its first expire-leases run,
+	// so the next scheduled one is a minute away.
+	startRunDone := func(d *deployment) {
+		GinkgoHelper()
+		Eventually(func(g Gomega) {
+			session := operate(d.databaseURL, "admin", "jobs", "list")
+			g.Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+			var statuses []jobStatus
+			g.Expect(json.Unmarshal(session.Out.Contents(), &statuses)).To(Succeed())
+			g.Expect(statuses).To(ContainElement(SatisfyAll(
+				HaveField("Name", "expire-leases"),
+				HaveField("LastRun.Outcome", "completed"),
+			)))
+		}, 30*time.Second, time.Second).Should(Succeed())
+	}
 
-		By("and the node is ready again")
+	It("Scenario: Stale leases expire in a container install", func(ctx SpecContext) {
+		By("given skift serve running with no reaper timer")
+		d := deploy(ctx)
+
+		By("and a lease whose TTL has passed")
+		node, lease := claimAbandoned(d)
+		Expect(releaseReason(ctx, d.databaseURL, lease)).To(BeEmpty())
+
+		By("when a minute passes")
+		By("then the lease is expired and its node is ready again")
+		Eventually(func() string { return releaseReason(ctx, d.databaseURL, lease) }, 75*time.Second, time.Second).Should(Equal("expired"))
 		Expect(numbers(d.host.ready())).To(Equal([]int64{node.GetNumber()}))
 		Expect(d.host.explain(ref(node)).GetReasons()).To(BeEmpty())
+	})
 
-		By("and a second run finds nothing to expire")
-		Expect(reap(d.databaseURL).Expired).To(BeZero())
+	It("expires a stale lease on demand with skift admin jobs run --wait, and prints the outcome", func(ctx SpecContext) {
+		d := deploy(ctx)
+		startRunDone(d)
+		node, lease := claimAbandoned(d)
+
+		By("given the lease's TTL has passed and the minute's run has not come round")
+		Expect(releaseReason(ctx, d.databaseURL, lease)).To(BeEmpty())
+
+		By("when skift admin jobs run expire-leases --wait runs")
+		session := operate(d.databaseURL, "admin", "jobs", "run", "expire-leases", "--wait")
+
+		By("then it exits zero and prints a completed run")
+		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+		var run jobRun
+		Expect(json.Unmarshal(session.Out.Contents(), &run)).To(Succeed(), "stdout: %s", session.Out.Contents())
+		Expect(run.Name).To(Equal("expire-leases"))
+		Expect(run.Outcome).To(Equal("completed"))
+
+		By("and the lease is expired, and the node is ready again")
+		Expect(releaseReason(ctx, d.databaseURL, lease)).To(Equal("expired"))
+		Expect(numbers(d.host.ready())).To(Equal([]int64{node.GetNumber()}))
+	})
+
+	It("lists expire-leases with its schedule and the run serve made at start", func(ctx SpecContext) {
+		d := deploy(ctx)
+
+		By("when skift admin jobs list runs")
+		var statuses []jobStatus
+		Eventually(func(g Gomega) {
+			session := operate(d.databaseURL, "admin", "jobs", "list")
+			g.Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+			g.Expect(json.Unmarshal(session.Out.Contents(), &statuses)).To(Succeed())
+			g.Expect(statuses).To(ContainElement(HaveField("LastRun", Not(BeNil()))))
+		}, 30*time.Second, time.Second).Should(Succeed())
+
+		By("then it names expire-leases, every minute, with a completed run")
+		Expect(statuses).To(ContainElement(SatisfyAll(
+			HaveField("Name", "expire-leases"),
+			HaveField("Every", "1m0s"),
+			HaveField("LastRun.Outcome", "completed"),
+		)))
 	})
 })

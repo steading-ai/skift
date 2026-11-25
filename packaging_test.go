@@ -309,8 +309,6 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 		installed := []string{
 			"/usr/bin/skift",
 			"/usr/lib/systemd/system/skift.service",
-			"/usr/lib/systemd/system/skift-reap.service",
-			"/usr/lib/systemd/system/skift-reap.timer",
 			"/usr/lib/sysusers.d/skift.conf",
 			"/usr/lib/tmpfiles.d/skift.conf",
 			"/etc/skift/env",
@@ -353,14 +351,23 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			for _, script := range []string{"preinstall.sh", "postinstall.sh"} {
 				body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts", script))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(body)).NotTo(MatchRegexp(`systemctl\b.*\b(start|restart|enable|--now)\b`), script)
+				Expect(string(body)).NotTo(MatchRegexp(`systemctl\b.*\b(start|restart|enable)\b`), script)
 			}
 		})
 
-		It("stops and disables the units when the package is removed", func() {
+		It("stops and disables the unit when the package is removed", func() {
 			body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts/preremove.sh"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(body)).To(ContainSubstring("disable --now skift.service skift-reap.timer"))
+			Expect(string(body)).To(ContainSubstring("disable --now skift.service"))
+		})
+
+		It("ships no reaper timer, and disables the one an older release left enabled on upgrade", func() {
+			for _, name := range []string{"skift-9.9.9-1.x86_64.rpm", "skift-9.9.9-1.aarch64.rpm"} {
+				Expect(rpmPaths(filepath.Join(dir, "dist", name))).NotTo(ContainElement(ContainSubstring("skift-reap")), name)
+			}
+			body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts/postinstall.sh"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(body)).To(MatchRegexp(`(?s)else\b.*disable --now skift-reap\.timer skift-reap\.service`))
 		})
 	})
 })

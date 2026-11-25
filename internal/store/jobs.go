@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivertype"
 )
 
 // jobWorkers is how many jobs one process works at once. Skift's own
@@ -34,14 +35,19 @@ type Jobs struct {
 }
 
 // NewJobs builds the River client on the store's pool. It schedules and
-// works nothing until [Jobs.Start].
+// works nothing until [Jobs.Start]. Without workers it is insert-only: it
+// enqueues and reads jobs for a process that does not work them, such as
+// an operator's command, and cannot be started.
 func (s *Store) NewJobs(cfg JobsConfig) (*Jobs, error) {
-	client, err := river.NewClient(riverpgxv5.New(s.pool), &river.Config{
+	config := &river.Config{
 		Workers:      cfg.Workers,
 		PeriodicJobs: cfg.Periodic,
-		Queues:       map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: jobWorkers}},
 		Logger:       cfg.Logger,
-	})
+	}
+	if cfg.Workers != nil {
+		config.Queues = map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: jobWorkers}}
+	}
+	client, err := river.NewClient(riverpgxv5.New(s.pool), config)
 	if err != nil {
 		return nil, fmt.Errorf("build job client: %w", err)
 	}
@@ -69,10 +75,33 @@ func (j *Jobs) Stop(ctx context.Context) error {
 }
 
 // Enqueue inserts one job outside any transaction, for work started on
-// demand rather than on its schedule.
-func (j *Jobs) Enqueue(ctx context.Context, args river.JobArgs) error {
-	if _, err := j.client.Insert(ctx, args, nil); err != nil {
-		return fmt.Errorf("enqueue %s: %w", args.Kind(), err)
+// demand rather than on its schedule, and returns the job's id.
+func (j *Jobs) Enqueue(ctx context.Context, args river.JobArgs) (int64, error) {
+	res, err := j.client.Insert(ctx, args, nil)
+	if err != nil {
+		return 0, fmt.Errorf("enqueue %s: %w", args.Kind(), err)
 	}
-	return nil
+	return res.Job.ID, nil
+}
+
+// Get reads one job as it stands now.
+func (j *Jobs) Get(ctx context.Context, id int64) (*rivertype.JobRow, error) {
+	row, err := j.client.JobGet(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("read job %d: %w", id, err)
+	}
+	return row, nil
+}
+
+// Recent reads the newest jobs of one kind, at most limit of them, newest
+// first.
+func (j *Jobs) Recent(ctx context.Context, kind string, limit int) ([]*rivertype.JobRow, error) {
+	res, err := j.client.JobList(ctx, river.NewJobListParams().
+		Kinds(kind).
+		OrderBy(river.JobListOrderByID, river.SortOrderDesc).
+		First(limit))
+	if err != nil {
+		return nil, fmt.Errorf("list %s jobs: %w", kind, err)
+	}
+	return res.Jobs, nil
 }
