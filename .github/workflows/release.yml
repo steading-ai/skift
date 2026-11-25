@@ -212,8 +212,8 @@ jobs:
               --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
               --predicate-type https://cyclonedx.org/bom
           done
-          test "$archives" -eq 3 ||
-            { echo "::error::expected 3 archives, found $archives"; exit 1; }
+          test "$archives" -eq 4 ||
+            { echo "::error::expected 4 archives, found $archives"; exit 1; }
 
       # A tag with a semver prerelease part, such as v0.2.0-rc.1, is a
       # prerelease. The notes are GitHub's until better ones are written;

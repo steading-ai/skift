@@ -1,6 +1,7 @@
 package skift_test
 
 import (
+	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -21,6 +22,19 @@ var _ = Describe("The release workflow", Label("unit"), func() {
 	It("is started by a pushed version tag and nothing else", func() {
 		Expect(w.triggers()).To(ConsistOf("push"))
 		Expect(w.On["push"].Tags).To(ConsistOf("v*"))
+	})
+
+	It("refuses a draft missing any platform's archive", func() {
+		By("given the platforms a release is built for")
+		By("then the draft's completeness check expects one archive for each of them")
+		var check string
+		for _, s := range w.Jobs["draft"].Steps {
+			if strings.HasPrefix(s.Name, "Every archive has its SBOM") {
+				check = s.Run
+			}
+		}
+		Expect(check).NotTo(BeEmpty(), "the draft job has no completeness check")
+		Expect(check).To(ContainSubstring(fmt.Sprintf(`test "$archives" -eq %d`, len(releasePlatforms))))
 	})
 
 	It("publishes nothing before it is signed", func() {
