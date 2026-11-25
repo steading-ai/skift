@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/steading-ai/skift/internal/policy"
@@ -85,12 +84,12 @@ type Service struct {
 
 // NewService wraps pool and pol. The caller owns the pool and closes it.
 func NewService(pool *pgxpool.Pool, pol *policy.Bundle) *Service {
-	connConfig := pool.Config().ConnConfig
+	s := store.FromPool(pool)
 	return &Service{
-		s:   store.FromPool(pool),
+		s:   s,
 		pol: pol,
-		wake: newListener(func(ctx context.Context) (*pgx.Conn, error) {
-			return pgx.ConnectConfig(ctx, connConfig)
+		wake: newListener(func(ctx context.Context) (*store.Listening, error) {
+			return s.Listen(ctx, eventsChannel)
 		}),
 	}
 }
