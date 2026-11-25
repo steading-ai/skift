@@ -38,7 +38,9 @@ A repository that has released before has all of this. Do it for a new one, or a
 
 ## Choose the version
 
-A person chooses the version; nothing derives it from the commit history. It is the tag without its `v`, and it follows [semantic versioning](https://semver.org). While skift is at 0.x, take a new minor version for a change that can break a caller and a patch version for anything else.
+A person chooses the version; nothing derives it from the commit history. It is the tag without its `v`, and it follows [semantic versioning](https://semver.org) over the public surfaces [ADR-014](adrs/014-what-the-version-covers.md) declares: the Connect API, the CLI, operator configuration, and the policy input. MCP tools, the database schema and Go packages are not among them.
+
+While skift is at 0.x, take a new minor version for a change that can break a caller of a public surface and a patch version for anything else. A minor release may make such a change without a deprecation period; its release notes say what changed and what to do instead.
 
 To see which image tags the version will take, given the versions already tagged:
 
