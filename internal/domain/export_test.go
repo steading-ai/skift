@@ -10,6 +10,10 @@ import (
 // measure how far it reaches.
 const WaitReachSQL = waitReach
 
+// ReadyHoldBlockers is the hold summary an empty first page of Ready
+// carries, for the property that pins it to the ready set.
+var ReadyHoldBlockers = readyHoldBlockers
+
 // LockNamespace is the first half of the advisory lock key Apply takes, for
 // specs that hold the lock from outside.
 const LockNamespace = lockNamespace
