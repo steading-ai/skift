@@ -4,7 +4,7 @@ This guide shows how to check that what you downloaded from a skift release is w
 
 If you install with mise's `packslip:` backend, as [How to install skift](install.md) does, mise checks the archive for you: it verifies the release's signed manifest and pins who signed it.
 
-You need the [GitHub CLI](https://cli.github.com), signed in, and `jq` to read an SBOM. In the commands, `<version>` is the release's version without its `v`, and `<os>_<arch>` is `linux_amd64`, `linux_arm64` or `darwin_arm64`.
+You need the [GitHub CLI](https://cli.github.com), signed in, and `jq` to read an SBOM. In the commands, `<version>` is the release's version without its `v`, and `<os>_<arch>` is `linux_amd64`, `linux_arm64`, `darwin_amd64` or `darwin_arm64`.
 
 ## Check an archive
 

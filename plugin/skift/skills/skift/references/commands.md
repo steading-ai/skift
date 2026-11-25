@@ -162,9 +162,13 @@ The current project comes from `--project` / `-p`, `$SKIFT_PROJECT`, or the conf
 
 | Setting | Resolution order |
 |---|---|
-| socket | `--socket`, `$SKIFT_SOCKET`, then `$XDG_RUNTIME_DIR/skift/skift.sock` when it exists, then `/run/skift/skift.sock` |
+| socket | `--socket`, `$SKIFT_SOCKET`, then `$XDG_RUNTIME_DIR/skift/skift.sock` when it exists, then `/run/skift/skift.sock`; on macOS without `$XDG_RUNTIME_DIR`, `$XDG_STATE_HOME/skift/skift.sock`, `~/.local/state` by default |
 | remote service | `--address`, `$SKIFT_ADDRESS` — wins over the socket |
 | config file | `--config`, `$SKIFT_CONFIG`, then `$XDG_CONFIG_HOME/skift/config.json` |
+
+## When skift cannot be reached
+
+If a tool or command fails before the service answers — `skift` not found, a service that cannot be reached, an unauthenticated caller, or an MCP tool whose error names `skift doctor` — run `skift doctor --output json` in a shell. It checks the binary on `PATH`, the configuration, the service, the MCP server and the skills, and every check that is not `ok` carries a `fix`. Tell the person what failed and what the fix is, and with their go-ahead apply it yourself rather than handing them commands to run. A fix on the server, such as binding a workstation to a principal, is theirs or their administrator's. After a fix to `PATH` or the config file, the MCP server needs a new session to pick it up.
 
 Priorities `p0` (most urgent) to `p4`, default `p2`. Statuses `open`, `done`, `dropped`. Drop reasons `superseded`, `not_viable`, `no_longer_relevant`, and `other`, which needs a `--detail`.
 

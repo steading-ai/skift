@@ -19,6 +19,7 @@ import (
 
 	"github.com/steading-ai/skift/gen/skift/v1/skiftv1connect"
 	"github.com/steading-ai/skift/internal/admin"
+	"github.com/steading-ai/skift/internal/client"
 	"github.com/steading-ai/skift/internal/domain"
 	"github.com/steading-ai/skift/internal/logging"
 	"github.com/steading-ai/skift/internal/mcphttp"
@@ -78,14 +79,14 @@ func defaultTailnetTags() []string {
 	return tags
 }
 
-// defaultSocketPath is the runtime directory of the invoking user when
-// there is one, and the system runtime directory otherwise, which is where
-// a systemd RuntimeDirectory= puts it.
+// defaultSocketPath is the invoking user's own socket when there is a
+// place for one, and the system runtime directory otherwise, which is
+// where a systemd RuntimeDirectory= puts it. See [client.UserSocketPath].
 func defaultSocketPath() string {
-	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "skift", "skift.sock")
+	if own := client.UserSocketPath(); own != "" {
+		return own
 	}
-	return "/run/skift/skift.sock"
+	return client.SystemSocketPath
 }
 
 type serveOptions struct {

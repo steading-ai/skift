@@ -85,6 +85,11 @@ jobs:
 
       - uses: actions/attest@v4.2.2
         with:
+          subject-path: dist/release/skift_${{ steps.version.outputs.version }}_darwin_amd64.tar.gz
+          sbom-path: dist/release/skift_${{ steps.version.outputs.version }}_darwin_amd64.cdx.json
+
+      - uses: actions/attest@v4.2.2
+        with:
           subject-path: dist/release/skift_${{ steps.version.outputs.version }}_darwin_arm64.tar.gz
           sbom-path: dist/release/skift_${{ steps.version.outputs.version }}_darwin_arm64.cdx.json
 
@@ -254,6 +259,7 @@ jobs:
           resources: |
             sbom/cyclonedx@linux/x86_64=asset:release/skift_${{ needs.build.outputs.version }}_linux_amd64.cdx.json
             sbom/cyclonedx@linux/aarch64=asset:release/skift_${{ needs.build.outputs.version }}_linux_arm64.cdx.json
+            sbom/cyclonedx@darwin/x86_64=asset:release/skift_${{ needs.build.outputs.version }}_darwin_amd64.cdx.json
             sbom/cyclonedx@darwin/aarch64=asset:release/skift_${{ needs.build.outputs.version }}_darwin_arm64.cdx.json
             skill/skift=repo:plugin/skift/skills/skift
             skill/epic=repo:plugin/skift/skills/epic

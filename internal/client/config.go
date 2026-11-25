@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // Environment variables the client reads. Each overrides the config file
@@ -47,18 +48,55 @@ type Config struct {
 const SystemSocketPath = "/run/skift/skift.sock"
 
 // DefaultSocketPath is the socket the client dials when nothing names one:
-// the invoking user's own "skift serve", under XDG_RUNTIME_DIR, when that
+// the invoking user's own "skift serve" at [UserSocketPath], when that
 // socket exists, and the system service's otherwise. A login session on a
 // host running the system service reaches it without configuration, and a
 // user's own instance takes precedence when there is one.
+//
+// On macOS there is no system service, so the user's own socket is the
+// default whether or not it exists yet.
 func DefaultSocketPath() string {
-	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		own := filepath.Join(dir, "skift", "skift.sock")
-		if _, err := os.Stat(own); err == nil {
-			return own
-		}
+	return defaultSocketPath(runtime.GOOS)
+}
+
+func defaultSocketPath(goos string) string {
+	own := userSocketPath(goos)
+	if own == "" {
+		return SystemSocketPath
+	}
+	if goos == "darwin" {
+		return own
+	}
+	if _, err := os.Stat(own); err == nil {
+		return own
 	}
 	return SystemSocketPath
+}
+
+// UserSocketPath is where a user's own "skift serve" listens:
+// skift/skift.sock under $XDG_RUNTIME_DIR. macOS sets no runtime directory,
+// so there it falls back to the XDG state directory, $XDG_STATE_HOME or
+// ~/.local/state. Empty when neither applies.
+func UserSocketPath() string {
+	return userSocketPath(runtime.GOOS)
+}
+
+func userSocketPath(goos string) string {
+	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
+		return filepath.Join(dir, "skift", "skift.sock")
+	}
+	if goos != "darwin" {
+		return ""
+	}
+	dir := os.Getenv("XDG_STATE_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		dir = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(dir, "skift", "skift.sock")
 }
 
 // DefaultConfigPath is $XDG_CONFIG_HOME/skift/config.json, with the XDG
@@ -81,6 +119,41 @@ func DefaultConfigPath() string {
 // and is allowed to be absent; a path given explicitly must exist. Values
 // the caller has from flags go on top with [Config.Override].
 func LoadConfig(path string) (Config, error) {
+	loaded, err := Load(path, Config{})
+	if err != nil {
+		return Config{}, err
+	}
+	return loaded.Config, nil
+}
+
+// Source is where a setting's value came from.
+type Source string
+
+// The places a setting is read from, in rising precedence.
+const (
+	SourceDefault Source = "default"
+	SourceFile    Source = "config file"
+	SourceEnv     Source = "environment"
+	SourceFlag    Source = "flag"
+)
+
+// Loaded is a configuration and where each part of it came from.
+type Loaded struct {
+	Config
+	// Path is the config file consulted, whether or not it exists. Empty
+	// when there is no home directory to find the default under.
+	Path string
+	// Found reports whether the file at Path was read.
+	Found bool
+	// SocketFrom and AddressFrom say which source set Socket and Address;
+	// SourceDefault when none did.
+	SocketFrom, AddressFrom Source
+}
+
+// Load resolves the configuration as [LoadConfig] does and lays flags over
+// it as [Config.Override] does, recording the source of each connection
+// setting. On an error, Path still names the file that failed.
+func Load(path string, flags Config) (Loaded, error) {
 	explicit := path != ""
 	if !explicit {
 		if env := os.Getenv(EnvConfig); env != "" {
@@ -90,27 +163,42 @@ func LoadConfig(path string) (Config, error) {
 		}
 	}
 
-	var cfg Config
+	l := Loaded{Path: path, SocketFrom: SourceDefault, AddressFrom: SourceDefault}
 	if path != "" {
 		raw, err := os.ReadFile(path)
 		switch {
 		case errors.Is(err, os.ErrNotExist) && !explicit:
 			// Nothing configured; every value takes its default.
 		case err != nil:
-			return Config{}, fmt.Errorf("client: read config %s: %w", path, err)
+			return l, fmt.Errorf("client: read config %s: %w", path, err)
 		default:
-			if err := json.Unmarshal(raw, &cfg); err != nil {
-				return Config{}, fmt.Errorf("client: parse config %s: %w", path, err)
+			l.Found = true
+			var file Config
+			if err := json.Unmarshal(raw, &file); err != nil {
+				return l, fmt.Errorf("client: parse config %s: %w", path, err)
 			}
+			l.layer(file, SourceFile)
 		}
 	}
-
-	cfg = cfg.Override(Config{
+	l.layer(Config{
 		Socket:  os.Getenv(EnvSocket),
 		Address: os.Getenv(EnvAddress),
 		Project: os.Getenv(EnvProject),
-	})
-	return cfg, nil
+	}, SourceEnv)
+	l.layer(flags, SourceFlag)
+	return l, nil
+}
+
+// layer overrides l with over, crediting each connection setting over sets
+// to from.
+func (l *Loaded) layer(over Config, from Source) {
+	if over.Socket != "" {
+		l.SocketFrom = from
+	}
+	if over.Address != "" {
+		l.AddressFrom = from
+	}
+	l.Config = l.Override(over)
 }
 
 // Override returns c with every non-empty field of over replacing its own.

@@ -21,7 +21,7 @@ import (
 
 // releasePlatforms are the platforms a release is built for, as they
 // appear in asset names.
-var releasePlatforms = []string{"linux_amd64", "linux_arm64", "darwin_arm64"}
+var releasePlatforms = []string{"linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"}
 
 // releaseVersion is the version the specs build a release as. A release
 // candidate's, so the names carry a prerelease part as a rehearsal's do,
@@ -153,11 +153,13 @@ var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 		Expect(runIn(dir, time.Minute, bin, "version")).To(Equal("skift version " + releaseVersion))
 	})
 
-	// The darwin binary cannot run here, so the stamp is looked for in
-	// its bytes.
-	It("stamps the darwin binary too", func() {
-		darwin := archivedBinary(filepath.Join(release, archiveName("darwin_arm64")))
-		Expect(bytes.Contains(darwin, []byte(releaseVersion))).To(BeTrue())
+	// The darwin binaries cannot run here, so the stamp is looked for in
+	// their bytes.
+	It("stamps the darwin binaries too", func() {
+		for _, platform := range []string{"darwin_amd64", "darwin_arm64"} {
+			darwin := archivedBinary(filepath.Join(release, archiveName(platform)))
+			Expect(bytes.Contains(darwin, []byte(releaseVersion))).To(BeTrue(), platform)
+		}
 	})
 
 	It("leaves the image the binaries that are in the linux archives", func() {

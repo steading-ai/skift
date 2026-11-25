@@ -26,7 +26,7 @@ That is the CLI and the MCP server, which call a running service. [How to instal
 
 ## Status
 
-Skift is a working service, CLI, and MCP server, and its own backlog is held in skift. The service runs on Linux with PostgreSQL, and callers reach it over a unix socket or a tailnet. Releases carry binaries for Linux on amd64 and arm64 and for macOS on arm64.
+Skift is a working service, CLI, and MCP server, and its own backlog is held in skift. The service runs on Linux or macOS with PostgreSQL, and callers reach it over a unix socket or a tailnet. Releases carry binaries for Linux and macOS, each on amd64 and arm64.
 
 It is pre-1.0: a minor version may change the interface. The [roadmap](docs/roadmap.md) has the milestones and what is deliberately deferred.
 
