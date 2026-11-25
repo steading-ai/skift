@@ -1,8 +1,6 @@
 # skift plugin
 
-Registers the skift MCP server and ships two skills: one teaching an agent to
-drive the graph through it, or through the `skift` CLI, and one for planning an epic
-before it is filed.
+Registers the skift MCP server and ships two skills: one teaching an agent to drive the graph through it, or through the `skift` CLI, and one for planning an epic before it is filed.
 
 ## What it installs
 
@@ -14,25 +12,11 @@ before it is filed.
 
 ## Native HTTP instead of a subprocess
 
-The bundled `.mcp.json` stays **stdio** (`skift mcp`); installing this plugin
-never silently changes transport. To use native HTTP without a local Skift
-binary, register a separate `2026-07-28`-capable client against
-`https://<canonical-node-dns-name>/mcp` using the
-[verified client setup](../../docs/native-mcp-https.md). Do not assume that a
-client's “HTTP MCP” setting supports this revision, or that a hosted client
-can reach a private tailnet. Keep only one MCP registration to avoid duplicate
-tools; the bundled stdio registration still requires the local binary.
+The bundled `.mcp.json` stays **stdio** (`skift mcp`); installing this plugin never silently changes transport. To use native HTTP without a local Skift binary, register a separate `2026-07-28`-capable client against `https://<canonical-node-dns-name>/mcp` using the [verified client setup](../../docs/native-mcp-https.md). Do not assume that a client's “HTTP MCP” setting supports this revision, or that a hosted client can reach a private tailnet. Keep only one MCP registration to avoid duplicate tools; the bundled stdio registration still requires the local binary.
 
-Native HTTP requires explicit heartbeat, complete/release and `lease_id`;
-a closed response, disconnect or service shutdown does not release a claim.
-Stdio renews process-held leases and attempts release on stdin EOF/handled
-signal; a hard kill leaves expiry. Both keep domain holder-write renewal and
-fencing. Use stable domain `request_id` values for retries, not JSON-RPC IDs.
+Native HTTP requires explicit heartbeat, complete/release and `lease_id`; a closed response, disconnect or service shutdown does not release a claim. Stdio renews process-held leases and attempts release on stdin EOF/handled signal; a hard kill leaves expiry. Both keep domain holder-write renewal and fencing. Use stable domain `request_id` values for retries, not JSON-RPC IDs.
 
-Clients must run on a registered, mapped tailnet node. All processes on that
-node share its principal; a user mapping gives agents user gate/hold authority.
-This is not per-agent isolation or public OAuth access. See the setup guide
-for certificate prerequisites, modern metadata and deployment checks.
+Clients must run on a registered, mapped tailnet node. All processes on that node share its principal; a user mapping gives agents user gate/hold authority. This is not per-agent isolation or public OAuth access. See the setup guide for certificate prerequisites, modern metadata and deployment checks.
 
 ## Requirements (bundled stdio server)
 
@@ -44,12 +28,7 @@ Check before installing:
 skift version && skift project list
 ```
 
-`skift` finds the service through `--socket` / `$SKIFT_SOCKET` (default: your
-own `skift serve` under `$XDG_RUNTIME_DIR` when it is running, otherwise the
-system service's `/run/skift/skift.sock`), or `--address` / `$SKIFT_ADDRESS`
-for a service on another machine over a tailnet or HTTPS. A caller whose identity maps to no principal is
-rejected as unauthenticated; that is an administrative fix on the service, not a
-client one.
+`skift` finds the service through `--socket` / `$SKIFT_SOCKET` (default: your own `skift serve` under `$XDG_RUNTIME_DIR` when it is running, otherwise the system service's `/run/skift/skift.sock`), or `--address` / `$SKIFT_ADDRESS` for a service on another machine over a tailnet or HTTPS. A caller whose identity maps to no principal is rejected as unauthenticated; that is an administrative fix on the service, not a client one.
 
 ## If you already registered `skift mcp` by hand
 
@@ -88,15 +67,13 @@ In a session, `/mcp` lists the `skift` server and its tools, among them `ready`,
 
 ## Developing
 
-Load the plugin straight from the working tree, with no marketplace and nothing
-installed. This is the iteration loop:
+Load the plugin straight from the working tree, with no marketplace and nothing installed. This is the iteration loop:
 
 ```sh
 claude --plugin-dir ./plugin/skift
 ```
 
-A plugin loaded this way takes precedence over an installed one of the same
-name for that session, so it shadows a released version while you work on it.
+A plugin loaded this way takes precedence over an installed one of the same name for that session, so it shadows a released version while you work on it.
 
 Validate the manifests, the skill's frontmatter, and the overall structure:
 
@@ -110,11 +87,7 @@ claude plugin validate . --strict            # warnings are errors; for CI
 
 ### The version is the cache key
 
-Installing copies the plugin into `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`.
-Editing the source afterwards does **not** update that copy, and
-`claude plugin update` reports "already at the latest version" while the
-installed skill stays as it was. Bump `version` in both manifests to publish a
-change, or work from `--plugin-dir`, which reads the tree directly.
+Installing copies the plugin into `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. Editing the source afterwards does **not** update that copy, and `claude plugin update` reports "already at the latest version" while the installed skill stays as it was. Bump `version` in both manifests to publish a change, or work from `--plugin-dir`, which reads the tree directly.
 
 Bump `version` in **both** `plugin/skift/.claude-plugin/plugin.json` and the plugin's entry in the marketplace manifest, `.claude-plugin/marketplace.json` at the repository root; `claude plugin tag` checks that they agree before tagging a release.
 

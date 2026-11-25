@@ -141,13 +141,7 @@ Readiness is derived, so un-readiness is derivable too: the same anti-join, un-n
 
 This exists because of node limbo. A node disappears when it is blocked by something that will never complete, assigned to a human who never looks, leased by an orchestrator that died, parked by a hold nobody remembers placing, or sitting in a project everyone forgot. Most of those are visible once you can ask. The one worth detecting on its own is a node with no possible path to readiness, which is always a bug rather than a state.
 
-An empty first page of `Ready` also explains holds affecting matching open
-work. It follows dependencies and open child-to-parent waits all the way from
-a hold, names each held ticket or project once, and reports the count and a
-sample of affected downstream tickets. Only projects in the request's scope
-are traversed. Other filters, such as assignee kind and labels, apply to the
-affected work, not the hold itself. The summary does not change readiness and
-its absence does not imply that all work is finished.
+An empty first page of `Ready` also explains holds affecting matching open work. It follows dependencies and open child-to-parent waits all the way from a hold, names each held ticket or project once, and reports the count and a sample of affected downstream tickets. Only projects in the request's scope are traversed. Other filters, such as assignee kind and labels, apply to the affected work, not the hold itself. The summary does not change readiness and its absence does not imply that all work is finished.
 
 ## Hold
 
