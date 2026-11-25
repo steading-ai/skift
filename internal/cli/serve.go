@@ -306,11 +306,18 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// refuses, by being behind under --no-migrate or by failing a
 	// migration, is fatal: the service drains and exits rather than
 	// serving over it.
-	schedule := append(admin.Schedule(db), extraJobs...)
+	schedule := append(admin.Schedule(db, log), extraJobs...)
 	jobs := make(chan *admin.Jobs, 1)
 	prepare := func(ctx context.Context, log *slog.Logger) error {
 		if err := schemaPreparer(opts)(ctx, log); err != nil {
 			return err
+		}
+		// Every write records an event, so the months ahead are in place
+		// before the service reports ready. A failure here, such as a lock
+		// that would not come, is not fatal: the scheduled upkeep runs as
+		// soon as the jobs start, and tries again.
+		if err := admin.EnsureEventPartitions(ctx, db, log, time.Now()); err != nil {
+			log.Warn("events partitions not extended at start; the scheduled upkeep will retry", "err", err)
 		}
 		// The jobs outlive this call; Stop below ends them on shutdown.
 		started, err := admin.StartJobs(context.WithoutCancel(ctx), db, log, schedule)

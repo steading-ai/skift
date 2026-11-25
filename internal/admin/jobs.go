@@ -26,8 +26,10 @@ type Job struct {
 }
 
 // Schedule is the background work `skift serve` runs.
-func Schedule(*store.Store) []Job {
-	return nil
+func Schedule(db *store.Store, log *slog.Logger) []Job {
+	return []Job{
+		eventPartitionsJob(db, log),
+	}
 }
 
 // scheduledArgs names the scheduled job one River job runs. Every

@@ -102,6 +102,9 @@ var _ = Describe("Generated query set", Label("unit"), func() {
 		unscoped := map[string]bool{
 			"CreateOrganization": true, "GetOrganization": true, "GetOrganizationByName": true, "ListOrganizations": true, "GetPrincipalByIdentity": true,
 			"LockBootstrap": true, "LockNamespaced": true, "SnapshotXMin": true,
+			// The events partitions are one table's, shared by every
+			// organization.
+			"EnsureEventPartitions": true,
 		}
 		for _, q := range loadQueries() {
 			if unscoped[q.name] {
