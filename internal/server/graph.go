@@ -32,7 +32,11 @@ func (g *GraphService) ApplyPatch(ctx context.Context, req *skiftv1.ApplyPatchRe
 	if err != nil {
 		return nil, err
 	}
-	out, err := g.svc.Apply(ctx, orgID, actor, fromPatch(req))
+	patch, err := fromPatch(req)
+	if err != nil {
+		return nil, err
+	}
+	out, err := g.svc.Apply(ctx, orgID, actor, patch)
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -136,14 +140,18 @@ func (g *GraphService) ListNodes(ctx context.Context, req *skiftv1.ListNodesRequ
 	}
 	size := pageSize(req.GetPageSize())
 	f := req.GetFilter()
+	enums, err := fromFilterEnums(f)
+	if err != nil {
+		return nil, err
+	}
 	nodes, err := g.svc.ListNodes(ctx, orgID, domain.NodeListQuery{
 		Projects:     f.GetProjects(),
-		Status:       statuses.str(f.GetStatus()),
+		Status:       enums.status,
 		Kinds:        f.GetKinds(),
-		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
+		AssigneeKind: enums.assigneeKind,
 		Labels:       f.GetLabels(),
 		AnyLabels:    f.GetAnyLabels(),
-		MinPriority:  priorities.str(f.GetMinPriority()),
+		MinPriority:  enums.minPriority,
 		Parent:       f.GetParent(),
 		Held:         f.GetHeld(),
 		Limit:        size,
@@ -215,11 +223,15 @@ func (g *GraphService) CreateProject(ctx context.Context, req *skiftv1.CreatePro
 	if err != nil {
 		return nil, err
 	}
+	priority, err := priorities.parse("priority", req.GetPriority())
+	if err != nil {
+		return nil, err
+	}
 	project, err := g.svc.CreateProject(ctx, orgID, actor, domain.NewProject{
 		RequestID: req.GetRequestId(),
 		Title:     req.GetTitle(),
 		Slug:      req.GetSlug(),
-		Priority:  priorities.str(req.GetPriority()),
+		Priority:  priority,
 		VCSURL:    req.GetVcsUrl(),
 	})
 	if err != nil {

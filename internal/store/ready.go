@@ -206,7 +206,7 @@ func (f ReadyFilter) clauses(base string, args []any) (string, []any, error) {
 	case "user":
 		b.WriteString(" AND n.assignee_kind = 'user'")
 	default:
-		return "", nil, fmt.Errorf("assignee kind %q is not agent or user", f.AssigneeKind)
+		return "", nil, fmt.Errorf("%w: assignee kind %q is not agent or user", ErrInvalidFilter, f.AssigneeKind)
 	}
 	if len(f.Labels) > 0 {
 		where("n.labels @> $%d::text[]", f.Labels)

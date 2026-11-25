@@ -15,6 +15,12 @@ import (
 // ready set across several would be arithmetic on incomparable scales.
 var ErrOneProject = errors.New("an ordered ready query names exactly one project")
 
+// ErrInvalidFilter is wrapped by every refusal of a ready or list filter
+// value no node can have: a status, assignee kind or priority outside its
+// vocabulary. It is the store's own value, so a refusal from either layer
+// matches it.
+var ErrInvalidFilter = store.ErrInvalidFilter
+
 // ErrNodeNotFound is returned by [Explain] when the organization has no such
 // node.
 var ErrNodeNotFound = errors.New("node not found")
@@ -138,10 +144,10 @@ func (q ReadyQuery) filter(parentID string) (store.ReadyFilter, error) {
 	switch q.AssigneeKind {
 	case "", AssigneeAgent, AssigneeUser:
 	default:
-		return store.ReadyFilter{}, fmt.Errorf("assignee kind %q is not agent or user", q.AssigneeKind)
+		return store.ReadyFilter{}, fmt.Errorf("%w: assignee kind %q is not agent or user", ErrInvalidFilter, q.AssigneeKind)
 	}
 	if q.MinPriority != "" && !validPriority(q.MinPriority) {
-		return store.ReadyFilter{}, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
+		return store.ReadyFilter{}, fmt.Errorf("%w: priority %q is not p0 through p4", ErrInvalidFilter, q.MinPriority)
 	}
 	return store.ReadyFilter{
 		Kinds: q.Kinds, AssigneeKind: q.AssigneeKind, Labels: q.Labels, AnyLabels: q.AnyLabels,

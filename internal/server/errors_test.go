@@ -40,6 +40,8 @@ var _ = Describe("Connect codes for domain errors", Label("unit"), func() {
 		Entry("a malformed reference", &domain.ParseError{Input: "a b", Reason: "spaces"}, connect.CodeInvalidArgument),
 		Entry("a missing request id", domain.ErrNoRequestID, connect.CodeInvalidArgument),
 		Entry("a missing reason", domain.ErrReasonRequired, connect.CodeInvalidArgument),
+		Entry("a filter value no node can have", fmt.Errorf("%w: assignee kind %q is not agent or user", domain.ErrInvalidFilter, "robot"), connect.CodeInvalidArgument),
+		Entry("a project priority outside p0 to p4", fmt.Errorf("%w: %q", domain.ErrPriorityInvalid, "urgent"), connect.CodeInvalidArgument),
 		Entry("a missing actor", domain.ErrNoActor, connect.CodeUnauthenticated),
 		Entry("a cancelled request", context.Canceled, connect.CodeCanceled),
 		Entry("anything untyped", errors.New("disk on fire"), connect.CodeInternal),

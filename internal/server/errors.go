@@ -114,6 +114,8 @@ func codeOf(err error) connect.Code {
 		errors.Is(err, domain.ErrProjectRequired),
 		errors.Is(err, domain.ErrTitleRequired),
 		errors.Is(err, domain.ErrVCSURLInvalid),
+		errors.Is(err, domain.ErrPriorityInvalid),
+		errors.Is(err, domain.ErrInvalidFilter),
 		errors.Is(err, domain.ErrCommentBodyRequired),
 		errors.Is(err, domain.ErrDigestMismatch),
 		errors.Is(err, domain.ErrGitCommitRequired),

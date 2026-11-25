@@ -228,15 +228,15 @@ func (q NodeListQuery) filter(projects []string, parentID string) (store.NodeFil
 	switch q.Status {
 	case "", "open", "done", "dropped":
 	default:
-		return store.NodeFilter{}, fmt.Errorf("status %q is not open, done, or dropped", q.Status)
+		return store.NodeFilter{}, fmt.Errorf("%w: status %q is not open, done, or dropped", ErrInvalidFilter, q.Status)
 	}
 	switch q.AssigneeKind {
 	case "", AssigneeAgent, AssigneeUser:
 	default:
-		return store.NodeFilter{}, fmt.Errorf("assignee kind %q is not agent or user", q.AssigneeKind)
+		return store.NodeFilter{}, fmt.Errorf("%w: assignee kind %q is not agent or user", ErrInvalidFilter, q.AssigneeKind)
 	}
 	if q.MinPriority != "" && !validPriority(q.MinPriority) {
-		return store.NodeFilter{}, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
+		return store.NodeFilter{}, fmt.Errorf("%w: priority %q is not p0 through p4", ErrInvalidFilter, q.MinPriority)
 	}
 	return store.NodeFilter{
 		Projects: projects, Status: q.Status, Kinds: q.Kinds, AssigneeKind: q.AssigneeKind,

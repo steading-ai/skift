@@ -35,6 +35,10 @@ func (w *WorkService) Ready(ctx context.Context, req *skiftv1.ReadyRequest) (*sk
 	if err := rejectStatusHeld(f); err != nil {
 		return nil, err
 	}
+	enums, err := fromFilterEnums(f)
+	if err != nil {
+		return nil, err
+	}
 	offset, err := decodePageToken(req.GetPageToken())
 	if err != nil {
 		return nil, err
@@ -42,10 +46,10 @@ func (w *WorkService) Ready(ctx context.Context, req *skiftv1.ReadyRequest) (*sk
 	size := pageSize(req.GetPageSize())
 	out, err := w.svc.Ready(ctx, orgID, actor, f.GetProjects(), domain.ReadyQuery{
 		Kinds:        f.GetKinds(),
-		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
+		AssigneeKind: enums.assigneeKind,
 		Labels:       f.GetLabels(),
 		AnyLabels:    f.GetAnyLabels(),
-		MinPriority:  priorities.str(f.GetMinPriority()),
+		MinPriority:  enums.minPriority,
 		Parent:       f.GetParent(),
 		Limit:        size,
 		Offset:       offset,
@@ -80,6 +84,10 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *skiftv1.ClaimNextReque
 	if err := rejectStatusHeld(f); err != nil {
 		return nil, err
 	}
+	enums, err := fromFilterEnums(f)
+	if err != nil {
+		return nil, err
+	}
 	wait, err := fromDuration(req.GetWait())
 	if err != nil {
 		return nil, err
@@ -92,10 +100,10 @@ func (w *WorkService) ClaimNext(ctx context.Context, req *skiftv1.ClaimNextReque
 		RequestID:    req.GetRequestId(),
 		Projects:     f.GetProjects(),
 		Kinds:        f.GetKinds(),
-		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
+		AssigneeKind: enums.assigneeKind,
 		Labels:       f.GetLabels(),
 		AnyLabels:    f.GetAnyLabels(),
-		MinPriority:  priorities.str(f.GetMinPriority()),
+		MinPriority:  enums.minPriority,
 		Parent:       f.GetParent(),
 		TTL:          ttl,
 		Wait:         wait,
@@ -191,7 +199,11 @@ func (w *WorkService) Release(ctx context.Context, req *skiftv1.ReleaseRequest) 
 	if err != nil {
 		return nil, err
 	}
-	change, err := w.svc.Release(ctx, orgID, actor, req.GetRequestId(), req.GetLeaseId(), releaseReasons.str(req.GetReason()), req.GetDetail())
+	reason, err := releaseReasons.parse("reason", req.GetReason())
+	if err != nil {
+		return nil, err
+	}
+	change, err := w.svc.Release(ctx, orgID, actor, req.GetRequestId(), req.GetLeaseId(), reason, req.GetDetail())
 	if err != nil {
 		return nil, connectError(err)
 	}
