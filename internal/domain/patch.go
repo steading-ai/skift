@@ -11,9 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -450,7 +447,7 @@ func Apply(ctx context.Context, s *store.Store, pol *policy.Bundle, orgID string
 			result, err = applyOnce(ctx, tx, pol, orgID, actor, p, hash)
 			return err
 		})
-		if isKeyConflict(err) && attempt == 0 {
+		if store.IsIdempotencyKeyConflict(err) && attempt == 0 {
 			continue
 		}
 		if err != nil {
@@ -520,7 +517,7 @@ func idempotent[T any](ctx context.Context, s *store.Store, orgID string, actor 
 			out = result
 			return err
 		})
-		if isKeyConflict(err) && attempt == 0 {
+		if store.IsIdempotencyKeyConflict(err) && attempt == 0 {
 			continue
 		}
 		if err != nil {
@@ -567,7 +564,7 @@ func withRequest[T any](ctx context.Context, tx store.Tx, orgID, requestID, hash
 // [*RequestConflictError] when it was seen with different content.
 func storedResponse(ctx context.Context, tx store.Tx, orgID, requestID, hash string) ([]byte, error) {
 	key, err := tx.GetIdempotencyKey(ctx, store.GetIdempotencyKeyParams{OrgID: orgID, RequestID: requestID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -596,13 +593,6 @@ func requestHash(request any) (string, error) {
 	}
 	sum := sha256.Sum256(canonical)
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
-}
-
-// isKeyConflict reports a unique violation on the idempotency key: another
-// application of the same request committed first.
-func isKeyConflict(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "idempotency_keys_pkey"
 }
 
 // mutatesWaits reports whether any operation changes the wait relation:
@@ -725,7 +715,7 @@ func (a *applier) fence(ctx context.Context, nodeID string) error {
 	}
 	var held *string
 	switch id, err := a.tx.NodeLiveLease(ctx, store.NodeLiveLeaseParams{OrgID: a.orgID, NodeID: nodeID}); {
-	case errors.Is(err, pgx.ErrNoRows):
+	case errors.Is(err, store.ErrNoRows):
 	case err != nil:
 		return fmt.Errorf("fence node %s: %w", nodeID, err)
 	default:
@@ -752,7 +742,7 @@ func (a *applier) renewLease(ctx context.Context) error {
 		return nil
 	}
 	_, err := a.tx.ExtendLease(ctx, store.ExtendLeaseParams{OrgID: a.orgID, ID: a.lease.ID, ExpiresAt: time.Now().Add(DefaultLeaseTTL)})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return fmt.Errorf("lease %s: %w", a.lease.ID, ErrLeaseNotLive)
 	}
 	if err != nil {
@@ -773,7 +763,7 @@ func (a *applier) releaseLease(ctx context.Context, node store.Node, reason stri
 	}
 	before := *a.lease
 	after, err := a.tx.ReleaseLiveLease(ctx, store.ReleaseLiveLeaseParams{OrgID: a.orgID, ID: before.ID, ReleaseReason: &reason})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return fmt.Errorf("lease %s: %w", before.ID, ErrLeaseNotLive)
 	}
 	if err != nil {
@@ -808,7 +798,7 @@ func resolveProject(ctx context.Context, tx store.Tx, orgID, ref string) (*store
 		if err == nil {
 			return &p, nil
 		}
-		if !errors.Is(err, pgx.ErrNoRows) {
+		if !errors.Is(err, store.ErrNoRows) {
 			return nil, fmt.Errorf("resolve project %s: %w", ref, err)
 		}
 	}

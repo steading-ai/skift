@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/store"
 )
 
@@ -242,7 +240,7 @@ func (r *Resolver) ResolveRef(ctx context.Context, ref Ref) (Resolved, error) {
 	}
 
 	node, err := r.tx.GetNodeByNumber(ctx, store.GetNodeByNumberParams{OrgID: r.orgID, ProjectID: project.ID, Number: ref.Number})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return Resolved{}, &NotFoundError{Ref: ref, Missing: MissingNode}
 	}
 	if err != nil {
@@ -281,7 +279,7 @@ func (r *Resolver) projectFor(ctx context.Context, ref Ref) (*store.Project, err
 		return p, nil
 	}
 	p, err := r.tx.GetProjectBySlug(ctx, store.GetProjectBySlugParams{OrgID: r.orgID, Slug: ref.Project})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, &NotFoundError{Ref: ref, Missing: MissingProject}
 	}
 	if err != nil {
@@ -303,7 +301,7 @@ func AllocateNumbers(ctx context.Context, tx store.Tx, orgID, projectID string, 
 		return 0, fmt.Errorf("allocate node numbers: count must be positive, got %d", count)
 	}
 	first, err := tx.AllocateNodeNumbers(ctx, store.AllocateNodeNumbersParams{OrgID: orgID, ID: projectID, Count: int64(count)})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return 0, ErrProjectNotFound
 	}
 	if err != nil {

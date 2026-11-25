@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -111,7 +108,7 @@ func reaperActor(ctx context.Context, s *store.Store, orgID string) (Actor, erro
 			if err == nil {
 				return nil
 			}
-			if !errors.Is(err, pgx.ErrNoRows) {
+			if !errors.Is(err, store.ErrNoRows) {
 				return fmt.Errorf("look up reaper principal: %w", err)
 			}
 			p, err = tx.CreatePrincipal(ctx, store.CreatePrincipalParams{ID: newULID(), OrgID: orgID, Kind: "service"})
@@ -123,7 +120,9 @@ func reaperActor(ctx context.Context, s *store.Store, orgID string) (Actor, erro
 			}
 			return nil
 		})
-		if isIdentityConflict(err) && attempt == 0 {
+		// Another reaper created the principal between this one's lookup
+		// and its insert.
+		if store.IsIdentityConflict(err) && attempt == 0 {
 			continue
 		}
 		if err != nil {
@@ -134,12 +133,4 @@ func reaperActor(ctx context.Context, s *store.Store, orgID string) (Actor, erro
 		}
 		return Actor{PrincipalID: p.ID, PrincipalKind: p.Kind, IdentityScheme: scheme}, nil
 	}
-}
-
-// isIdentityConflict reports a unique violation on principal identities:
-// another reaper created the principal between this one's lookup and its
-// insert.
-func isIdentityConflict(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "principal_identities_pkey"
 }

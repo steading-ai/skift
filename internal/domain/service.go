@@ -104,7 +104,7 @@ func (g *Service) PrincipalByIdentity(ctx context.Context, scheme, value string)
 		p, err = tx.GetPrincipalByIdentity(ctx, store.GetPrincipalByIdentityParams{Scheme: scheme, Value: value})
 		return err
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, fmt.Errorf("%s:%s: %w", scheme, value, ErrPrincipalNotFound)
 	}
 	if err != nil {
@@ -241,7 +241,7 @@ func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects
 			switch {
 			case err == nil:
 				last = &cursor.ProjectID
-			case errors.Is(err, pgx.ErrNoRows):
+			case errors.Is(err, store.ErrNoRows):
 			default:
 				return fmt.Errorf("read claim cursor: %w", err)
 			}

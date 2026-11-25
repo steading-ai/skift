@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/steading-ai/skift/internal/store"
@@ -118,7 +117,7 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, params BootstrapParams) 
 
 		org, err := tx.GetOrganizationByName(ctx, params.OrgName)
 		switch {
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrNoRows):
 			org, err = tx.CreateOrganization(ctx, store.CreateOrganizationParams{ID: newULID(), Name: params.OrgName})
 			if err != nil {
 				return fmt.Errorf("create organization: %w", err)
@@ -131,7 +130,7 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, params BootstrapParams) 
 
 		principal, err := tx.GetPrincipalByIdentity(ctx, store.GetPrincipalByIdentityParams{Scheme: identity.Scheme, Value: identity.Value})
 		switch {
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrNoRows):
 			principal, err = tx.CreatePrincipal(ctx, store.CreatePrincipalParams{ID: newULID(), OrgID: org.ID, Kind: bootstrapKind})
 			if err != nil {
 				return fmt.Errorf("create principal: %w", err)
@@ -156,7 +155,7 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, params BootstrapParams) 
 		node := BootstrappedIdentity{Scheme: bootstrapTailscale, Value: params.TailscaleNode}
 		holder, err := tx.GetPrincipalByIdentity(ctx, store.GetPrincipalByIdentityParams{Scheme: node.Scheme, Value: node.Value})
 		switch {
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrNoRows):
 			if _, err := tx.AddPrincipalIdentity(ctx, store.AddPrincipalIdentityParams{
 				OrgID: org.ID, ID: principal.ID, Scheme: node.Scheme, Value: node.Value,
 			}); err != nil {

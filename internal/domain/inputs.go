@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -32,7 +30,7 @@ type Input struct {
 // with no result, so the consumer sees what it is waiting on as well as
 // what it has.
 func Inputs(ctx context.Context, tx store.Tx, orgID, nodeID string) ([]Input, error) {
-	if _, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID}); errors.Is(err, pgx.ErrNoRows) {
+	if _, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: nodeID}); errors.Is(err, store.ErrNoRows) {
 		return nil, ErrNodeNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("read node %s: %w", nodeID, err)
@@ -111,7 +109,7 @@ func ReadInputs(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID stri
 		return nil, err
 	}
 	node, err := tx.GetNode(ctx, store.GetNodeParams{OrgID: orgID, ID: resolved.ID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, store.ErrNoRows) {
 		return nil, ErrNodeNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("read node %s: %w", resolved.ID, err)
