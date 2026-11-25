@@ -78,6 +78,38 @@ skift ready
 
 `skift ready` answers as the bootstrapped user. On a new deployment the ready set is empty.
 
+## Upgrade it
+
+Any release upgrades directly from any earlier one, unless the release notes of a release in between announce a required stop; then install that release first. [ADR-015](adrs/015-upgrades-and-migrations.md) has the promise and what holds migrations to it.
+
+Back up the database first. It is the way back if the new release does not suit you:
+
+```sh
+pg_dump --format=custom --file=skift-before-upgrade.dump "$DATABASE_URL"
+```
+
+Then install the new package and restart the service:
+
+```sh
+sudo dnf install ./dist/skift-*.$(uname -m).rpm
+sudo systemctl restart skift.service
+```
+
+The service applies the new release's migrations as it starts, and reports ready only once the schema is current. Don't run `skift migrate` from the new release while the old one is still serving: the old binary would be answering on a schema it was not built for.
+
+## Go back to an older release
+
+A migration is never undone in place. To return to the release you upgraded from, restore the backup you took before upgrading:
+
+```sh
+sudo systemctl stop skift.service
+pg_restore --clean --if-exists --dbname="$DATABASE_URL" skift-before-upgrade.dump
+sudo dnf downgrade ./skift-<older version>.$(uname -m).rpm
+sudo systemctl start skift.service
+```
+
+Anything written between the upgrade and the restore is lost. Restoring is the only way back: an older release is not built for the newer schema, and a migration's down section is a development tool, not a rollback for a live database.
+
 ## Serve callers on other machines
 
 To serve a tailnet alongside the socket, set `SKIFT_TAILNET_HOSTNAME` in `/etc/skift/env`, with `TS_AUTHKEY` to enrol the node and `SKIFT_TAILNET_TAGS` for the ACL tags it advertises; the template shows the three. Then restart `skift.service`. The node's state lives under the unit's `StateDirectory=`, `/var/lib/skift`, so a restart is the same node.
