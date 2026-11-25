@@ -20,3 +20,7 @@ __pycache__/
 
 # Coverage
 /.cover/
+
+# Claude Code settings one person keeps for themselves; .claude/settings.json
+# is the shared copy
+.claude/settings.local.json
