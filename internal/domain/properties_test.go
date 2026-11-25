@@ -60,6 +60,11 @@ type history struct {
 	leases []store.Lease
 	seq    int
 	log    []string
+	// projectHolds adds holding and releasing the project to the steps a
+	// history draws. Only the properties about holds turn it on, so the
+	// others keep the alphabet their saved failures were drawn from.
+	projectHolds bool
+	projectHeld  bool
 }
 
 // The generator's alphabet of step kinds, drawn by weight.
@@ -74,6 +79,10 @@ const (
 // step draws and performs one step of the history.
 func (h *history) step() {
 	t := h.t
+	if h.projectHolds && rapid.IntRange(0, 9).Draw(t, "project hold") == 0 {
+		h.toggleProjectHold()
+		return
+	}
 	var kind int
 	switch roll := rapid.IntRange(0, 99).Draw(t, "step"); {
 	case roll < 60:
@@ -209,6 +218,25 @@ func (h *history) complete() {
 		h.fatalf("complete #%d: %v", number, err)
 	}
 	h.logf("complete #%d => %d row", number, tag.RowsAffected())
+}
+
+// toggleProjectHold holds the project if it is not held and releases it
+// if it is, as the user, the way a person parks a whole project.
+func (h *history) toggleProjectHold() {
+	h.seq++
+	svc := domain.NewService(h.s.Pool(), pol)
+	requestID := fmt.Sprintf("req-%d", h.seq)
+	var err error
+	if h.projectHeld {
+		_, err = svc.UnholdProject(h.ctx, h.org, h.user, requestID, "platform", "back")
+	} else {
+		_, _, err = svc.HoldProject(h.ctx, h.org, h.user, requestID, "platform", "parked")
+	}
+	if err != nil {
+		h.fatalf("toggle the project hold: %v", err)
+	}
+	h.projectHeld = !h.projectHeld
+	h.logf("project held => %t", h.projectHeld)
 }
 
 // claim takes the next ready agent-eligible node for the agent, if any
@@ -679,6 +707,98 @@ func (h *history) checkDerived(st *state) {
 	}
 }
 
+// checkHoldSummary asserts the hold summary an empty ready page carries
+// agrees with the ready set over the same snapshot. The summary walks from
+// the holds in a query of its own rather than composing the readiness
+// fragments, so nothing else ties the two together.
+//
+// It checks what the summary may claim, not that it is complete: a held
+// node it names downstream must be open and not ready, and a hold it names
+// must exist. Downstream references are a sample capped per hold, so their
+// absence proves nothing. What absence can prove is coarser: when any open
+// node is held, by itself, an ancestor or its project, the summary is not
+// empty.
+func (h *history) checkHoldSummary(*state) {
+	var (
+		ready    []store.Node
+		blockers []domain.ReadyHoldBlocker
+		total    int64
+		nodes    []store.Node
+		projects []store.Project
+	)
+	err := h.s.WithTx(h.ctx, func(ctx context.Context, tx store.Tx) error {
+		var err error
+		if ready, err = domain.ReadySet(ctx, tx, h.org, domain.ReadyQuery{}); err != nil {
+			return err
+		}
+		if blockers, total, err = domain.ReadyHoldBlockers(ctx, tx, h.org, domain.ReadyQuery{}, ""); err != nil {
+			return err
+		}
+		if nodes, err = queryRows[store.Node](ctx, tx, `SELECT * FROM nodes WHERE org_id = $1 ORDER BY id`, h.org); err != nil {
+			return err
+		}
+		projects, err = queryRows[store.Project](ctx, tx, `SELECT * FROM projects WHERE org_id = $1 ORDER BY id`, h.org)
+		return err
+	})
+	if err != nil {
+		h.fatalf("read the hold summary: %v", err)
+	}
+	inSet := map[string]bool{}
+	for _, n := range ready {
+		inSet[n.ID] = true
+	}
+	byRef := map[string]store.Node{}
+	byID := map[string]store.Node{}
+	for _, n := range nodes {
+		byRef[fmt.Sprintf("platform#%d", n.Number)] = n
+		byID[n.ID] = n
+	}
+	projectHeld := map[string]bool{}
+	for _, p := range projects {
+		projectHeld[p.Slug] = p.HeldAt != nil
+	}
+	for _, b := range blockers {
+		if n, ok := byRef[b.Reference]; ok {
+			if n.HeldAt == nil {
+				h.fatalf("the hold summary names %s, which carries no hold", b.Reference)
+			}
+		} else if !projectHeld[b.Reference] {
+			h.fatalf("the hold summary names %s, which is neither a held node nor a held project", b.Reference)
+		}
+		for _, ref := range b.DownstreamReferences {
+			n, ok := byRef[ref]
+			switch {
+			case !ok:
+				h.fatalf("the hold summary names %s downstream of %s, and no such node exists", ref, b.Reference)
+			case n.Status != "open":
+				h.fatalf("the hold summary names %s downstream of %s, and it is %s", ref, b.Reference, n.Status)
+			case inSet[n.ID]:
+				h.fatalf("the hold summary names %s downstream of %s, and it is ready", ref, b.Reference)
+			}
+		}
+	}
+	for _, n := range nodes {
+		if n.Status != "open" {
+			continue
+		}
+		held := projectHeld["platform"]
+		for at, ok := n, true; ok && !held; at, ok = byID[derefOr(at.ParentID)] {
+			held = at.HeldAt != nil
+		}
+		if held && total == 0 {
+			h.fatalf("#%d is open and held, and the hold summary is empty", n.Number)
+		}
+	}
+}
+
+// derefOr is the string p points at, or "" for nil.
+func derefOr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // describeReasons renders why a node is not ready, for a failure message.
 func describeReasons(reasons []domain.Reason) string {
 	if len(reasons) == 0 {
@@ -729,7 +849,18 @@ func newHistory(ctx context.Context, t *rapid.T, s *store.Store) *history {
 // run performs one random history, checking each invariant after every
 // step.
 func run(ctx context.Context, t *rapid.T, s *store.Store, check ...func(*history, *state)) {
+	runHistory(newHistory(ctx, t, s), check...)
+}
+
+// runHolds is run with holding and releasing the project among the steps.
+func runHolds(ctx context.Context, t *rapid.T, s *store.Store, check ...func(*history, *state)) {
 	h := newHistory(ctx, t, s)
+	h.projectHolds = true
+	runHistory(h, check...)
+}
+
+func runHistory(h *history, check ...func(*history, *state)) {
+	t := h.t
 	for range rapid.IntRange(1, 12).Draw(t, "steps") {
 		h.step()
 		st := h.load()
@@ -820,6 +951,15 @@ var _ = Describe("Graph properties", Label(testsupport.DBLabel), func() {
 		By("then every node is ready in all three views or in none of them")
 		checkProperty(func(t *rapid.T) {
 			run(ctx, t, s, (*history).checkDerived)
+		})
+	})
+
+	It("The hold summary never reports ready work as blocked", func(ctx SpecContext) {
+		By("given any graph reached by a random sequence of patches, project holds among them")
+		By("when the hold summary is computed for a query")
+		By("then every downstream node it names is open and absent from the ready set for that query")
+		checkProperty(func(t *rapid.T) {
+			runHolds(ctx, t, s, (*history).checkHoldSummary)
 		})
 	})
 })
