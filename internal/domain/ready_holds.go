@@ -78,7 +78,11 @@ WITH RECURSIVE scope AS (
 // The match filters select affected work, not sources or intermediate
 // blockers: for example, a held user gate can prevent agent work.
 func readyHoldBlockers(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) ([]ReadyHoldBlocker, int64, error) {
-	where, args, err := q.matchClauses("TRUE", parentID, []any{orgID, q.Projects})
+	f, err := q.filter(parentID)
+	if err != nil {
+		return nil, 0, err
+	}
+	where, args, err := f.Where("TRUE", []any{orgID, q.Projects})
 	if err != nil {
 		return nil, 0, err
 	}

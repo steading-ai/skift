@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -70,101 +67,6 @@ type ReadyQuery struct {
 	Offset int
 }
 
-// Each readiness condition is one subquery over the node aliased n, and
-// each is written exactly once. Ready negates it inside NOT EXISTS; Explain
-// selects from it un-negated. The organization predicate is static SQL on
-// every table touched.
-
-// unsatisfiedBlockers are the sources of `blocks` edges into n that have
-// not satisfied them: open nodes, and gates that were not completed. A
-// dropped gate still blocks, so an agent cannot drop its own gate and
-// proceed. See the Gates section of docs/domain-model.md.
-//
-// edges_to_node_idx serves the lookup.
-const unsatisfiedBlockers = `
-SELECT b.*
-FROM edges e
-JOIN nodes b ON b.org_id = e.org_id AND b.id = e.from_node
-WHERE e.org_id = $1 AND e.to_node = n.id AND e.kind = 'blocks'
-  AND (b.status = 'open' OR (b.assignee_kind = 'user' AND b.status <> 'done'))`
-
-// liveLease is the unreleased lease on n whose TTL has not passed. There is
-// at most one: leases_live_idx.
-const liveLease = `
-SELECT l.*
-FROM leases l
-WHERE l.org_id = $1 AND l.node_id = n.id AND l.released_at IS NULL AND l.expires_at > now()`
-
-// openChildren are the open nodes whose parent is n. A node that groups
-// work is not itself work until that work closes. nodes_open_children_idx
-// serves the lookup.
-const openChildren = `
-SELECT c.*
-FROM nodes c
-WHERE c.org_id = $1 AND c.parent_id = n.id AND c.status = 'open'`
-
-// archivedProject is n's project when it is archived, and so read-only: no
-// claims. See the Project section of docs/domain-model.md.
-const archivedProject = `
-SELECT p.*
-FROM projects p
-WHERE p.org_id = $1 AND p.id = n.project_id AND p.archived_at IS NOT NULL`
-
-// heldAncestors are n itself and the nodes containing it, up through
-// parent_id, that carry a hold: a stored decision to park work. A hold
-// takes a node out of the ready set without changing its status, the way
-// a live lease does, and containment carries it, because holding an epic
-// that did not hold its children would hold nothing claimable. See the
-// Hold section of docs/domain-model.md.
-//
-// The walk goes to the root. There is no depth ceiling on the parent
-// chain, and a bounded walk would return a node held from further up to
-// the ready set, which is the failure the hold exists to prevent. UNION
-// rather than UNION ALL for the reason waitReach uses it: re-expanding a
-// node reproduces a row already emitted, so the walk terminates rather
-// than spinning to the statement timeout. The step is the (project_id,
-// id) lookup nodes_project_id_id_key serves, and nodes_parent_fkey pins a
-// parent to its child's project, so the walk cannot leave the project the
-// seed scoped it to.
-//
-// The chain carries only what the walk needs, because UNION de-duplicates
-// on every column it selects; the hold itself is joined back once at the
-// end, where Explain scans these rows into a struct by name. EXISTS
-// ignores that final list, so the other call sites pay nothing for it.
-const heldAncestors = `
-WITH RECURSIVE chain AS (
-    SELECT a.id, a.parent_id, a.project_id
-    FROM nodes a
-    WHERE a.org_id = $1 AND a.id = n.id
-  UNION
-    SELECT p.id, p.parent_id, p.project_id
-    FROM chain
-    JOIN nodes p ON p.project_id = chain.project_id AND p.id = chain.parent_id
-)
-SELECT h.number, h.title, h.held_at, h.held_by, h.held_reason,
-       h.hold_group, (h.id = n.id) AS self
-FROM chain c
-JOIN nodes h ON h.project_id = c.project_id AND h.id = c.id
-WHERE h.held_at IS NOT NULL`
-
-// heldProject is n's project when it is held: every node in it leaves the
-// ready set and none of their statuses change. Unlike an archived
-// project, a held one is still writable. projects_held_idx serves the
-// lookup.
-const heldProject = `
-SELECT p.*
-FROM projects p
-WHERE p.org_id = $1 AND p.id = n.project_id AND p.held_at IS NOT NULL`
-
-// readyWhere is the readiness predicate on n, with $1 the organization.
-const readyWhere = `n.org_id = $1 AND n.status = 'open'
-  AND NOT EXISTS (` + unsatisfiedBlockers + `)
-  AND NOT EXISTS (` + liveLease + `)
-  AND NOT EXISTS (` + openChildren + `)
-  AND NOT EXISTS (` + archivedProject + `)
-  AND NOT EXISTS (` + heldProject + `)
-  AND NOT EXISTS (` + heldAncestors + `)`
-
 // Ready returns the ready nodes of one project that match q, most urgent
 // and then oldest first: priority, created_at, id. The outer scan is
 // nodes_open_by_project_idx, which is in that order. q must name exactly
@@ -196,19 +98,15 @@ func ReadySet(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery) ([]s
 }
 
 func queryReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, ordered bool, parentID string) ([]store.Node, error) {
-	sql, args, err := q.sql(orgID, ordered, parentID)
+	f, err := q.filter(parentID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.Tx.Query(ctx, sql, args...)
+	limit, err := boundPageSize(q.Limit, ActiveLimits())
 	if err != nil {
-		return nil, fmt.Errorf("query ready set: %w", err)
+		return nil, err
 	}
-	nodes, err := pgx.CollectRows(rows, pgx.RowToStructByName[store.Node])
-	if err != nil {
-		return nil, fmt.Errorf("scan ready set: %w", err)
-	}
-	return nodes, nil
+	return tx.ReadyNodes(ctx, orgID, q.Projects, f, store.ReadyPage{Ordered: ordered, Limit: limit, Offset: q.Offset})
 }
 
 // resolveParent resolves q.Parent to a node id, or returns "" when it is
@@ -234,84 +132,21 @@ func resolveParent(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery)
 	return resolved.ID, nil
 }
 
-// matchClauses appends the non-project filters to an existing predicate on
-// nodes n. Ready applies them to eligible nodes; the hold summary applies
-// them to the affected work without filtering away its blockers.
-func (q ReadyQuery) matchClauses(base, parentID string, args []any) (string, []any, error) {
-	var b strings.Builder
-	b.WriteString(base)
-	// where appends a clause whose single %d is the position of value.
-	where := func(clause string, value any) {
-		args = append(args, value)
-		b.WriteString(" AND ")
-		fmt.Fprintf(&b, clause, len(args))
-	}
-
-	if len(q.Kinds) > 0 {
-		where("n.kind = ANY($%d::text[])", q.Kinds)
-	}
+// filter is q's non-project filters as the store applies them, or why one
+// of them is not valid.
+func (q ReadyQuery) filter(parentID string) (store.ReadyFilter, error) {
 	switch q.AssigneeKind {
-	case "":
-	case AssigneeAgent:
-		b.WriteString(" AND (n.assignee_kind IS NULL OR n.assignee_kind = 'agent')")
-	case AssigneeUser:
-		b.WriteString(" AND n.assignee_kind = 'user'")
+	case "", AssigneeAgent, AssigneeUser:
 	default:
-		return "", nil, fmt.Errorf("assignee kind %q is not agent or user", q.AssigneeKind)
+		return store.ReadyFilter{}, fmt.Errorf("assignee kind %q is not agent or user", q.AssigneeKind)
 	}
-	if len(q.Labels) > 0 {
-		where("n.labels @> $%d::text[]", q.Labels)
+	if q.MinPriority != "" && !validPriority(q.MinPriority) {
+		return store.ReadyFilter{}, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
 	}
-	if len(q.AnyLabels) > 0 {
-		where("n.labels && $%d::text[]", q.AnyLabels)
-	}
-	if q.MinPriority != "" {
-		if !validPriority(q.MinPriority) {
-			return "", nil, fmt.Errorf("priority %q is not p0 through p4", q.MinPriority)
-		}
-		// Priorities are 'p0'..'p4', so text order is urgency order.
-		where("n.priority <= $%d", q.MinPriority)
-	}
-	if parentID != "" {
-		where("n.parent_id = $%d", parentID)
-	}
-	return b.String(), args, nil
-}
-
-// sql renders the ready query. $1 is always the organization, so a filter
-// can narrow the set and never widen it. Ordered output is by priority
-// then age; unordered output is by id, only so that it is deterministic.
-//
-// The rendered statement selects `n.*` from `nodes n`, so a caller that
-// needs to lock what it reads may append `FOR UPDATE OF n SKIP LOCKED`.
-func (q ReadyQuery) sql(orgID string, ordered bool, parentID string) (string, []any, error) {
-	where, args, err := q.matchClauses(readyWhere, parentID, []any{orgID})
-	if err != nil {
-		return "", nil, err
-	}
-	var b strings.Builder
-	b.WriteString("SELECT n.* FROM nodes n WHERE " + where)
-	if len(q.Projects) > 0 {
-		args = append(args, q.Projects)
-		fmt.Fprintf(&b, " AND n.project_id = ANY($%d::text[])", len(args))
-	}
-
-	if ordered {
-		b.WriteString(" ORDER BY n.priority, n.created_at, n.id")
-	} else {
-		b.WriteString(" ORDER BY n.id")
-	}
-	limit, err := boundPageSize(q.Limit, ActiveLimits())
-	if err != nil {
-		return "", nil, err
-	}
-	args = append(args, limit)
-	fmt.Fprintf(&b, " LIMIT $%d", len(args))
-	if q.Offset > 0 {
-		args = append(args, q.Offset)
-		fmt.Fprintf(&b, " OFFSET $%d", len(args))
-	}
-	return b.String(), args, nil
+	return store.ReadyFilter{
+		Kinds: q.Kinds, AssigneeKind: q.AssigneeKind, Labels: q.Labels, AnyLabels: q.AnyLabels,
+		MinPriority: q.MinPriority, ParentID: parentID,
+	}, nil
 }
 
 // eligibleProjects returns, in no particular order, the ids of the
@@ -322,24 +157,11 @@ func (q ReadyQuery) sql(orgID string, ordered bool, parentID string) (string, []
 // query against the project or projects the rotation picks; it never
 // itself locks a row, so it never conflicts with `FOR UPDATE`.
 func eligibleProjects(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) ([]string, error) {
-	where, args, err := q.matchClauses(readyWhere, parentID, []any{orgID})
+	f, err := q.filter(parentID)
 	if err != nil {
 		return nil, err
 	}
-	sql := "SELECT DISTINCT n.project_id FROM nodes n WHERE " + where
-	if len(q.Projects) > 0 {
-		args = append(args, q.Projects)
-		sql += fmt.Sprintf(" AND n.project_id = ANY($%d::text[])", len(args))
-	}
-	rows, err := tx.Tx.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, fmt.Errorf("eligible projects: %w", err)
-	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, fmt.Errorf("eligible projects: %w", err)
-	}
-	return ids, nil
+	return tx.EligibleProjects(ctx, orgID, q.Projects, f)
 }
 
 // nextProject picks which of eligible to draw from next, given the
@@ -548,7 +370,7 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonNotOpen, Status: node.Status, Permanent: node.Status == "dropped"})
 	}
 
-	projects, err := explainRows[store.Project](ctx, tx, archivedProject, "", orgID, nodeID)
+	projects, err := tx.ArchivedProjectOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +378,7 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonArchived, Project: &projects[i]})
 	}
 
-	heldProjects, err := explainRows[store.Project](ctx, tx, heldProject, "", orgID, nodeID)
+	heldProjects, err := tx.HeldProjectOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +389,7 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 	// Every hold in the chain, not only the nearest: the node becomes
 	// ready when all of them are released, so reporting one would leave
 	// an item off the list.
-	holds, err := explainRows[heldRow](ctx, tx, heldAncestors, "ORDER BY x.self DESC, x.number", orgID, nodeID)
+	holds, err := tx.HeldAncestorsOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -583,7 +405,7 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		}})
 	}
 
-	blockers, err := explainRows[store.Node](ctx, tx, unsatisfiedBlockers, "ORDER BY x.project_id, x.number", orgID, nodeID)
+	blockers, err := tx.UnsatisfiedBlockersOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -593,7 +415,7 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonBlocked, Blocker: b, Gate: gate, Permanent: gate && b.Status == "dropped"})
 	}
 
-	leases, err := explainRows[store.Lease](ctx, tx, liveLease, "", orgID, nodeID)
+	leases, err := tx.LiveLeaseOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -601,7 +423,7 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonLeased, Lease: &leases[i]})
 	}
 
-	children, err := explainRows[store.Node](ctx, tx, openChildren, "ORDER BY x.number", orgID, nodeID)
+	children, err := tx.OpenChildrenOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -609,31 +431,4 @@ func Explain(ctx context.Context, tx store.Tx, orgID, nodeID string) (*Explanati
 		e.Reasons = append(e.Reasons, Reason{Kind: ReasonOpenChild, Child: &children[i]})
 	}
 	return e, nil
-}
-
-// heldRow is one row of heldAncestors: a node in the chain that carries a
-// hold. Its fields match that fragment's select list.
-type heldRow struct {
-	Number     int64     `db:"number"`
-	Title      string    `db:"title"`
-	HeldAt     time.Time `db:"held_at"`
-	HeldBy     string    `db:"held_by"`
-	HeldReason string    `db:"held_reason"`
-	HoldGroup  *string   `db:"hold_group"`
-	Self       bool      `db:"self"`
-}
-
-// explainRows runs one readiness subquery for the node $2 of organization
-// $1 and collects its rows as T.
-func explainRows[T any](ctx context.Context, tx store.Tx, sub, order, orgID, nodeID string) ([]T, error) {
-	sql := "SELECT x.* FROM nodes n CROSS JOIN LATERAL (" + sub + ") x WHERE n.org_id = $1 AND n.id = $2 " + order
-	rows, err := tx.Tx.Query(ctx, sql, orgID, nodeID)
-	if err != nil {
-		return nil, fmt.Errorf("explain node: %w", err)
-	}
-	out, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
-	if err != nil {
-		return nil, fmt.Errorf("explain node: %w", err)
-	}
-	return out, nil
 }

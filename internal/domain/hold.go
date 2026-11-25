@@ -83,22 +83,12 @@ func (a *applier) changeHold(ctx context.Context, opName, ref, reason string, ch
 	return a.event(ctx, opName, after.ID, after.ProjectID, &reason, before, after)
 }
 
-// heldWhere is the effectively-held predicate on n, with $1 the
-// organization: the same two conditions Ready negates, un-negated. It is
-// composed from those fragments rather than written again beside them, so
-// a condition cannot be added to one and forgotten in the other. The flat
-// project probe comes first, so a held project answers for every one of
-// its nodes without instantiating the walk.
-const heldWhere = `(EXISTS (` + heldProject + `) OR EXISTS (` + heldAncestors + `))`
-
 // HeldCount is how many open nodes of a project are held rather than
 // ready. It answers what an empty ready page owes its caller: whether the
 // work is finished or parked.
 func HeldCount(ctx context.Context, tx store.Tx, orgID, projectID string) (int, error) {
-	const sql = `SELECT count(*) FROM nodes n
-WHERE n.org_id = $1 AND n.project_id = $2 AND n.status = 'open' AND ` + heldWhere
-	var count int
-	if err := tx.Tx.QueryRow(ctx, sql, orgID, projectID).Scan(&count); err != nil {
+	count, err := tx.HeldCount(ctx, orgID, projectID)
+	if err != nil {
 		return 0, fmt.Errorf("count held nodes: %w", err)
 	}
 	return count, nil

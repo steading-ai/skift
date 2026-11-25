@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/steading-ai/skift/internal/policy"
 	"github.com/steading-ai/skift/internal/store"
 )
@@ -328,15 +326,15 @@ func claimOnce(ctx context.Context, tx store.Tx, pol *policy.Bundle, orgID strin
 // its row, skipping rows other claimants hold. errNothingReady when the set
 // is empty.
 func lockNextReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) (store.Node, error) {
-	sql, args, err := q.sql(orgID, true, parentID)
+	f, err := q.filter(parentID)
 	if err != nil {
 		return store.Node{}, err
 	}
-	rows, err := tx.Tx.Query(ctx, sql+" FOR UPDATE OF n SKIP LOCKED", args...)
+	limit, err := boundPageSize(q.Limit, ActiveLimits())
 	if err != nil {
-		return store.Node{}, fmt.Errorf("select next ready node: %w", err)
+		return store.Node{}, err
 	}
-	node, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[store.Node])
+	node, err := tx.LockNextReady(ctx, orgID, q.Projects, f, limit)
 	if errors.Is(err, store.ErrNoRows) {
 		return store.Node{}, errNothingReady
 	}
@@ -349,8 +347,7 @@ func lockNextReady(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery,
 // isReady reports whether one node satisfies the readiness predicate as
 // of a fresh statement.
 func isReady(ctx context.Context, tx store.Tx, orgID, nodeID string) (bool, error) {
-	var ready bool
-	err := tx.Tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM nodes n WHERE "+readyWhere+" AND n.id = $2)", orgID, nodeID).Scan(&ready)
+	ready, err := tx.IsReady(ctx, orgID, nodeID)
 	if err != nil {
 		return false, fmt.Errorf("recheck readiness: %w", err)
 	}

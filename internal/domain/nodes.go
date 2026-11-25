@@ -45,45 +45,6 @@ type NodeState struct {
 	Derived
 }
 
-// derivedRow is one row of derivedSQL.
-type derivedRow struct {
-	ID           string `db:"id"`
-	Number       int64  `db:"number"`
-	Slug         string `db:"slug"`
-	Status       string `db:"status"`
-	Blocked      bool   `db:"blocked"`
-	Claimed      bool   `db:"claimed"`
-	OpenChild    bool   `db:"open_child"`
-	Archived     bool   `db:"archived"`
-	Held         bool   `db:"held"`
-	ProjectHeld  bool   `db:"project_held"`
-	Ready        bool   `db:"ready"`
-	HumanTouched bool   `db:"human_touched"`
-}
-
-// derivedSQL computes every flag of a set of nodes in one statement, from
-// the readiness fragments Ready and Explain share. $1 is the organization,
-// $2 the node ids.
-//
-// Readiness itself is the ready query's own predicate rather than a
-// conjunction restated in Go, so the flag on a node and its membership of
-// the ready set cannot disagree. The per-condition flags stay because
-// they say which condition holds, which the predicate alone does not.
-const derivedSQL = `
-SELECT n.id, n.number, pr.slug, n.status,
-       (` + readyWhere + `) AS ready,
-       EXISTS (` + unsatisfiedBlockers + `) AS blocked,
-       EXISTS (` + liveLease + `) AS claimed,
-       EXISTS (` + openChildren + `) AS open_child,
-       EXISTS (` + archivedProject + `) AS archived,
-       EXISTS (` + heldAncestors + `) AS held,
-       EXISTS (` + heldProject + `) AS project_held,
-       EXISTS (SELECT 1 FROM events ev
-               WHERE ev.org_id = $1 AND ev.node_id = n.id AND ev.principal_kind = 'user') AS human_touched
-FROM nodes n
-JOIN projects pr ON pr.org_id = $1 AND pr.id = n.project_id
-WHERE n.org_id = $1 AND n.id = ANY($2::text[])`
-
 // derive computes the derived flags of nodes, keyed by node id.
 func derive(ctx context.Context, tx store.Tx, orgID string, nodes []store.Node) (map[string]Derived, error) {
 	out := make(map[string]Derived, len(nodes))
@@ -94,11 +55,7 @@ func derive(ctx context.Context, tx store.Tx, orgID string, nodes []store.Node) 
 	for _, n := range nodes {
 		ids = append(ids, n.ID)
 	}
-	rows, err := tx.Tx.Query(ctx, derivedSQL, orgID, ids)
-	if err != nil {
-		return nil, fmt.Errorf("derive node state: %w", err)
-	}
-	derived, err := pgx.CollectRows(rows, pgx.RowToStructByName[derivedRow])
+	derived, err := tx.DeriveNodes(ctx, orgID, ids)
 	if err != nil {
 		return nil, fmt.Errorf("derive node state: %w", err)
 	}
@@ -203,7 +160,7 @@ func readNode(ctx context.Context, tx store.Tx, orgID, nodeID string) (*NodeView
 		v.Result = &results[0]
 	}
 
-	leases, err := explainRows[store.Lease](ctx, tx, liveLease, "", orgID, nodeID)
+	leases, err := tx.LiveLeaseOf(ctx, orgID, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -360,7 +317,7 @@ func (q NodeListQuery) sql(orgID string, projects []string, parentID string) (st
 		where("n.priority <= $%d", q.MinPriority)
 	}
 	if q.Held {
-		b.WriteString(" AND " + heldWhere)
+		b.WriteString(" AND " + store.HeldWhere)
 	}
 	if parentID != "" {
 		where("n.parent_id = $%d", parentID)
