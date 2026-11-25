@@ -27,10 +27,6 @@ contents:
       mode: 0755
   - src: contrib/systemd/skift.service
     dst: /usr/lib/systemd/system/skift.service
-  - src: contrib/systemd/skift-reap.service
-    dst: /usr/lib/systemd/system/skift-reap.service
-  - src: contrib/systemd/skift-reap.timer
-    dst: /usr/lib/systemd/system/skift-reap.timer
   - src: packaging/sysusers.d/skift.conf
     dst: /usr/lib/sysusers.d/skift.conf
   - src: packaging/tmpfiles.d/skift.conf

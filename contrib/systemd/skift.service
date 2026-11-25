@@ -7,7 +7,7 @@
 #
 # The rpm installs this unit but does not enable or start it:
 #
-#   systemctl enable --now skift.service skift-reap.timer
+#   systemctl enable --now skift.service
 #
 # DATABASE_URL and any other settings come from /etc/skift/env, one
 # KEY=value per line; the package ships a template there. The tailnet is

@@ -1,4 +1,4 @@
-# Environment for skift.service and skift-reap.service, one KEY=value per
+# Environment for skift.service, one KEY=value per
 # line. Readable by the skift group only: the URL carries a password.
 #
 # The service does not create its database; that must exist before it can

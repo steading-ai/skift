@@ -306,7 +306,7 @@ func runServe(cmd *cobra.Command, opts serveOptions) error {
 	// refuses, by being behind under --no-migrate or by failing a
 	// migration, is fatal: the service drains and exits rather than
 	// serving over it.
-	schedule := append(admin.Schedule(db, log), extraJobs...)
+	schedule := append(admin.Schedule(db, svc, log), extraJobs...)
 	jobs := make(chan *admin.Jobs, 1)
 	prepare := func(ctx context.Context, log *slog.Logger) error {
 		if err := schemaPreparer(opts)(ctx, log); err != nil {

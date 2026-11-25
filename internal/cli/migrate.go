@@ -32,8 +32,8 @@ on every deploy. A database migrated by a newer skift is refused.
 
 "skift serve" does the same at start unless told not to; this command is for
 running the migrations ahead of the service, as an installer or a person.
-Like "skift reap", it reaches the database directly rather than through the
-service.`,
+Like the other admin commands, it reaches the database directly rather than
+through the service.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runMigrate(cmd, opts)

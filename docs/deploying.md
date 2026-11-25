@@ -57,10 +57,10 @@ Every caller that will reach the socket needs a principal; run it once per uid. 
 ## Start the service
 
 ```sh
-sudo systemctl enable --now skift.service skift-reap.timer
+sudo systemctl enable --now skift.service
 ```
 
-`skift.service` runs as the `skift` user. It is `Type=notify` and becomes active only once the socket is bound, the database has answered, and the schema is current. `skift-reap.timer` runs `skift reap` every minute, releasing leases whose TTL has passed; the command is idempotent and safe to run by hand alongside the timer.
+`skift.service` runs as the `skift` user. It is `Type=notify` and becomes active only once the socket is bound, the database has answered, and the schema is current. The service also runs skift's background jobs, such as releasing leases whose TTL has passed, every minute. `skift admin jobs list` shows them, and `skift admin jobs run <job>` runs one now.
 
 ## Let an account reach the socket
 

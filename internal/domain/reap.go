@@ -9,8 +9,9 @@ import (
 	"github.com/steading-ai/skift/internal/store"
 )
 
-// The reaper is the expiry timer: `skift reap`, run by skift-reap.timer,
-// releasing every lease across the deployment whose TTL has passed. It is
+// The reaper is the expire-leases background job that skift serve runs
+// (package admin), releasing every lease across the deployment whose TTL
+// has passed. It is
 // the one write not made on a client's behalf, so it acts as a service
 // principal of its own in each organization, and creates that principal
 // the first time it runs there. See the Lease section of
