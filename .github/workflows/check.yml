@@ -38,15 +38,15 @@ jobs:
       # What a job would otherwise fetch again each run, kept on disks that
       # outlive it. The Go build cache is not among them: Blacksmith serves
       # that itself. https://docs.blacksmith.sh/blacksmith-caching/dependencies-sticky-disks
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-mise
           path: ~/.local/share/mise
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-go-mod
           path: ~/go/pkg/mod
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-golangci-lint-check
           path: ~/.cache/golangci-lint
@@ -75,15 +75,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-mise
           path: ~/.local/share/mise
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-go-mod
           path: ~/go/pkg/mod
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-golangci-lint-race
           path: ~/.cache/golangci-lint
@@ -107,11 +107,11 @@ jobs:
       - uses: useblacksmith/checkout@v1.8.3
         with:
           persist-credentials: false
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-mise
           path: ~/.local/share/mise
-      - uses: useblacksmith/stickydisk@v1.7.2
+      - uses: useblacksmith/stickydisk@v1.8.0
         with:
           key: ${{ github.repository }}-go-mod
           path: ~/go/pkg/mod
