@@ -1,0 +1,16 @@
+# squawk lints each new goose migration for statements that lock or fail on a
+# populated table; hk.pkl's squawk step runs it over the Up section of every
+# migration after 00020. See docs/adrs/015-upgrades-and-migrations.md.
+
+# The PostgreSQL that skift runs on (compose.yaml), so version-aware rules
+# know a constant default no longer rewrites a table.
+pg_version = "18.0"
+
+# goose wraps each migration in a transaction unless the file says
+# `-- +goose NO TRANSACTION`; the hk step passes --no-assume-in-transaction
+# for those.
+assume_in_transaction = true
+
+# Timeouts belong to the migration runner's connection (ADR-015), not to
+# each file, so the rules asking every file to set one are off.
+excluded_rules = ["require-lock-timeout", "require-statement-timeout"]

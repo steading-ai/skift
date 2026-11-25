@@ -35,6 +35,37 @@ local linters = new Mapping<String, Step> {
             effect = "read"
         }
     }
+    // squawk lints each new migration for statements that lock or fail on a
+    // populated table (docs/adrs/015-upgrades-and-migrations.md; settings in
+    // .squawk.toml). It does not read goose's annotations, so the command
+    // hands it the Up section alone, tells it which files goose runs outside
+    // a transaction, and turns its 0-based gcc positions 1-based. 00001-00020
+    // shipped before the linter and are never edited; the exclusion lives
+    // here because squawk ignores its own excluded_paths for stdin.
+    ["squawk"] {
+        glob = "internal/store/migrations/*.sql"
+        exclude = List(
+            "internal/store/migrations/0000[1-9]_*.sql",
+            "internal/store/migrations/0001[0-9]_*.sql",
+            "internal/store/migrations/00020_*.sql",
+        )
+        shell = "bash -o errexit -o pipefail -c"
+        diagnostic_format = "gcc"
+        check = new CommandSpec {
+            command = #"""
+                rc=0
+                for f in {{files}}; do
+                  tx=--assume-in-transaction
+                  if grep -q '^-- +goose NO TRANSACTION' "$f"; then tx=--no-assume-in-transaction; fi
+                  sed '/^-- +goose Down/,$d' "$f" \
+                    | squawk check --reporter gcc "$tx" --stdin-filepath "$f" \
+                    | awk -F: -v OFS=: '$2 ~ /^[0-9]+$/ { $2 += 1; $3 += 1 } { print }' || rc=1
+                done
+                exit "$rc"
+                """#
+            effect = "read"
+        }
+    }
     // Generated code is committed, so the proto, the queries, the migrations
     // sqlc reads, and the generator configuration are each a reason to check
     // that the generated tree is current.
