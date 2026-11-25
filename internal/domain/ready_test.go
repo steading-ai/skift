@@ -561,6 +561,36 @@ var _ = Describe("Readiness", Label(testsupport.DBLabel), func() {
 			Expect(g.ready(ctx, domain.ReadyQuery{Labels: []string{"frontend"}})).To(BeEmpty())
 		})
 
+		It("The any-label filter matches a node carrying one of the labels", func(ctx SpecContext) {
+			By(`given ready nodes labelled "backend", "frontend", and "docs"`)
+			g.given(ctx, func(ctx context.Context, tx store.Tx) {
+				g.nodeWith(ctx, tx, 4, nodeOpts{labels: []string{"frontend"}})
+				g.nodeWith(ctx, tx, 5, nodeOpts{labels: []string{"docs"}})
+			})
+
+			By(`when I ask for ready nodes with any of the labels "backend" or "frontend"`)
+			nodes := numbers(g.ready(ctx, domain.ReadyQuery{AnyLabels: []string{"backend", "frontend"}}))
+
+			By(`then the nodes labelled "backend" and "frontend" are returned`)
+			Expect(nodes).To(ConsistOf(int64(1), int64(2), int64(4)))
+
+			By(`and the node labelled "docs" is not`)
+			Expect(nodes).NotTo(ContainElement(int64(5)))
+		})
+
+		It("by any label given, excluding a node with none of them", func(ctx SpecContext) {
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{AnyLabels: []string{"urgent", "frontend"}}))).To(Equal([]int64{1}))
+			Expect(g.ready(ctx, domain.ReadyQuery{AnyLabels: []string{"frontend", "docs"}})).To(BeEmpty())
+		})
+
+		It("by every label and any label together", func(ctx SpecContext) {
+			g.given(ctx, func(ctx context.Context, tx store.Tx) {
+				g.nodeWith(ctx, tx, 4, nodeOpts{labels: []string{"frontend", "urgent"}})
+			})
+			// 1 is backend and urgent; 2 is backend alone; 4 is urgent but not backend.
+			Expect(numbers(g.ready(ctx, domain.ReadyQuery{Labels: []string{"backend"}, AnyLabels: []string{"urgent", "docs"}}))).To(Equal([]int64{1}))
+		})
+
 		It("by minimum priority", func(ctx SpecContext) {
 			Expect(numbers(g.ready(ctx, domain.ReadyQuery{MinPriority: "p2"}))).To(Equal([]int64{1, 2}))
 			Expect(numbers(g.ready(ctx, domain.ReadyQuery{MinPriority: "p0"}))).To(Equal([]int64{1}))
