@@ -1,0 +1,18 @@
+# One paragraph is one line: renderers soft-wrap prose to the reader's
+# viewport, so a hard-wrapped paragraph renders as ragged short lines and
+# makes every edit to it a noisy diff. MD013 with an unlimited length and
+# normalizing reflow reports a paragraph split across lines, and
+# `rumdl check --fix` (hk fix) joins it. strict also covers paragraphs and
+# list items that begin with a link, which MD013 otherwise exempts.
+#
+# Only this rule is enabled: the other rules would restyle the docs.
+
+[global]
+enable = ["MD013"]
+exclude = ["archive/**"]
+
+[MD013]
+line-length = 0
+reflow = true
+reflow-mode = "normalize"
+strict = true
