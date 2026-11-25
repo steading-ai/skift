@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -139,6 +140,25 @@ SELECT count(*) FROM nodes WHERE org_id = $1;
 		By("then the build fails saying generated code is stale")
 		Expect(session).NotTo(gexec.Exit(0))
 		Expect(string(session.Out.Contents())).To(ContainSubstring("generated code is stale relative to internal/store/queries/"))
+	})
+
+	It("A hard-wrapped paragraph fails lint", func() {
+		By("given a copy of the tree where a paragraph of docs/vision.md is split across two lines")
+		dir := checkout()
+		path := filepath.Join(dir, "docs/vision.md")
+		vision, err := os.ReadFile(path)
+		Expect(err).NotTo(HaveOccurred())
+		const sentence = "Project management systems were built for humans and treat agents as, at best, a bot account. "
+		Expect(string(vision)).To(ContainSubstring(sentence))
+		wrapped := strings.Replace(string(vision), sentence, strings.TrimSuffix(sentence, " ")+"\n", 1)
+		Expect(os.WriteFile(path, []byte(wrapped), 0o644)).To(Succeed())
+
+		By(`when I run "make lint"`)
+		session := makeLint(dir)
+
+		By("then it fails naming docs/vision.md")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents())).To(ContainSubstring("docs/vision.md"))
 	})
 
 	It("Specs stay in Ginkgo", func() {

@@ -13,6 +13,10 @@ local linters = new Mapping<String, Step> {
     ["go-vet"] = Builtins.go_vet
     ["buf-lint"] = Builtins.buf_lint
     ["jactionlint"] = Builtins.jactionlint
+    // .rumdl.toml holds the rule; archive/ is unmaintained by design.
+    ["rumdl"] = (Builtins.rumdl) {
+        exclude = "archive/**"
+    }
     ["opa"] {
         glob = "policy/**/*.rego"
         check = new CommandSpec {
