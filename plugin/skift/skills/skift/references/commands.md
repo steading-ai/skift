@@ -20,8 +20,6 @@ complete/release when done. HTTP EOF, disconnect and service shutdown do not
 release committed claims. Successful holder writes may also renew under the
 existing domain rules; reads do not. CLI commands also require explicit lease
 care. Expired or stale fencing tokens cannot write after reclaim.
-`hold` and `focus` are there for a person working through the session; an agent
-principal is refused.
 
 Responses are sized for a context window. A write returns references, status
 and readiness flags for what it touched, an alias map, and an event count —
@@ -40,7 +38,7 @@ is a free string, conventionally `task`, `bug`, `spike`, or `chore`.
 
 ```sh
 skift ready                          # what can be worked now, most urgent then oldest; claims nothing
-skift ready --assignee-kind user     # what is waiting on a human
+skift ready --assignee-kind user     # the gates
 skift ready --kind bug --min-priority p1 --label backend
 skift node show '#7'                 # one node: body, edges, result, lease, artifacts, comments
 skift inputs '#7'                    # the results of the predecessors #7 depends on
@@ -208,9 +206,7 @@ blocks whatever depends on it. Unlike archiving a project, a hold leaves
 everything writable — parked work can still be planned, decomposed, and
 commented on.
 
-Only a user principal may hold or release. An agent in its own trust zone is
-refused and told to comment instead. Include the conditions for lifting the
-hold in `--reason`.
+Include the conditions for lifting the hold in `--reason`.
 
 ```sh
 skift hold '#12' --reason 'resume when the roadmap is approved'
@@ -279,9 +275,8 @@ the work you file as you file it. Estimating again adds a record; the node's
 current estimate is the most recent, and `skift node show` carries it beside the
 rollup of what the node and everything under it has actually cost.
 
-Reporting what an attempt *did* cost is the orchestrator's — the process
-running you counts your tokens, and the service refuses a report from an agent
-principal. There is no MCP tool for it.
+Reporting what an attempt *did* cost is the orchestrator's job, since the
+process running you counts your tokens. There is no MCP tool for it.
 
 ## Identity
 
@@ -289,6 +284,10 @@ You are identified by the transport, never by anything you send: on a unix
 socket by the uid on the other end, over a tailnet by the node's identity. No
 request field sets the principal, so provenance cannot be forged and events
 record who actually called.
+
+What a principal may do is the service's policy, not something to predict from
+here. Make the call; a refusal is an error naming the rule and what to do
+instead.
 
 A caller whose identity maps to no principal is rejected as unauthenticated. If
 every call fails that way, the caller has no principal — an administrative fix

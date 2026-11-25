@@ -21,9 +21,8 @@ here:
   summary of what the claim was about to hand over whole.
 - **A listing is stale as it prints.** Claims lock `SKIP LOCKED`, so the node an
   agent is reading about is the node a concurrent claimant just took.
-- **The ready set contains gates.** A claim that does not filter for agent work
-  can land on work only a person may perform, and policy refuses it outright
-  rather than moving on to the next candidate.
+- **The ready set contains gates.** A claim that does not filter by
+  `assignee_kind` can land on work filed for a person rather than an agent.
 
 So the body opens on `claim` → `inputs` → work → `complete`, says plainly that
 nothing precedes the claim, and demotes reading the graph to what it is

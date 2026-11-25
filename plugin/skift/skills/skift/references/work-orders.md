@@ -73,10 +73,9 @@ everything is `p1` orders by age, which is the same as having no priority.
 
 ## Gates
 
-A node with `assignee_kind: user` is a **gate**: only a human completing it
-satisfies it, and dropping it does not unblock what it blocks. That asymmetry
-is deliberate — it is how an agent stops and asks for a decision without being
-able to talk itself past the answer.
+A node with `assignee_kind: user` is a **gate**: only a user principal
+completing it satisfies it, and dropping it does not unblock what it blocks.
+That asymmetry is deliberate — it is how work stops for a person's decision.
 
 File a gate when the decision is genuinely a human's: an irreversible act, a
 tradeoff with no technically correct answer, a policy. Then `release` your own
