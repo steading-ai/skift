@@ -97,9 +97,9 @@ func runBootstrap(cmd *cobra.Command, opts bootstrapOptions, params admin.Bootst
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	db, err := admin.Open(ctx, opts.databaseURL)
+	db, err := admin.OpenCurrent(ctx, opts.databaseURL)
 	if err != nil {
-		return fmt.Errorf("skift admin bootstrap: database url: %w", err)
+		return fmt.Errorf("skift admin bootstrap: %w", err)
 	}
 	defer db.Close()
 

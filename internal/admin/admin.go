@@ -42,10 +42,28 @@ func InspectSchema(ctx context.Context, databaseURL string) (SchemaStatus, error
 	return migrations.Inspect(ctx, databaseURL)
 }
 
-// Open connects to the database at databaseURL, for a composition root
-// that runs the domain and does not name pgx. The caller closes what it
-// returns; until then the pool connects lazily, and its Ping reports a
-// database that is down.
+// Open connects to the database at databaseURL without checking its
+// schema, for serve: it opens before the database may answer and checks
+// the schema itself once it does. The caller closes what it returns; until
+// then the pool connects lazily, and its Ping reports a database that is
+// down. Every other command uses [OpenCurrent], and lint forbids calling
+// Open anywhere but serve.
 func Open(ctx context.Context, databaseURL string) (*store.Store, error) {
+	return store.Open(ctx, databaseURL)
+}
+
+// OpenCurrent connects to the database at databaseURL for a command that
+// acts on it once and exits, such as bootstrap or the jobs commands. It
+// reads the schema version first and refuses, before anything is read or
+// written, a database migrated by a newer skift or not yet migrated to
+// this build's schema. See docs/adrs/015-upgrades-and-migrations.md.
+func OpenCurrent(ctx context.Context, databaseURL string) (*store.Store, error) {
+	status, err := migrations.Inspect(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := status.Check(); err != nil {
+		return nil, err
+	}
 	return store.Open(ctx, databaseURL)
 }

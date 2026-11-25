@@ -292,6 +292,33 @@ func (e *SchemaAheadError) Error() string {
 	return fmt.Sprintf("schema %d is newer than this build's %d: restore the pre-upgrade backup or install a newer skift", e.Current, e.Latest)
 }
 
+// Check is nil when the database is at exactly this build's schema. A
+// database migrated by a newer skift is a [*SchemaAheadError], and one
+// not yet migrated to this build's schema is a [*SchemaBehindError]. It is
+// the check for a command that acts on the database without migrating it.
+func (s Status) Check() error {
+	if err := s.NotAhead(); err != nil {
+		return err
+	}
+	if s.Pending() {
+		return &SchemaBehindError{Current: s.Current, Latest: s.Latest}
+	}
+	return nil
+}
+
+// SchemaBehindError refuses a database that has not been migrated to this
+// build's schema, for a command that would act on it without migrating.
+type SchemaBehindError struct {
+	// Current is the database's schema version.
+	Current int64
+	// Latest is the newest migration this binary carries.
+	Latest int64
+}
+
+func (e *SchemaBehindError) Error() string {
+	return fmt.Sprintf("schema %d is behind this build's %d: run skift admin migrate", e.Current, e.Latest)
+}
+
 // Inspect reads the schema version of the database at databaseURL without
 // changing it. A database that does not answer fails with [ErrUnreachable].
 func Inspect(ctx context.Context, databaseURL string) (Status, error) {

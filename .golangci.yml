@@ -92,6 +92,13 @@ linters:
         - pattern: ^store\.(Raw|Store\.Pool)$
           pkg: ^github\.com/steading-ai/skift/internal/store$
           msg: for spec fixtures only; SQL that ships lives in the store (docs/adrs/013-postgresql-only-through-the-store.md)
+        # admin.Open checks no schema, because serve opens before the
+        # database may answer and checks once it does. A command that acts
+        # once and exits must refuse a schema that is ahead or behind
+        # first. See docs/adrs/015-upgrades-and-migrations.md.
+        - pattern: ^admin\.Open$
+          pkg: ^github\.com/steading-ai/skift/internal/admin$
+          msg: opens without checking the schema, for serve only; a one-shot command uses admin.OpenCurrent (docs/adrs/015-upgrades-and-migrations.md)
     # Ginkgo and Gomega are written with dot imports by design.
     revive:
       rules:
@@ -109,6 +116,10 @@ linters:
         linters:
           - forbidigo
         text: for spec fixtures only
+      - path: internal/cli/serve\.go$
+        linters:
+          - forbidigo
+        text: for serve only
 
 issues:
   # Report every rule that fires on a line. Hiding one violation behind
