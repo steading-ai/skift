@@ -234,16 +234,12 @@ func resolveParent(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery)
 	return resolved.ID, nil
 }
 
-// filterClauses renders q's filters other than Projects, which the two
-// callers apply differently: [ReadyQuery.sql] as a fixed restriction, and
-// [eligibleProjects] as a candidate scope to narrow to a project rather
-// than an already-chosen one. $1 is always the organization. parentID is
-// q.Parent already resolved to an id, since resolution needs a
-// transaction and this method does not take one.
-func (q ReadyQuery) filterClauses(orgID, parentID string) (string, []any, error) {
+// matchClauses appends the non-project filters to an existing predicate on
+// nodes n. Ready applies them to eligible nodes; the hold summary applies
+// them to the affected work without filtering away its blockers.
+func (q ReadyQuery) matchClauses(base, parentID string, args []any) (string, []any, error) {
 	var b strings.Builder
-	b.WriteString(readyWhere)
-	args := []any{orgID}
+	b.WriteString(base)
 	// where appends a clause whose single %d is the position of value.
 	where := func(clause string, value any) {
 		args = append(args, value)
@@ -289,7 +285,7 @@ func (q ReadyQuery) filterClauses(orgID, parentID string) (string, []any, error)
 // The rendered statement selects `n.*` from `nodes n`, so a caller that
 // needs to lock what it reads may append `FOR UPDATE OF n SKIP LOCKED`.
 func (q ReadyQuery) sql(orgID string, ordered bool, parentID string) (string, []any, error) {
-	where, args, err := q.filterClauses(orgID, parentID)
+	where, args, err := q.matchClauses(readyWhere, parentID, []any{orgID})
 	if err != nil {
 		return "", nil, err
 	}
@@ -326,7 +322,7 @@ func (q ReadyQuery) sql(orgID string, ordered bool, parentID string) (string, []
 // query against the project or projects the rotation picks; it never
 // itself locks a row, so it never conflicts with `FOR UPDATE`.
 func eligibleProjects(ctx context.Context, tx store.Tx, orgID string, q ReadyQuery, parentID string) ([]string, error) {
-	where, args, err := q.filterClauses(orgID, parentID)
+	where, args, err := q.matchClauses(readyWhere, parentID, []any{orgID})
 	if err != nil {
 		return nil, err
 	}

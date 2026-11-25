@@ -46,9 +46,9 @@ and a claim landing on one is refused whole — `an agent may not claim gate
 01J…` — rather than passing over it for the next candidate. The filter keeps a
 claim from ever selecting one.
 
-An empty answer means nothing matches right now, which is when reading the
-graph earns its keep: `ready` reports `held_count` beside an empty set, and
-`explain` names who parked what.
+If nothing is ready, `hold_blockers` names the holds affecting matching work,
+why it is parked, and which downstream tickets are waiting. Use `explain`
+for the full reasons a particular ticket is not ready.
 
 Then **`inputs`**, the step that is easy to skip and expensive to skip. It
 returns the results of the predecessors that satisfy the node — the handoff
@@ -140,11 +140,10 @@ work at all.
   The server refuses the patch and names the real count when the subtree is
   larger, so read the graph before choosing the number. The response lists every
   reference dropped, which is what a `reopen_node` undoing it works from.
-- **An empty `ready` is not a finished project.** The response carries
-  `held_count`: work someone parked is absent, not done. `explain` on any node
-  says who parked it, when, and why, and names every hold in the way — a node
-  comes back only when all of them are released. Releasing a node's own hold
-  does not touch a hold on something containing it.
+- **An empty `ready` is not a finished project.** Work can be held, blocked,
+  leased, or excluded by a filter. `explain` on a node says who parked it,
+  when, and why. Releasing a node's own hold does not release a hold on
+  something containing it.
 - **Only a user may hold or release.** Parking work decides what everyone works
   on next, and an agent that could park could hide work from the people and
   agents around it. If you think something should be parked, comment where a

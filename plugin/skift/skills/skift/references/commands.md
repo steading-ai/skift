@@ -209,12 +209,13 @@ everything writable — parked work can still be planned, decomposed, and
 commented on.
 
 Only a user principal may hold or release. An agent in its own trust zone is
-refused and told to comment instead.
+refused and told to comment instead. Include the conditions for lifting the
+hold in `--reason`.
 
 ```sh
-skift hold '#12' --reason 'not this quarter'
+skift hold '#12' --reason 'resume when the roadmap is approved'
 skift unhold '#12' --reason 'back on the roadmap'
-skift project hold platform --reason 'paused while the spike runs'
+skift project hold platform --reason 'resume when the spike lands'
 skift project unhold platform --reason 'spike landed'
 ```
 
@@ -241,8 +242,10 @@ sweep already there in the same transaction, so `--clear` never needs to be
 told which sweep it means. A sweep parks only what is not parked already and
 releases only what it parked, so a hold placed on its own outlives both.
 
-An empty `skift ready` says how many open nodes are held, so a parked project is
-never mistaken for a finished one.
+On an empty first page, `skift ready` names holds affecting matching work and
+summarizes which tickets are waiting. A missing hold summary does not mean the
+project is finished: other blockers or the request's filters can still leave
+the queue empty.
 
 ## References and settings
 

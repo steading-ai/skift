@@ -656,8 +656,8 @@ type Hold struct {
 	At *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=at,proto3" json:"at,omitempty"`
 	// Output only. Id of the user principal that applied it.
 	By string `protobuf:"bytes,2,opt,name=by,proto3" json:"by,omitempty"`
-	// Why the work is parked. Always set: a hold nobody can explain is one
-	// nobody dares release.
+	// Why the work is parked, including the conditions for lifting the hold.
+	// Always set.
 	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	// Output only. The focus sweep that placed this hold, if a sweep did.
 	// Empty for a hold placed on its own, which is what keeps a sweep from

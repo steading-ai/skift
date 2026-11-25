@@ -485,6 +485,34 @@ var _ = Describe("End to end", Label(testsupport.DBLabel), func() {
 		})
 	})
 
+	Describe("Scenario: A held predecessor explains an empty ready queue", func() {
+		It("names the hold and the work waiting for it in the CLI and MCP", func(ctx SpecContext) {
+			d := deploy(ctx)
+			d.laptop.createProject("Platform")
+			d.laptop.patch(request(platform,
+				createOp("wait", "Wait for readings"),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "review", Title: "Review", BlockedBy: []string{"wait"}}),
+				createOpWith(&skiftv1.CreateNodeOp{Alias: "ship", Title: "Ship", BlockedBy: []string{"review"}}),
+			))
+			d.laptop.call(&skiftv1.ApplyPatchResponse{}, "hold", "platform#1", "--reason", "need more readings")
+
+			stdout, stderr, code := d.host.run("", "-o", "text", "ready")
+			Expect(code).To(BeZero(), stderr)
+			Expect(stdout).To(ContainSubstring("platform#1 held: need more readings"))
+			Expect(stdout).To(ContainSubstring("downstream (2): platform#2, platform#3"))
+
+			session := d.laptop.mcp(platform)
+			defer session.close()
+			answer := &skiftv1.ReadyResponse{}
+			session.call("ready", map[string]any{}).into(answer)
+			Expect(answer.GetNodes()).To(BeEmpty())
+			Expect(answer.GetHoldBlockers()).To(HaveLen(1))
+			Expect(answer.GetHoldBlockers()[0].GetReference()).To(Equal("platform#1"))
+			Expect(answer.GetHoldBlockers()[0].GetReason()).To(Equal("need more readings"))
+			Expect(answer.GetHoldBlockers()[0].GetDownstreamReferences()).To(Equal([]string{"platform#2", "platform#3"}))
+		})
+	})
+
 	Describe("Scenario: Search finds work across projects", func() {
 		It("Search finds work across projects", func(ctx SpecContext) {
 			d := deploy(ctx)

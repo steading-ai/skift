@@ -400,8 +400,9 @@ open children, most urgent first and then oldest. Nothing is claimed. Use
 it to see what could be worked on next; use claim to take one. Summaries,
 no bodies.
 
-An empty answer carries held_count: held work is parked, not done, and
-explain says who parked it.
+On an empty first page, hold_blockers names the holds affecting matching
+work, why it was parked, and a sample of downstream references with a count.
+held_count counts open held nodes across the selected projects.
 
 ` + priorityIdiom + `
 It is the first sort key here, and the only thing skift does with it.`,
@@ -690,7 +691,7 @@ it still blocks what depends on it.
 ` + holdIdiom,
 			InputSchema: objectSchema(map[string]any{
 				"node":       stringProp(`The node, as "#7", "slug#7", or "org/slug#7".`),
-				"reason":     stringProp("Why the work is parked, or why it is coming back. Required: a hold nobody can explain is one nobody dares release."),
+				"reason":     stringProp("Why the work is parked, including the conditions for lifting the hold. When releasing, explain why the work is coming back. Required."),
 				"release":    boolProp("Release the node's hold instead of placing one."),
 				"request_id": requestIDProp(),
 			}, "node", "reason"),

@@ -40,7 +40,7 @@ func (w *WorkService) Ready(ctx context.Context, req *skiftv1.ReadyRequest) (*sk
 		return nil, err
 	}
 	size := pageSize(req.GetPageSize())
-	nodes, held, err := w.svc.Ready(ctx, orgID, actor, f.GetProjects(), domain.ReadyQuery{
+	out, err := w.svc.Ready(ctx, orgID, actor, f.GetProjects(), domain.ReadyQuery{
 		Kinds:        f.GetKinds(),
 		AssigneeKind: assigneeKinds.str(f.GetAssigneeKind()),
 		Labels:       f.GetLabels(),
@@ -53,11 +53,19 @@ func (w *WorkService) Ready(ctx context.Context, req *skiftv1.ReadyRequest) (*sk
 	if err != nil {
 		return nil, connectError(err)
 	}
-	return &skiftv1.ReadyResponse{
-		Nodes:         toNodes(nodes, viewOr(req.GetView(), skiftv1.View_VIEW_SUMMARY)),
-		NextPageToken: nextPageToken(offset, size, len(nodes)),
-		HeldCount:     int32(held),
-	}, nil
+	response := &skiftv1.ReadyResponse{
+		Nodes:            toNodes(out.Nodes, viewOr(req.GetView(), skiftv1.View_VIEW_SUMMARY)),
+		NextPageToken:    nextPageToken(offset, size, len(out.Nodes)),
+		HeldCount:        int32(out.HeldCount),
+		HoldBlockerCount: out.HoldBlockerCount,
+	}
+	for _, h := range out.HoldBlockers {
+		response.HoldBlockers = append(response.HoldBlockers, &skiftv1.ReadyHoldBlocker{
+			Reference: h.Reference, Reason: h.Reason,
+			DownstreamCount: h.DownstreamCount, DownstreamReferences: h.DownstreamReferences,
+		})
+	}
+	return response, nil
 }
 
 // ClaimNext implements skiftv1connect.WorkServiceHandler. A waiting claim

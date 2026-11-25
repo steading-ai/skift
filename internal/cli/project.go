@@ -223,7 +223,7 @@ changes. Unlike archiving, the project stays writable, so parked work can
 still be planned, decomposed, and commented on.
 
 The response says how many open nodes left the ready set.`,
-		"why the work is parked; required", reasonRequired,
+		"why the work is parked, including the conditions for lifting the hold; required", reasonRequired,
 		func(cmd *cobra.Command, c *client.Client, req *skiftv1.HoldProjectRequest) error {
 			return send(a, cmd, func() (*skiftv1.HoldProjectResponse, error) {
 				return unwrap(c.Graph.HoldProject(cmd.Context(), req))

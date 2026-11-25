@@ -198,6 +198,14 @@ func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q Searc
 	return hits, err
 }
 
+// ReadyPage contains the ready nodes and, on an empty first page, hold diagnostics.
+type ReadyPage struct {
+	Nodes            []NodeState
+	HeldCount        int
+	HoldBlockers     []ReadyHoldBlocker
+	HoldBlockerCount int64
+}
+
 // Ready returns one page of the ready set matching q, interleaved one
 // node per eligible project per pass, in round-robin turn order starting
 // from whichever project among projects is actor's next turn in the
@@ -206,9 +214,8 @@ func (g *Service) Search(ctx context.Context, orgID string, actor Actor, q Searc
 // projects empty means every project of the organization. Reading never
 // advances the rotation; only a successful claim does. See [Ready] and
 // the Priority section of docs/domain-model.md.
-func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects []string, q ReadyQuery) ([]NodeState, int, error) {
-	var out []NodeState
-	var held int
+func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects []string, q ReadyQuery) (ReadyPage, error) {
+	var out ReadyPage
 	err := g.s.WithTx(ctx, func(ctx context.Context, tx store.Tx) error {
 		scope, err := resolveScope(ctx, tx, orgID, projects)
 		if err != nil {
@@ -242,18 +249,20 @@ func (g *Service) Ready(ctx context.Context, orgID string, actor Actor, projects
 				return err
 			}
 		}
-		// An empty first page owes its caller the difference between
-		// finished and parked, and nothing else has to pay for the
-		// count.
+		// Only an empty first page needs hold diagnostics.
 		if len(nodes) == 0 && q.Offset == 0 {
-			if held, err = heldAcross(ctx, tx, orgID, scope); err != nil {
+			if out.HeldCount, err = heldAcross(ctx, tx, orgID, scope); err != nil {
+				return err
+			}
+			out.HoldBlockers, out.HoldBlockerCount, err = readyHoldBlockers(ctx, tx, orgID, q, parentID)
+			if err != nil {
 				return err
 			}
 		}
-		out, err = annotate(ctx, tx, orgID, nodes)
+		out.Nodes, err = annotate(ctx, tx, orgID, nodes)
 		return err
 	})
-	return out, held, err
+	return out, err
 }
 
 // readyAcross returns q's page, interleaved one node per project per pass

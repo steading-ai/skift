@@ -1601,8 +1601,8 @@ type HoldNodeOp struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Node reference of the node to park.
 	Node string `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
-	// Why the work is parked. Required: a hold nobody can explain is one
-	// nobody dares release.
+	// Why the work is parked, including the conditions for lifting the hold.
+	// Required.
 	Reason        string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3883,7 +3883,8 @@ type HoldProjectRequest struct {
 	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	// The project, by slug, org/slug, or id.
 	Project string `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
-	// Why the work is parked. Required.
+	// Why the work is parked, including the conditions for lifting the hold.
+	// Required.
 	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4456,12 +4457,16 @@ type ReadyResponse struct {
 	Nodes []*Node `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
 	// Token for the next page. Empty when this is the last.
 	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	// How many open nodes matching the same filters are held rather than
-	// ready. Counted only when the first page is empty, so that an empty
-	// answer says whether the work is finished or parked. Zero otherwise.
-	HeldCount     int32 `protobuf:"varint,3,opt,name=held_count,json=heldCount,proto3" json:"held_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Open nodes held across the selected projects, regardless of other
+	// filters. Counted only when the first page is empty. Zero otherwise.
+	HeldCount int32 `protobuf:"varint,3,opt,name=held_count,json=heldCount,proto3" json:"held_count,omitempty"`
+	// A bounded summary of holds affecting matching open work, only when
+	// the first page is empty. Each hold appears at most once.
+	HoldBlockers []*ReadyHoldBlocker `protobuf:"bytes,4,rep,name=hold_blockers,json=holdBlockers,proto3" json:"hold_blockers,omitempty"`
+	// Number of holds affecting matching open work, including omitted holds.
+	HoldBlockerCount int64 `protobuf:"varint,5,opt,name=hold_blocker_count,json=holdBlockerCount,proto3" json:"hold_blocker_count,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ReadyResponse) Reset() {
@@ -4515,6 +4520,94 @@ func (x *ReadyResponse) GetHeldCount() int32 {
 	return 0
 }
 
+func (x *ReadyResponse) GetHoldBlockers() []*ReadyHoldBlocker {
+	if x != nil {
+		return x.HoldBlockers
+	}
+	return nil
+}
+
+func (x *ReadyResponse) GetHoldBlockerCount() int64 {
+	if x != nil {
+		return x.HoldBlockerCount
+	}
+	return 0
+}
+
+// ReadyHoldBlocker identifies a stored hold and its effect on the queue.
+type ReadyHoldBlocker struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The held node (project#number) or held project (project slug).
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// Why the hold was placed.
+	Reason string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Number of distinct matching open nodes parked or blocked by the hold,
+	// not counting the held node itself.
+	DownstreamCount int64 `protobuf:"varint,3,opt,name=downstream_count,json=downstreamCount,proto3" json:"downstream_count,omitempty"`
+	// A bounded sample of the downstream nodes, as project#number references.
+	DownstreamReferences []string `protobuf:"bytes,4,rep,name=downstream_references,json=downstreamReferences,proto3" json:"downstream_references,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ReadyHoldBlocker) Reset() {
+	*x = ReadyHoldBlocker{}
+	mi := &file_skift_v1_service_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadyHoldBlocker) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadyHoldBlocker) ProtoMessage() {}
+
+func (x *ReadyHoldBlocker) ProtoReflect() protoreflect.Message {
+	mi := &file_skift_v1_service_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadyHoldBlocker.ProtoReflect.Descriptor instead.
+func (*ReadyHoldBlocker) Descriptor() ([]byte, []int) {
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *ReadyHoldBlocker) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *ReadyHoldBlocker) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *ReadyHoldBlocker) GetDownstreamCount() int64 {
+	if x != nil {
+		return x.DownstreamCount
+	}
+	return 0
+}
+
+func (x *ReadyHoldBlocker) GetDownstreamReferences() []string {
+	if x != nil {
+		return x.DownstreamReferences
+	}
+	return nil
+}
+
 // ClaimNextRequest asks for the next ready node matching a filter,
 // claimed. Selecting across projects is turn-based, not the orchestrator's:
 // an empty filter.projects draws round-robin from every project the caller
@@ -4548,7 +4641,7 @@ type ClaimNextRequest struct {
 
 func (x *ClaimNextRequest) Reset() {
 	*x = ClaimNextRequest{}
-	mi := &file_skift_v1_service_proto_msgTypes[62]
+	mi := &file_skift_v1_service_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4560,7 +4653,7 @@ func (x *ClaimNextRequest) String() string {
 func (*ClaimNextRequest) ProtoMessage() {}
 
 func (x *ClaimNextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[62]
+	mi := &file_skift_v1_service_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4573,7 +4666,7 @@ func (x *ClaimNextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimNextRequest.ProtoReflect.Descriptor instead.
 func (*ClaimNextRequest) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{62}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ClaimNextRequest) GetRequestId() string {
@@ -4649,7 +4742,7 @@ type ClaimNextResponse struct {
 
 func (x *ClaimNextResponse) Reset() {
 	*x = ClaimNextResponse{}
-	mi := &file_skift_v1_service_proto_msgTypes[63]
+	mi := &file_skift_v1_service_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4661,7 +4754,7 @@ func (x *ClaimNextResponse) String() string {
 func (*ClaimNextResponse) ProtoMessage() {}
 
 func (x *ClaimNextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[63]
+	mi := &file_skift_v1_service_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4674,7 +4767,7 @@ func (x *ClaimNextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimNextResponse.ProtoReflect.Descriptor instead.
 func (*ClaimNextResponse) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{63}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *ClaimNextResponse) GetNode() *Node {
@@ -4728,7 +4821,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_skift_v1_service_proto_msgTypes[64]
+	mi := &file_skift_v1_service_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4740,7 +4833,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[64]
+	mi := &file_skift_v1_service_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4753,7 +4846,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{64}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *HeartbeatRequest) GetRequestId() string {
@@ -4788,7 +4881,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_skift_v1_service_proto_msgTypes[65]
+	mi := &file_skift_v1_service_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4800,7 +4893,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[65]
+	mi := &file_skift_v1_service_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4813,7 +4906,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{65}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *HeartbeatResponse) GetLease() *Lease {
@@ -4841,7 +4934,7 @@ type ReleaseRequest struct {
 
 func (x *ReleaseRequest) Reset() {
 	*x = ReleaseRequest{}
-	mi := &file_skift_v1_service_proto_msgTypes[66]
+	mi := &file_skift_v1_service_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4853,7 +4946,7 @@ func (x *ReleaseRequest) String() string {
 func (*ReleaseRequest) ProtoMessage() {}
 
 func (x *ReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[66]
+	mi := &file_skift_v1_service_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4866,7 +4959,7 @@ func (x *ReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{66}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ReleaseRequest) GetRequestId() string {
@@ -4908,7 +5001,7 @@ type ReleaseResponse struct {
 
 func (x *ReleaseResponse) Reset() {
 	*x = ReleaseResponse{}
-	mi := &file_skift_v1_service_proto_msgTypes[67]
+	mi := &file_skift_v1_service_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4920,7 +5013,7 @@ func (x *ReleaseResponse) String() string {
 func (*ReleaseResponse) ProtoMessage() {}
 
 func (x *ReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[67]
+	mi := &file_skift_v1_service_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4933,7 +5026,7 @@ func (x *ReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{67}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ReleaseResponse) GetLease() *Lease {
@@ -4978,7 +5071,7 @@ type ReportUsageRequest struct {
 
 func (x *ReportUsageRequest) Reset() {
 	*x = ReportUsageRequest{}
-	mi := &file_skift_v1_service_proto_msgTypes[68]
+	mi := &file_skift_v1_service_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4990,7 +5083,7 @@ func (x *ReportUsageRequest) String() string {
 func (*ReportUsageRequest) ProtoMessage() {}
 
 func (x *ReportUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[68]
+	mi := &file_skift_v1_service_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5003,7 +5096,7 @@ func (x *ReportUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportUsageRequest.ProtoReflect.Descriptor instead.
 func (*ReportUsageRequest) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{68}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ReportUsageRequest) GetRequestId() string {
@@ -5080,7 +5173,7 @@ type ReportUsageResponse struct {
 
 func (x *ReportUsageResponse) Reset() {
 	*x = ReportUsageResponse{}
-	mi := &file_skift_v1_service_proto_msgTypes[69]
+	mi := &file_skift_v1_service_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5092,7 +5185,7 @@ func (x *ReportUsageResponse) String() string {
 func (*ReportUsageResponse) ProtoMessage() {}
 
 func (x *ReportUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[69]
+	mi := &file_skift_v1_service_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5105,7 +5198,7 @@ func (x *ReportUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportUsageResponse.ProtoReflect.Descriptor instead.
 func (*ReportUsageResponse) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{69}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *ReportUsageResponse) GetUsage() *Usage {
@@ -5134,7 +5227,7 @@ type WatchEventsRequest struct {
 
 func (x *WatchEventsRequest) Reset() {
 	*x = WatchEventsRequest{}
-	mi := &file_skift_v1_service_proto_msgTypes[70]
+	mi := &file_skift_v1_service_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5146,7 +5239,7 @@ func (x *WatchEventsRequest) String() string {
 func (*WatchEventsRequest) ProtoMessage() {}
 
 func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[70]
+	mi := &file_skift_v1_service_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5159,7 +5252,7 @@ func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchEventsRequest) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{70}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *WatchEventsRequest) GetCursor() string {
@@ -5202,7 +5295,7 @@ type WatchEventsResponse struct {
 
 func (x *WatchEventsResponse) Reset() {
 	*x = WatchEventsResponse{}
-	mi := &file_skift_v1_service_proto_msgTypes[71]
+	mi := &file_skift_v1_service_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5214,7 +5307,7 @@ func (x *WatchEventsResponse) String() string {
 func (*WatchEventsResponse) ProtoMessage() {}
 
 func (x *WatchEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_skift_v1_service_proto_msgTypes[71]
+	mi := &file_skift_v1_service_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5227,7 +5320,7 @@ func (x *WatchEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsResponse.ProtoReflect.Descriptor instead.
 func (*WatchEventsResponse) Descriptor() ([]byte, []int) {
-	return file_skift_v1_service_proto_rawDescGZIP(), []int{71}
+	return file_skift_v1_service_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *WatchEventsResponse) GetEvent() *Event {
@@ -5556,12 +5649,19 @@ const file_skift_v1_service_proto_rawDesc = "" +
 	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\a \x01(\tR\tpageToken\x12\"\n" +
-	"\x04view\x18\b \x01(\x0e2\x0e.skift.v1.ViewR\x04viewJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06R\aprojectR\x04kindR\rassignee_kindR\x06labelsR\fmin_priority\"|\n" +
+	"\x04view\x18\b \x01(\x0e2\x0e.skift.v1.ViewR\x04viewJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06R\aprojectR\x04kindR\rassignee_kindR\x06labelsR\fmin_priority\"\xeb\x01\n" +
 	"\rReadyResponse\x12$\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x0e.skift.v1.NodeR\x05nodes\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1d\n" +
 	"\n" +
-	"held_count\x18\x03 \x01(\x05R\theldCount\"\xe5\x02\n" +
+	"held_count\x18\x03 \x01(\x05R\theldCount\x12?\n" +
+	"\rhold_blockers\x18\x04 \x03(\v2\x1a.skift.v1.ReadyHoldBlockerR\fholdBlockers\x12,\n" +
+	"\x12hold_blocker_count\x18\x05 \x01(\x03R\x10holdBlockerCount\"\xa8\x01\n" +
+	"\x10ReadyHoldBlocker\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12)\n" +
+	"\x10downstream_count\x18\x03 \x01(\x03R\x0fdownstreamCount\x123\n" +
+	"\x15downstream_references\x18\x04 \x03(\tR\x14downstreamReferences\"\xe5\x02\n" +
 	"\x10ClaimNextRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12,\n" +
@@ -5660,7 +5760,7 @@ func file_skift_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_skift_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_skift_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 73)
+var file_skift_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 74)
 var file_skift_v1_service_proto_goTypes = []any{
 	(View)(0),                      // 0: skift.v1.View
 	(*ApplyPatchRequest)(nil),      // 1: skift.v1.ApplyPatchRequest
@@ -5725,43 +5825,44 @@ var file_skift_v1_service_proto_goTypes = []any{
 	(*ClearFocusResponse)(nil),     // 60: skift.v1.ClearFocusResponse
 	(*ReadyRequest)(nil),           // 61: skift.v1.ReadyRequest
 	(*ReadyResponse)(nil),          // 62: skift.v1.ReadyResponse
-	(*ClaimNextRequest)(nil),       // 63: skift.v1.ClaimNextRequest
-	(*ClaimNextResponse)(nil),      // 64: skift.v1.ClaimNextResponse
-	(*HeartbeatRequest)(nil),       // 65: skift.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),      // 66: skift.v1.HeartbeatResponse
-	(*ReleaseRequest)(nil),         // 67: skift.v1.ReleaseRequest
-	(*ReleaseResponse)(nil),        // 68: skift.v1.ReleaseResponse
-	(*ReportUsageRequest)(nil),     // 69: skift.v1.ReportUsageRequest
-	(*ReportUsageResponse)(nil),    // 70: skift.v1.ReportUsageResponse
-	(*WatchEventsRequest)(nil),     // 71: skift.v1.WatchEventsRequest
-	(*WatchEventsResponse)(nil),    // 72: skift.v1.WatchEventsResponse
-	nil,                            // 73: skift.v1.ApplyPatchResponse.AliasesEntry
-	(*Node)(nil),                   // 74: skift.v1.Node
-	(*Event)(nil),                  // 75: skift.v1.Event
-	(Priority)(0),                  // 76: skift.v1.Priority
-	(AssigneeKind)(0),              // 77: skift.v1.AssigneeKind
-	(DropReason)(0),                // 78: skift.v1.DropReason
-	(*Result)(nil),                 // 79: skift.v1.Result
-	(EdgeKind)(0),                  // 80: skift.v1.EdgeKind
-	(*Artifact)(nil),               // 81: skift.v1.Artifact
-	(*Edge)(nil),                   // 82: skift.v1.Edge
-	(*Lease)(nil),                  // 83: skift.v1.Lease
-	(*Comment)(nil),                // 84: skift.v1.Comment
-	(*Usage)(nil),                  // 85: skift.v1.Usage
-	(*Rollup)(nil),                 // 86: skift.v1.Rollup
-	(*timestamppb.Timestamp)(nil),  // 87: google.protobuf.Timestamp
-	(Status)(0),                    // 88: skift.v1.Status
-	(*Project)(nil),                // 89: skift.v1.Project
-	(*Hold)(nil),                   // 90: skift.v1.Hold
-	(*durationpb.Duration)(nil),    // 91: google.protobuf.Duration
-	(ReleaseReason)(0),             // 92: skift.v1.ReleaseReason
+	(*ReadyHoldBlocker)(nil),       // 63: skift.v1.ReadyHoldBlocker
+	(*ClaimNextRequest)(nil),       // 64: skift.v1.ClaimNextRequest
+	(*ClaimNextResponse)(nil),      // 65: skift.v1.ClaimNextResponse
+	(*HeartbeatRequest)(nil),       // 66: skift.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),      // 67: skift.v1.HeartbeatResponse
+	(*ReleaseRequest)(nil),         // 68: skift.v1.ReleaseRequest
+	(*ReleaseResponse)(nil),        // 69: skift.v1.ReleaseResponse
+	(*ReportUsageRequest)(nil),     // 70: skift.v1.ReportUsageRequest
+	(*ReportUsageResponse)(nil),    // 71: skift.v1.ReportUsageResponse
+	(*WatchEventsRequest)(nil),     // 72: skift.v1.WatchEventsRequest
+	(*WatchEventsResponse)(nil),    // 73: skift.v1.WatchEventsResponse
+	nil,                            // 74: skift.v1.ApplyPatchResponse.AliasesEntry
+	(*Node)(nil),                   // 75: skift.v1.Node
+	(*Event)(nil),                  // 76: skift.v1.Event
+	(Priority)(0),                  // 77: skift.v1.Priority
+	(AssigneeKind)(0),              // 78: skift.v1.AssigneeKind
+	(DropReason)(0),                // 79: skift.v1.DropReason
+	(*Result)(nil),                 // 80: skift.v1.Result
+	(EdgeKind)(0),                  // 81: skift.v1.EdgeKind
+	(*Artifact)(nil),               // 82: skift.v1.Artifact
+	(*Edge)(nil),                   // 83: skift.v1.Edge
+	(*Lease)(nil),                  // 84: skift.v1.Lease
+	(*Comment)(nil),                // 85: skift.v1.Comment
+	(*Usage)(nil),                  // 86: skift.v1.Usage
+	(*Rollup)(nil),                 // 87: skift.v1.Rollup
+	(*timestamppb.Timestamp)(nil),  // 88: google.protobuf.Timestamp
+	(Status)(0),                    // 89: skift.v1.Status
+	(*Project)(nil),                // 90: skift.v1.Project
+	(*Hold)(nil),                   // 91: skift.v1.Hold
+	(*durationpb.Duration)(nil),    // 92: google.protobuf.Duration
+	(ReleaseReason)(0),             // 93: skift.v1.ReleaseReason
 }
 var file_skift_v1_service_proto_depIdxs = []int32{
 	3,   // 0: skift.v1.ApplyPatchRequest.ops:type_name -> skift.v1.PatchOp
 	0,   // 1: skift.v1.ApplyPatchRequest.view:type_name -> skift.v1.View
-	74,  // 2: skift.v1.ApplyPatchResponse.nodes:type_name -> skift.v1.Node
-	73,  // 3: skift.v1.ApplyPatchResponse.aliases:type_name -> skift.v1.ApplyPatchResponse.AliasesEntry
-	75,  // 4: skift.v1.ApplyPatchResponse.events:type_name -> skift.v1.Event
+	75,  // 2: skift.v1.ApplyPatchResponse.nodes:type_name -> skift.v1.Node
+	74,  // 3: skift.v1.ApplyPatchResponse.aliases:type_name -> skift.v1.ApplyPatchResponse.AliasesEntry
+	76,  // 4: skift.v1.ApplyPatchResponse.events:type_name -> skift.v1.Event
 	4,   // 5: skift.v1.PatchOp.create_node:type_name -> skift.v1.CreateNodeOp
 	5,   // 6: skift.v1.PatchOp.update_node:type_name -> skift.v1.UpdateNodeOp
 	7,   // 7: skift.v1.PatchOp.drop_node:type_name -> skift.v1.DropNodeOp
@@ -5776,40 +5877,40 @@ var file_skift_v1_service_proto_depIdxs = []int32{
 	17,  // 16: skift.v1.PatchOp.estimate_node:type_name -> skift.v1.EstimateNodeOp
 	18,  // 17: skift.v1.PatchOp.hold_node:type_name -> skift.v1.HoldNodeOp
 	19,  // 18: skift.v1.PatchOp.unhold_node:type_name -> skift.v1.UnholdNodeOp
-	76,  // 19: skift.v1.CreateNodeOp.priority:type_name -> skift.v1.Priority
-	77,  // 20: skift.v1.CreateNodeOp.assignee_kind:type_name -> skift.v1.AssigneeKind
-	76,  // 21: skift.v1.UpdateNodeOp.priority:type_name -> skift.v1.Priority
-	77,  // 22: skift.v1.UpdateNodeOp.assignee_kind:type_name -> skift.v1.AssigneeKind
+	77,  // 19: skift.v1.CreateNodeOp.priority:type_name -> skift.v1.Priority
+	78,  // 20: skift.v1.CreateNodeOp.assignee_kind:type_name -> skift.v1.AssigneeKind
+	77,  // 21: skift.v1.UpdateNodeOp.priority:type_name -> skift.v1.Priority
+	78,  // 22: skift.v1.UpdateNodeOp.assignee_kind:type_name -> skift.v1.AssigneeKind
 	6,   // 23: skift.v1.UpdateNodeOp.labels:type_name -> skift.v1.Labels
-	78,  // 24: skift.v1.DropNodeOp.reason:type_name -> skift.v1.DropReason
+	79,  // 24: skift.v1.DropNodeOp.reason:type_name -> skift.v1.DropReason
 	8,   // 25: skift.v1.DropNodeOp.cascade:type_name -> skift.v1.Cascade
-	79,  // 26: skift.v1.CompleteNodeOp.result:type_name -> skift.v1.Result
-	80,  // 27: skift.v1.AddEdgeOp.kind:type_name -> skift.v1.EdgeKind
-	80,  // 28: skift.v1.RemoveEdgeOp.kind:type_name -> skift.v1.EdgeKind
-	81,  // 29: skift.v1.AttachArtifactOp.artifact:type_name -> skift.v1.Artifact
+	80,  // 26: skift.v1.CompleteNodeOp.result:type_name -> skift.v1.Result
+	81,  // 27: skift.v1.AddEdgeOp.kind:type_name -> skift.v1.EdgeKind
+	81,  // 28: skift.v1.RemoveEdgeOp.kind:type_name -> skift.v1.EdgeKind
+	82,  // 29: skift.v1.AttachArtifactOp.artifact:type_name -> skift.v1.Artifact
 	0,   // 30: skift.v1.GetNodeRequest.view:type_name -> skift.v1.View
-	74,  // 31: skift.v1.GetNodeResponse.node:type_name -> skift.v1.Node
-	82,  // 32: skift.v1.GetNodeResponse.edges:type_name -> skift.v1.Edge
-	79,  // 33: skift.v1.GetNodeResponse.result:type_name -> skift.v1.Result
-	83,  // 34: skift.v1.GetNodeResponse.lease:type_name -> skift.v1.Lease
-	81,  // 35: skift.v1.GetNodeResponse.artifacts:type_name -> skift.v1.Artifact
-	84,  // 36: skift.v1.GetNodeResponse.comments:type_name -> skift.v1.Comment
+	75,  // 31: skift.v1.GetNodeResponse.node:type_name -> skift.v1.Node
+	83,  // 32: skift.v1.GetNodeResponse.edges:type_name -> skift.v1.Edge
+	80,  // 33: skift.v1.GetNodeResponse.result:type_name -> skift.v1.Result
+	84,  // 34: skift.v1.GetNodeResponse.lease:type_name -> skift.v1.Lease
+	82,  // 35: skift.v1.GetNodeResponse.artifacts:type_name -> skift.v1.Artifact
+	85,  // 36: skift.v1.GetNodeResponse.comments:type_name -> skift.v1.Comment
 	25,  // 37: skift.v1.GetNodeResponse.inputs:type_name -> skift.v1.InputsHint
-	85,  // 38: skift.v1.GetNodeResponse.estimate:type_name -> skift.v1.Usage
-	86,  // 39: skift.v1.GetNodeResponse.usage:type_name -> skift.v1.Rollup
+	86,  // 38: skift.v1.GetNodeResponse.estimate:type_name -> skift.v1.Usage
+	87,  // 39: skift.v1.GetNodeResponse.usage:type_name -> skift.v1.Rollup
 	26,  // 40: skift.v1.GetNodeResponse.comments_hint:type_name -> skift.v1.CommentsHint
 	0,   // 41: skift.v1.GetInputsRequest.view:type_name -> skift.v1.View
 	24,  // 42: skift.v1.GetInputsResponse.inputs:type_name -> skift.v1.Input
-	74,  // 43: skift.v1.Input.node:type_name -> skift.v1.Node
-	79,  // 44: skift.v1.Input.result:type_name -> skift.v1.Result
-	87,  // 45: skift.v1.CommentsHint.latest_at:type_name -> google.protobuf.Timestamp
-	77,  // 46: skift.v1.NodeFilter.assignee_kind:type_name -> skift.v1.AssigneeKind
-	76,  // 47: skift.v1.NodeFilter.min_priority:type_name -> skift.v1.Priority
-	88,  // 48: skift.v1.NodeFilter.status:type_name -> skift.v1.Status
+	75,  // 43: skift.v1.Input.node:type_name -> skift.v1.Node
+	80,  // 44: skift.v1.Input.result:type_name -> skift.v1.Result
+	88,  // 45: skift.v1.CommentsHint.latest_at:type_name -> google.protobuf.Timestamp
+	78,  // 46: skift.v1.NodeFilter.assignee_kind:type_name -> skift.v1.AssigneeKind
+	77,  // 47: skift.v1.NodeFilter.min_priority:type_name -> skift.v1.Priority
+	89,  // 48: skift.v1.NodeFilter.status:type_name -> skift.v1.Status
 	27,  // 49: skift.v1.ListNodesRequest.filter:type_name -> skift.v1.NodeFilter
 	0,   // 50: skift.v1.ListNodesRequest.view:type_name -> skift.v1.View
-	74,  // 51: skift.v1.ListNodesResponse.nodes:type_name -> skift.v1.Node
-	74,  // 52: skift.v1.ExplainResponse.node:type_name -> skift.v1.Node
+	75,  // 51: skift.v1.ListNodesResponse.nodes:type_name -> skift.v1.Node
+	75,  // 52: skift.v1.ExplainResponse.node:type_name -> skift.v1.Node
 	32,  // 53: skift.v1.ExplainResponse.reasons:type_name -> skift.v1.Reason
 	33,  // 54: skift.v1.Reason.not_open:type_name -> skift.v1.NotOpenReason
 	34,  // 55: skift.v1.Reason.blocked:type_name -> skift.v1.BlockedReason
@@ -5818,88 +5919,89 @@ var file_skift_v1_service_proto_depIdxs = []int32{
 	37,  // 58: skift.v1.Reason.archived:type_name -> skift.v1.ArchivedReason
 	38,  // 59: skift.v1.Reason.held:type_name -> skift.v1.HeldReason
 	39,  // 60: skift.v1.Reason.project_held:type_name -> skift.v1.ProjectHeldReason
-	88,  // 61: skift.v1.NotOpenReason.status:type_name -> skift.v1.Status
-	74,  // 62: skift.v1.BlockedReason.blocker:type_name -> skift.v1.Node
-	83,  // 63: skift.v1.LeasedReason.lease:type_name -> skift.v1.Lease
-	74,  // 64: skift.v1.OpenChildReason.child:type_name -> skift.v1.Node
-	89,  // 65: skift.v1.ArchivedReason.project:type_name -> skift.v1.Project
-	90,  // 66: skift.v1.HeldReason.hold:type_name -> skift.v1.Hold
-	89,  // 67: skift.v1.ProjectHeldReason.project:type_name -> skift.v1.Project
+	89,  // 61: skift.v1.NotOpenReason.status:type_name -> skift.v1.Status
+	75,  // 62: skift.v1.BlockedReason.blocker:type_name -> skift.v1.Node
+	84,  // 63: skift.v1.LeasedReason.lease:type_name -> skift.v1.Lease
+	75,  // 64: skift.v1.OpenChildReason.child:type_name -> skift.v1.Node
+	90,  // 65: skift.v1.ArchivedReason.project:type_name -> skift.v1.Project
+	91,  // 66: skift.v1.HeldReason.hold:type_name -> skift.v1.Hold
+	90,  // 67: skift.v1.ProjectHeldReason.project:type_name -> skift.v1.Project
 	0,   // 68: skift.v1.SearchRequest.view:type_name -> skift.v1.View
 	42,  // 69: skift.v1.SearchResponse.hits:type_name -> skift.v1.SearchHit
-	74,  // 70: skift.v1.SearchHit.node:type_name -> skift.v1.Node
-	76,  // 71: skift.v1.CreateProjectRequest.priority:type_name -> skift.v1.Priority
-	89,  // 72: skift.v1.CreateProjectResponse.project:type_name -> skift.v1.Project
-	89,  // 73: skift.v1.GetProjectResponse.project:type_name -> skift.v1.Project
-	89,  // 74: skift.v1.ListProjectsResponse.projects:type_name -> skift.v1.Project
-	89,  // 75: skift.v1.ArchiveProjectResponse.project:type_name -> skift.v1.Project
-	89,  // 76: skift.v1.UpdateProjectResponse.project:type_name -> skift.v1.Project
-	89,  // 77: skift.v1.HoldProjectResponse.project:type_name -> skift.v1.Project
-	89,  // 78: skift.v1.UnholdProjectResponse.project:type_name -> skift.v1.Project
+	75,  // 70: skift.v1.SearchHit.node:type_name -> skift.v1.Node
+	77,  // 71: skift.v1.CreateProjectRequest.priority:type_name -> skift.v1.Priority
+	90,  // 72: skift.v1.CreateProjectResponse.project:type_name -> skift.v1.Project
+	90,  // 73: skift.v1.GetProjectResponse.project:type_name -> skift.v1.Project
+	90,  // 74: skift.v1.ListProjectsResponse.projects:type_name -> skift.v1.Project
+	90,  // 75: skift.v1.ArchiveProjectResponse.project:type_name -> skift.v1.Project
+	90,  // 76: skift.v1.UpdateProjectResponse.project:type_name -> skift.v1.Project
+	90,  // 77: skift.v1.HoldProjectResponse.project:type_name -> skift.v1.Project
+	90,  // 78: skift.v1.UnholdProjectResponse.project:type_name -> skift.v1.Project
 	27,  // 79: skift.v1.ReadyRequest.filter:type_name -> skift.v1.NodeFilter
 	0,   // 80: skift.v1.ReadyRequest.view:type_name -> skift.v1.View
-	74,  // 81: skift.v1.ReadyResponse.nodes:type_name -> skift.v1.Node
-	27,  // 82: skift.v1.ClaimNextRequest.filter:type_name -> skift.v1.NodeFilter
-	91,  // 83: skift.v1.ClaimNextRequest.wait:type_name -> google.protobuf.Duration
-	91,  // 84: skift.v1.ClaimNextRequest.ttl:type_name -> google.protobuf.Duration
-	74,  // 85: skift.v1.ClaimNextResponse.node:type_name -> skift.v1.Node
-	83,  // 86: skift.v1.ClaimNextResponse.lease:type_name -> skift.v1.Lease
-	25,  // 87: skift.v1.ClaimNextResponse.inputs:type_name -> skift.v1.InputsHint
-	89,  // 88: skift.v1.ClaimNextResponse.project:type_name -> skift.v1.Project
-	26,  // 89: skift.v1.ClaimNextResponse.comments:type_name -> skift.v1.CommentsHint
-	91,  // 90: skift.v1.HeartbeatRequest.ttl:type_name -> google.protobuf.Duration
-	83,  // 91: skift.v1.HeartbeatResponse.lease:type_name -> skift.v1.Lease
-	92,  // 92: skift.v1.ReleaseRequest.reason:type_name -> skift.v1.ReleaseReason
-	83,  // 93: skift.v1.ReleaseResponse.lease:type_name -> skift.v1.Lease
-	85,  // 94: skift.v1.ReportUsageResponse.usage:type_name -> skift.v1.Usage
-	75,  // 95: skift.v1.WatchEventsResponse.event:type_name -> skift.v1.Event
-	1,   // 96: skift.v1.GraphService.ApplyPatch:input_type -> skift.v1.ApplyPatchRequest
-	20,  // 97: skift.v1.GraphService.GetNode:input_type -> skift.v1.GetNodeRequest
-	22,  // 98: skift.v1.GraphService.GetInputs:input_type -> skift.v1.GetInputsRequest
-	28,  // 99: skift.v1.GraphService.ListNodes:input_type -> skift.v1.ListNodesRequest
-	30,  // 100: skift.v1.GraphService.Explain:input_type -> skift.v1.ExplainRequest
-	40,  // 101: skift.v1.GraphService.Search:input_type -> skift.v1.SearchRequest
-	43,  // 102: skift.v1.GraphService.CreateProject:input_type -> skift.v1.CreateProjectRequest
-	45,  // 103: skift.v1.GraphService.GetProject:input_type -> skift.v1.GetProjectRequest
-	47,  // 104: skift.v1.GraphService.ListProjects:input_type -> skift.v1.ListProjectsRequest
-	49,  // 105: skift.v1.GraphService.ArchiveProject:input_type -> skift.v1.ArchiveProjectRequest
-	51,  // 106: skift.v1.GraphService.UpdateProject:input_type -> skift.v1.UpdateProjectRequest
-	53,  // 107: skift.v1.GraphService.HoldProject:input_type -> skift.v1.HoldProjectRequest
-	55,  // 108: skift.v1.GraphService.UnholdProject:input_type -> skift.v1.UnholdProjectRequest
-	57,  // 109: skift.v1.GraphService.Focus:input_type -> skift.v1.FocusRequest
-	59,  // 110: skift.v1.GraphService.ClearFocus:input_type -> skift.v1.ClearFocusRequest
-	61,  // 111: skift.v1.WorkService.Ready:input_type -> skift.v1.ReadyRequest
-	63,  // 112: skift.v1.WorkService.ClaimNext:input_type -> skift.v1.ClaimNextRequest
-	65,  // 113: skift.v1.WorkService.Heartbeat:input_type -> skift.v1.HeartbeatRequest
-	67,  // 114: skift.v1.WorkService.Release:input_type -> skift.v1.ReleaseRequest
-	69,  // 115: skift.v1.WorkService.ReportUsage:input_type -> skift.v1.ReportUsageRequest
-	71,  // 116: skift.v1.EventService.WatchEvents:input_type -> skift.v1.WatchEventsRequest
-	2,   // 117: skift.v1.GraphService.ApplyPatch:output_type -> skift.v1.ApplyPatchResponse
-	21,  // 118: skift.v1.GraphService.GetNode:output_type -> skift.v1.GetNodeResponse
-	23,  // 119: skift.v1.GraphService.GetInputs:output_type -> skift.v1.GetInputsResponse
-	29,  // 120: skift.v1.GraphService.ListNodes:output_type -> skift.v1.ListNodesResponse
-	31,  // 121: skift.v1.GraphService.Explain:output_type -> skift.v1.ExplainResponse
-	41,  // 122: skift.v1.GraphService.Search:output_type -> skift.v1.SearchResponse
-	44,  // 123: skift.v1.GraphService.CreateProject:output_type -> skift.v1.CreateProjectResponse
-	46,  // 124: skift.v1.GraphService.GetProject:output_type -> skift.v1.GetProjectResponse
-	48,  // 125: skift.v1.GraphService.ListProjects:output_type -> skift.v1.ListProjectsResponse
-	50,  // 126: skift.v1.GraphService.ArchiveProject:output_type -> skift.v1.ArchiveProjectResponse
-	52,  // 127: skift.v1.GraphService.UpdateProject:output_type -> skift.v1.UpdateProjectResponse
-	54,  // 128: skift.v1.GraphService.HoldProject:output_type -> skift.v1.HoldProjectResponse
-	56,  // 129: skift.v1.GraphService.UnholdProject:output_type -> skift.v1.UnholdProjectResponse
-	58,  // 130: skift.v1.GraphService.Focus:output_type -> skift.v1.FocusResponse
-	60,  // 131: skift.v1.GraphService.ClearFocus:output_type -> skift.v1.ClearFocusResponse
-	62,  // 132: skift.v1.WorkService.Ready:output_type -> skift.v1.ReadyResponse
-	64,  // 133: skift.v1.WorkService.ClaimNext:output_type -> skift.v1.ClaimNextResponse
-	66,  // 134: skift.v1.WorkService.Heartbeat:output_type -> skift.v1.HeartbeatResponse
-	68,  // 135: skift.v1.WorkService.Release:output_type -> skift.v1.ReleaseResponse
-	70,  // 136: skift.v1.WorkService.ReportUsage:output_type -> skift.v1.ReportUsageResponse
-	72,  // 137: skift.v1.EventService.WatchEvents:output_type -> skift.v1.WatchEventsResponse
-	117, // [117:138] is the sub-list for method output_type
-	96,  // [96:117] is the sub-list for method input_type
-	96,  // [96:96] is the sub-list for extension type_name
-	96,  // [96:96] is the sub-list for extension extendee
-	0,   // [0:96] is the sub-list for field type_name
+	75,  // 81: skift.v1.ReadyResponse.nodes:type_name -> skift.v1.Node
+	63,  // 82: skift.v1.ReadyResponse.hold_blockers:type_name -> skift.v1.ReadyHoldBlocker
+	27,  // 83: skift.v1.ClaimNextRequest.filter:type_name -> skift.v1.NodeFilter
+	92,  // 84: skift.v1.ClaimNextRequest.wait:type_name -> google.protobuf.Duration
+	92,  // 85: skift.v1.ClaimNextRequest.ttl:type_name -> google.protobuf.Duration
+	75,  // 86: skift.v1.ClaimNextResponse.node:type_name -> skift.v1.Node
+	84,  // 87: skift.v1.ClaimNextResponse.lease:type_name -> skift.v1.Lease
+	25,  // 88: skift.v1.ClaimNextResponse.inputs:type_name -> skift.v1.InputsHint
+	90,  // 89: skift.v1.ClaimNextResponse.project:type_name -> skift.v1.Project
+	26,  // 90: skift.v1.ClaimNextResponse.comments:type_name -> skift.v1.CommentsHint
+	92,  // 91: skift.v1.HeartbeatRequest.ttl:type_name -> google.protobuf.Duration
+	84,  // 92: skift.v1.HeartbeatResponse.lease:type_name -> skift.v1.Lease
+	93,  // 93: skift.v1.ReleaseRequest.reason:type_name -> skift.v1.ReleaseReason
+	84,  // 94: skift.v1.ReleaseResponse.lease:type_name -> skift.v1.Lease
+	86,  // 95: skift.v1.ReportUsageResponse.usage:type_name -> skift.v1.Usage
+	76,  // 96: skift.v1.WatchEventsResponse.event:type_name -> skift.v1.Event
+	1,   // 97: skift.v1.GraphService.ApplyPatch:input_type -> skift.v1.ApplyPatchRequest
+	20,  // 98: skift.v1.GraphService.GetNode:input_type -> skift.v1.GetNodeRequest
+	22,  // 99: skift.v1.GraphService.GetInputs:input_type -> skift.v1.GetInputsRequest
+	28,  // 100: skift.v1.GraphService.ListNodes:input_type -> skift.v1.ListNodesRequest
+	30,  // 101: skift.v1.GraphService.Explain:input_type -> skift.v1.ExplainRequest
+	40,  // 102: skift.v1.GraphService.Search:input_type -> skift.v1.SearchRequest
+	43,  // 103: skift.v1.GraphService.CreateProject:input_type -> skift.v1.CreateProjectRequest
+	45,  // 104: skift.v1.GraphService.GetProject:input_type -> skift.v1.GetProjectRequest
+	47,  // 105: skift.v1.GraphService.ListProjects:input_type -> skift.v1.ListProjectsRequest
+	49,  // 106: skift.v1.GraphService.ArchiveProject:input_type -> skift.v1.ArchiveProjectRequest
+	51,  // 107: skift.v1.GraphService.UpdateProject:input_type -> skift.v1.UpdateProjectRequest
+	53,  // 108: skift.v1.GraphService.HoldProject:input_type -> skift.v1.HoldProjectRequest
+	55,  // 109: skift.v1.GraphService.UnholdProject:input_type -> skift.v1.UnholdProjectRequest
+	57,  // 110: skift.v1.GraphService.Focus:input_type -> skift.v1.FocusRequest
+	59,  // 111: skift.v1.GraphService.ClearFocus:input_type -> skift.v1.ClearFocusRequest
+	61,  // 112: skift.v1.WorkService.Ready:input_type -> skift.v1.ReadyRequest
+	64,  // 113: skift.v1.WorkService.ClaimNext:input_type -> skift.v1.ClaimNextRequest
+	66,  // 114: skift.v1.WorkService.Heartbeat:input_type -> skift.v1.HeartbeatRequest
+	68,  // 115: skift.v1.WorkService.Release:input_type -> skift.v1.ReleaseRequest
+	70,  // 116: skift.v1.WorkService.ReportUsage:input_type -> skift.v1.ReportUsageRequest
+	72,  // 117: skift.v1.EventService.WatchEvents:input_type -> skift.v1.WatchEventsRequest
+	2,   // 118: skift.v1.GraphService.ApplyPatch:output_type -> skift.v1.ApplyPatchResponse
+	21,  // 119: skift.v1.GraphService.GetNode:output_type -> skift.v1.GetNodeResponse
+	23,  // 120: skift.v1.GraphService.GetInputs:output_type -> skift.v1.GetInputsResponse
+	29,  // 121: skift.v1.GraphService.ListNodes:output_type -> skift.v1.ListNodesResponse
+	31,  // 122: skift.v1.GraphService.Explain:output_type -> skift.v1.ExplainResponse
+	41,  // 123: skift.v1.GraphService.Search:output_type -> skift.v1.SearchResponse
+	44,  // 124: skift.v1.GraphService.CreateProject:output_type -> skift.v1.CreateProjectResponse
+	46,  // 125: skift.v1.GraphService.GetProject:output_type -> skift.v1.GetProjectResponse
+	48,  // 126: skift.v1.GraphService.ListProjects:output_type -> skift.v1.ListProjectsResponse
+	50,  // 127: skift.v1.GraphService.ArchiveProject:output_type -> skift.v1.ArchiveProjectResponse
+	52,  // 128: skift.v1.GraphService.UpdateProject:output_type -> skift.v1.UpdateProjectResponse
+	54,  // 129: skift.v1.GraphService.HoldProject:output_type -> skift.v1.HoldProjectResponse
+	56,  // 130: skift.v1.GraphService.UnholdProject:output_type -> skift.v1.UnholdProjectResponse
+	58,  // 131: skift.v1.GraphService.Focus:output_type -> skift.v1.FocusResponse
+	60,  // 132: skift.v1.GraphService.ClearFocus:output_type -> skift.v1.ClearFocusResponse
+	62,  // 133: skift.v1.WorkService.Ready:output_type -> skift.v1.ReadyResponse
+	65,  // 134: skift.v1.WorkService.ClaimNext:output_type -> skift.v1.ClaimNextResponse
+	67,  // 135: skift.v1.WorkService.Heartbeat:output_type -> skift.v1.HeartbeatResponse
+	69,  // 136: skift.v1.WorkService.Release:output_type -> skift.v1.ReleaseResponse
+	71,  // 137: skift.v1.WorkService.ReportUsage:output_type -> skift.v1.ReportUsageResponse
+	73,  // 138: skift.v1.EventService.WatchEvents:output_type -> skift.v1.WatchEventsResponse
+	118, // [118:139] is the sub-list for method output_type
+	97,  // [97:118] is the sub-list for method input_type
+	97,  // [97:97] is the sub-list for extension type_name
+	97,  // [97:97] is the sub-list for extension extendee
+	0,   // [0:97] is the sub-list for field type_name
 }
 
 func init() { file_skift_v1_service_proto_init() }
@@ -5941,7 +6043,7 @@ func file_skift_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_skift_v1_service_proto_rawDesc), len(file_skift_v1_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   73,
+			NumMessages:   74,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
