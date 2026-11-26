@@ -3,7 +3,6 @@ package migrations_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -18,8 +17,9 @@ import (
 )
 
 // The safeguards docs/adrs/015-upgrades-and-migrations.md puts in code:
-// one migrating process at a time, a short lock timeout retried within a
-// budget, and refusing a schema newer than the binary.
+// one migrating process at a time, and a short lock timeout retried within
+// a budget. Which newer schemas a binary refuses is the floor's, in
+// floor_test.go.
 var _ = Describe("Migration safeguards", Label(testsupport.DBLabel), func() {
 	versionsOf := func(ctx context.Context, url string) []int64 {
 		GinkgoHelper()
@@ -173,34 +173,5 @@ var _ = Describe("Migration safeguards", Label(testsupport.DBLabel), func() {
 			Expect(err.Error()).To(ContainSubstring("gave up waiting for locks"))
 			Expect(appliedCounts(ctx, url)).NotTo(HaveKey(altersProjects))
 		})
-	})
-
-	It("refuses a database migrated by a newer skift, applying nothing and naming both versions", func(ctx SpecContext) {
-		url := pg.Database(ctx).Config().ConnString()
-		versions := versionsOf(ctx, url)
-		latest := versions[len(versions)-1]
-
-		By("given a database carrying a migration newer than this build's")
-		conn, err := pgx.Connect(ctx, url)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { _ = conn.Close(context.Background()) })
-		_, err = conn.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true)`, latest+1)
-		Expect(err).NotTo(HaveOccurred())
-
-		By("then inspecting it reports the schema ahead")
-		status, err := migrations.Inspect(ctx, url)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(status.Ahead()).To(BeTrue())
-		Expect(status.Pending()).To(BeFalse())
-
-		By("and applying migrations refuses, naming both versions and the way out")
-		report, err := migrations.Apply(ctx, url)
-		var ahead *migrations.SchemaAheadError
-		Expect(errors.As(err, &ahead)).To(BeTrue(), "error: %v", err)
-		Expect(ahead.Current).To(Equal(latest + 1))
-		Expect(ahead.Latest).To(Equal(latest))
-		Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("schema %d is newer than this build's %d", latest+1, latest)))
-		Expect(err.Error()).To(ContainSubstring("restore the pre-upgrade backup or install a newer skift"))
-		Expect(report.Applied).To(BeEmpty())
 	})
 })

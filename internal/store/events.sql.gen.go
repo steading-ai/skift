@@ -17,20 +17,20 @@ RETURNING id, org_id, project_id, node_id, principal_id, principal_kind, on_beha
 `
 
 type CreateEventParams struct {
-	ID             string
-	OrgID          string
-	ProjectID      *string
-	NodeID         *string
-	PrincipalID    string
-	PrincipalKind  string
-	OnBehalfOf     *string
-	IdentityScheme string
-	RequestID      *string
-	Op             string
-	Reason         *string
-	Before         []byte
-	After          []byte
-	PolicyVersion  string
+	ID             string  `db:"id"`
+	OrgID          string  `db:"org_id"`
+	ProjectID      *string `db:"project_id"`
+	NodeID         *string `db:"node_id"`
+	PrincipalID    string  `db:"principal_id"`
+	PrincipalKind  string  `db:"principal_kind"`
+	OnBehalfOf     *string `db:"on_behalf_of"`
+	IdentityScheme string  `db:"identity_scheme"`
+	RequestID      *string `db:"request_id"`
+	Op             string  `db:"op"`
+	Reason         *string `db:"reason"`
+	Before         []byte  `db:"before"`
+	After          []byte  `db:"after"`
+	PolicyVersion  string  `db:"policy_version"`
 }
 
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event, error) {
@@ -77,8 +77,8 @@ SELECT ensure_event_partitions($1::timestamptz, $2::integer)::text AS partition
 `
 
 type EnsureEventPartitionsParams struct {
-	At    time.Time
-	Ahead int32
+	At    time.Time `db:"at"`
+	Ahead int32     `db:"ahead"`
 }
 
 // Keeps the events table's monthly partitions ahead of the clock: the
@@ -113,14 +113,14 @@ ORDER BY tx_id, id
 `
 
 type ListEventPositionsFromParams struct {
-	OrgID         string
-	MinTxID       int64
-	RetainedSince time.Time
+	OrgID         string    `db:"org_id"`
+	MinTxID       int64     `db:"min_tx_id"`
+	RetainedSince time.Time `db:"retained_since"`
 }
 
 type ListEventPositionsFromRow struct {
-	TxID int64
-	ID   string
+	TxID int64  `db:"tx_id"`
+	ID   string `db:"id"`
 }
 
 // The positions of every event of an organization from a transaction
@@ -153,9 +153,9 @@ LIMIT $3
 `
 
 type ListEventsAfterParams struct {
-	OrgID    string
-	AfterID  string
-	PageSize int32
+	OrgID    string `db:"org_id"`
+	AfterID  string `db:"after_id"`
+	PageSize int32  `db:"page_size"`
 }
 
 // The stream: everything in an organization after a cursor, oldest first.
@@ -204,10 +204,10 @@ LIMIT $4 OFFSET $3
 `
 
 type ListEventsForNodeParams struct {
-	OrgID      string
-	NodeID     *string
-	PageOffset int32
-	PageSize   int32
+	OrgID      string  `db:"org_id"`
+	NodeID     *string `db:"node_id"`
+	PageOffset int32   `db:"page_offset"`
+	PageSize   int32   `db:"page_size"`
 }
 
 // Context recovery: the history of one node, in order.
@@ -260,8 +260,8 @@ ORDER BY id
 `
 
 type ListEventsForRequestParams struct {
-	OrgID     string
-	RequestID *string
+	OrgID     string  `db:"org_id"`
+	RequestID *string `db:"request_id"`
 }
 
 // One patch, reconstructed: every event carrying its request id, in the
@@ -316,13 +316,13 @@ LIMIT $7
 `
 
 type ListEventsFromPositionParams struct {
-	OrgID         string
-	MinTxID       int64
-	RetainedSince time.Time
-	Seen          []string
-	ProjectID     *string
-	Ops           []string
-	PageSize      int32
+	OrgID         string    `db:"org_id"`
+	MinTxID       int64     `db:"min_tx_id"`
+	RetainedSince time.Time `db:"retained_since"`
+	Seen          []string  `db:"seen"`
+	ProjectID     *string   `db:"project_id"`
+	Ops           []string  `db:"ops"`
+	PageSize      int32     `db:"page_size"`
 }
 
 // The change stream: events of an organization from a transaction
@@ -384,8 +384,8 @@ SELECT EXISTS (
 `
 
 type NodeHumanTouchedParams struct {
-	OrgID  string
-	NodeID *string
+	OrgID  string  `db:"org_id"`
+	NodeID *string `db:"node_id"`
 }
 
 // Whether a user principal has ever written to a node. Derived from the

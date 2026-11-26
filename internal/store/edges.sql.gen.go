@@ -16,10 +16,10 @@ RETURNING org_id, from_node, to_node, kind, created_at
 `
 
 type CreateEdgeParams struct {
-	OrgID    string
-	FromNode string
-	ToNode   string
-	Kind     string
+	OrgID    string `db:"org_id"`
+	FromNode string `db:"from_node"`
+	ToNode   string `db:"to_node"`
+	Kind     string `db:"kind"`
 }
 
 func (q *Queries) CreateEdge(ctx context.Context, arg CreateEdgeParams) (Edge, error) {
@@ -46,10 +46,10 @@ WHERE org_id = $1 AND from_node = $2 AND to_node = $3 AND kind = $4
 `
 
 type DeleteEdgeParams struct {
-	OrgID    string
-	FromNode string
-	ToNode   string
-	Kind     string
+	OrgID    string `db:"org_id"`
+	FromNode string `db:"from_node"`
+	ToNode   string `db:"to_node"`
+	Kind     string `db:"kind"`
 }
 
 func (q *Queries) DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, error) {
@@ -91,17 +91,17 @@ ORDER BY r.start, r.node, r.prev
 `
 
 type FindWaitCycleParams struct {
-	OrgID   string
-	Touched []string
+	OrgID   string   `db:"org_id"`
+	Touched []string `db:"touched"`
 }
 
 type FindWaitCycleRow struct {
-	Start  string
-	Node   string
-	Prev   *string
-	Via    *string
-	Slug   string
-	Number int64
+	Start  string  `db:"start"`
+	Node   string  `db:"node"`
+	Prev   *string `db:"prev"`
+	Via    *string `db:"via"`
+	Slug   string  `db:"slug"`
+	Number int64   `db:"number"`
 }
 
 // FindWaitCycle walks the wait relation forward from the touched nodes
@@ -162,8 +162,8 @@ ORDER BY b.project_id, b.number
 `
 
 type ListBlockingPredecessorsParams struct {
-	OrgID  string
-	ToNode string
+	OrgID  string `db:"org_id"`
+	ToNode string `db:"to_node"`
 }
 
 // ListBlockingPredecessors is the sources of blocks edges into node $2 of
@@ -216,8 +216,8 @@ ORDER BY from_node, to_node, kind
 `
 
 type ListEdgesAmongParams struct {
-	OrgID string
-	Ids   []string
+	OrgID string   `db:"org_id"`
+	Ids   []string `db:"ids"`
 }
 
 // Every edge touching the given nodes, for cycle checks over a component.
@@ -254,8 +254,8 @@ ORDER BY from_node, kind
 `
 
 type ListEdgesIntoParams struct {
-	OrgID  string
-	ToNode string
+	OrgID  string `db:"org_id"`
+	ToNode string `db:"to_node"`
 }
 
 // Edges into a node: what blocks it.
@@ -292,8 +292,8 @@ ORDER BY to_node, kind
 `
 
 type ListEdgesOutOfParams struct {
-	OrgID    string
-	FromNode string
+	OrgID    string `db:"org_id"`
+	FromNode string `db:"from_node"`
 }
 
 // Edges out of a node: what it blocks.

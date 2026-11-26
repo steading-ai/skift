@@ -61,267 +61,272 @@ func (ns NullRiverJobState) Value() (driver.Value, error) {
 }
 
 type Artifact struct {
-	ID          string
-	OrgID       string
-	NodeID      string
-	Name        string
-	Description string
-	Metadata    []byte
-	CreatedBy   string
-	CreatedAt   time.Time
+	ID          string    `db:"id"`
+	OrgID       string    `db:"org_id"`
+	NodeID      string    `db:"node_id"`
+	Name        string    `db:"name"`
+	Description string    `db:"description"`
+	Metadata    []byte    `db:"metadata"`
+	CreatedBy   string    `db:"created_by"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 type ArtifactPart struct {
-	OrgID           string
-	ArtifactID      string
-	Position        int32
-	Kind            string
-	Text            *string
-	BlobDigest      *string
-	ReferenceUri    *string
-	ReferenceDigest *string
-	MediaType       *string
-	Size            *int64
+	OrgID           string  `db:"org_id"`
+	ArtifactID      string  `db:"artifact_id"`
+	Position        int32   `db:"position"`
+	Kind            string  `db:"kind"`
+	Text            *string `db:"text"`
+	BlobDigest      *string `db:"blob_digest"`
+	ReferenceUri    *string `db:"reference_uri"`
+	ReferenceDigest *string `db:"reference_digest"`
+	MediaType       *string `db:"media_type"`
+	Size            *int64  `db:"size"`
 }
 
 type Blob struct {
-	OrgID     string
-	Digest    string
-	MediaType string
-	Size      int64
-	Backend   string
-	CreatedAt time.Time
+	OrgID     string    `db:"org_id"`
+	Digest    string    `db:"digest"`
+	MediaType string    `db:"media_type"`
+	Size      int64     `db:"size"`
+	Backend   string    `db:"backend"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type ClaimCursor struct {
-	OrgID       string
-	PrincipalID string
-	FilterHash  string
-	ProjectID   string
-	UpdatedAt   time.Time
+	OrgID       string    `db:"org_id"`
+	PrincipalID string    `db:"principal_id"`
+	FilterHash  string    `db:"filter_hash"`
+	ProjectID   string    `db:"project_id"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 type Comment struct {
-	ID         string
-	OrgID      string
-	NodeID     string
-	Author     string
-	Body       string
-	InReplyTo  *string
-	ResolvedAt *time.Time
-	ResolvedBy *string
-	CreatedAt  time.Time
+	ID         string     `db:"id"`
+	OrgID      string     `db:"org_id"`
+	NodeID     string     `db:"node_id"`
+	Author     string     `db:"author"`
+	Body       string     `db:"body"`
+	InReplyTo  *string    `db:"in_reply_to"`
+	ResolvedAt *time.Time `db:"resolved_at"`
+	ResolvedBy *string    `db:"resolved_by"`
+	CreatedAt  time.Time  `db:"created_at"`
 }
 
 type CommentRevision struct {
-	CommentID string
-	Revision  int32
-	Body      string
-	Author    string
-	CreatedAt time.Time
+	CommentID string    `db:"comment_id"`
+	Revision  int32     `db:"revision"`
+	Body      string    `db:"body"`
+	Author    string    `db:"author"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type Edge struct {
-	OrgID     string
-	FromNode  string
-	ToNode    string
-	Kind      string
-	CreatedAt time.Time
+	OrgID     string    `db:"org_id"`
+	FromNode  string    `db:"from_node"`
+	ToNode    string    `db:"to_node"`
+	Kind      string    `db:"kind"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type Event struct {
-	ID             string
-	OrgID          string
-	ProjectID      *string
-	NodeID         *string
-	PrincipalID    string
-	PrincipalKind  string
-	OnBehalfOf     *string
-	IdentityScheme string
-	RequestID      *string
-	Op             string
-	Reason         *string
-	Before         []byte
-	After          []byte
-	OccurredAt     time.Time
-	PolicyVersion  string
-	TxID           int64
+	ID             string    `db:"id"`
+	OrgID          string    `db:"org_id"`
+	ProjectID      *string   `db:"project_id"`
+	NodeID         *string   `db:"node_id"`
+	PrincipalID    string    `db:"principal_id"`
+	PrincipalKind  string    `db:"principal_kind"`
+	OnBehalfOf     *string   `db:"on_behalf_of"`
+	IdentityScheme string    `db:"identity_scheme"`
+	RequestID      *string   `db:"request_id"`
+	Op             string    `db:"op"`
+	Reason         *string   `db:"reason"`
+	Before         []byte    `db:"before"`
+	After          []byte    `db:"after"`
+	OccurredAt     time.Time `db:"occurred_at"`
+	PolicyVersion  string    `db:"policy_version"`
+	TxID           int64     `db:"tx_id"`
 }
 
 type IdempotencyKey struct {
-	OrgID       string
-	RequestID   string
-	RequestHash string
-	Response    []byte
-	CreatedAt   time.Time
+	OrgID       string    `db:"org_id"`
+	RequestID   string    `db:"request_id"`
+	RequestHash string    `db:"request_hash"`
+	Response    []byte    `db:"response"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 type Lease struct {
-	ID            string
-	OrgID         string
-	NodeID        string
-	Holder        string
-	OnBehalfOf    *string
-	Harness       string
-	AgentRef      string
-	SessionRef    *string
-	ClaimedAt     time.Time
-	ExpiresAt     time.Time
-	ReleasedAt    *time.Time
-	ReleaseReason *string
+	ID            string     `db:"id"`
+	OrgID         string     `db:"org_id"`
+	NodeID        string     `db:"node_id"`
+	Holder        string     `db:"holder"`
+	OnBehalfOf    *string    `db:"on_behalf_of"`
+	Harness       string     `db:"harness"`
+	AgentRef      string     `db:"agent_ref"`
+	SessionRef    *string    `db:"session_ref"`
+	ClaimedAt     time.Time  `db:"claimed_at"`
+	ExpiresAt     time.Time  `db:"expires_at"`
+	ReleasedAt    *time.Time `db:"released_at"`
+	ReleaseReason *string    `db:"release_reason"`
 }
 
 type Node struct {
-	ID           string
-	Number       int64
-	OrgID        string
-	ProjectID    string
-	ParentID     *string
-	Kind         string
-	Title        string
-	Body         string
-	Status       string
-	Priority     string
-	AssigneeKind *string
-	Assignee     *string
-	Labels       []string
-	ContextID    pgtype.UUID
-	CreatedAt    time.Time
-	HeldAt       *time.Time
-	HeldBy       *string
-	HeldReason   *string
-	HoldGroup    *string
+	ID           string      `db:"id"`
+	Number       int64       `db:"number"`
+	OrgID        string      `db:"org_id"`
+	ProjectID    string      `db:"project_id"`
+	ParentID     *string     `db:"parent_id"`
+	Kind         string      `db:"kind"`
+	Title        string      `db:"title"`
+	Body         string      `db:"body"`
+	Status       string      `db:"status"`
+	Priority     string      `db:"priority"`
+	AssigneeKind *string     `db:"assignee_kind"`
+	Assignee     *string     `db:"assignee"`
+	Labels       []string    `db:"labels"`
+	ContextID    pgtype.UUID `db:"context_id"`
+	CreatedAt    time.Time   `db:"created_at"`
+	HeldAt       *time.Time  `db:"held_at"`
+	HeldBy       *string     `db:"held_by"`
+	HeldReason   *string     `db:"held_reason"`
+	HoldGroup    *string     `db:"hold_group"`
 }
 
 type Organization struct {
-	ID        string
-	Name      string
-	CreatedAt time.Time
+	ID        string    `db:"id"`
+	Name      string    `db:"name"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type PolicyDenial struct {
-	ID             string
-	OrgID          string
-	ProjectID      *string
-	NodeID         *string
-	PrincipalID    string
-	PrincipalKind  string
-	IdentityScheme string
-	RequestID      *string
-	Op             string
-	Reasons        []string
-	PolicyVersion  string
-	OccurredAt     time.Time
+	ID             string    `db:"id"`
+	OrgID          string    `db:"org_id"`
+	ProjectID      *string   `db:"project_id"`
+	NodeID         *string   `db:"node_id"`
+	PrincipalID    string    `db:"principal_id"`
+	PrincipalKind  string    `db:"principal_kind"`
+	IdentityScheme string    `db:"identity_scheme"`
+	RequestID      *string   `db:"request_id"`
+	Op             string    `db:"op"`
+	Reasons        []string  `db:"reasons"`
+	PolicyVersion  string    `db:"policy_version"`
+	OccurredAt     time.Time `db:"occurred_at"`
 }
 
 type Principal struct {
-	ID        string
-	OrgID     string
-	Kind      string
-	CreatedAt time.Time
+	ID        string    `db:"id"`
+	OrgID     string    `db:"org_id"`
+	Kind      string    `db:"kind"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type PrincipalIdentity struct {
-	PrincipalID string
-	Scheme      string
-	Value       string
-	CreatedAt   time.Time
+	PrincipalID string    `db:"principal_id"`
+	Scheme      string    `db:"scheme"`
+	Value       string    `db:"value"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 type Project struct {
-	ID          string
-	OrgID       string
-	Slug        string
-	Title       string
-	Priority    string
-	NodeCounter int64
-	ArchivedAt  *time.Time
-	CreatedAt   time.Time
-	HeldAt      *time.Time
-	HeldBy      *string
-	HeldReason  *string
-	HoldGroup   *string
-	VcsUrl      string
+	ID          string     `db:"id"`
+	OrgID       string     `db:"org_id"`
+	Slug        string     `db:"slug"`
+	Title       string     `db:"title"`
+	Priority    string     `db:"priority"`
+	NodeCounter int64      `db:"node_counter"`
+	ArchivedAt  *time.Time `db:"archived_at"`
+	CreatedAt   time.Time  `db:"created_at"`
+	HeldAt      *time.Time `db:"held_at"`
+	HeldBy      *string    `db:"held_by"`
+	HeldReason  *string    `db:"held_reason"`
+	HoldGroup   *string    `db:"hold_group"`
+	VcsUrl      string     `db:"vcs_url"`
 }
 
 type ProjectSlug struct {
-	OrgID     string
-	ProjectID string
-	Slug      string
-	RetiredAt *time.Time
+	OrgID     string     `db:"org_id"`
+	ProjectID string     `db:"project_id"`
+	Slug      string     `db:"slug"`
+	RetiredAt *time.Time `db:"retired_at"`
 }
 
 type ProjectSlugAlias struct {
-	OrgID     string
-	ProjectID string
-	Slug      string
-	RetiredAt time.Time
+	OrgID     string    `db:"org_id"`
+	ProjectID string    `db:"project_id"`
+	Slug      string    `db:"slug"`
+	RetiredAt time.Time `db:"retired_at"`
 }
 
 type Result struct {
-	ID          string
-	OrgID       string
-	NodeID      string
-	Body        string
-	CompletedBy string
-	CreatedAt   time.Time
+	ID          string    `db:"id"`
+	OrgID       string    `db:"org_id"`
+	NodeID      string    `db:"node_id"`
+	Body        string    `db:"body"`
+	CompletedBy string    `db:"completed_by"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 type RiverJob struct {
-	ID           int64
-	State        RiverJobState
-	Attempt      int16
-	MaxAttempts  int16
-	AttemptedAt  *time.Time
-	CreatedAt    time.Time
-	FinalizedAt  *time.Time
-	ScheduledAt  time.Time
-	Priority     int16
-	Args         []byte
-	AttemptedBy  []string
-	Errors       [][]byte
-	Kind         string
-	Metadata     []byte
-	Queue        string
-	Tags         []string
-	UniqueKey    []byte
-	UniqueStates pgtype.Bits
+	ID           int64         `db:"id"`
+	State        RiverJobState `db:"state"`
+	Attempt      int16         `db:"attempt"`
+	MaxAttempts  int16         `db:"max_attempts"`
+	AttemptedAt  *time.Time    `db:"attempted_at"`
+	CreatedAt    time.Time     `db:"created_at"`
+	FinalizedAt  *time.Time    `db:"finalized_at"`
+	ScheduledAt  time.Time     `db:"scheduled_at"`
+	Priority     int16         `db:"priority"`
+	Args         []byte        `db:"args"`
+	AttemptedBy  []string      `db:"attempted_by"`
+	Errors       [][]byte      `db:"errors"`
+	Kind         string        `db:"kind"`
+	Metadata     []byte        `db:"metadata"`
+	Queue        string        `db:"queue"`
+	Tags         []string      `db:"tags"`
+	UniqueKey    []byte        `db:"unique_key"`
+	UniqueStates pgtype.Bits   `db:"unique_states"`
 }
 
 type RiverLeader struct {
-	ElectedAt time.Time
-	ExpiresAt time.Time
-	LeaderID  string
-	Name      string
+	ElectedAt time.Time `db:"elected_at"`
+	ExpiresAt time.Time `db:"expires_at"`
+	LeaderID  string    `db:"leader_id"`
+	Name      string    `db:"name"`
 }
 
 type RiverNotification struct {
-	ID        int64
-	CreatedAt time.Time
-	Payload   string
-	Topic     string
+	ID        int64     `db:"id"`
+	CreatedAt time.Time `db:"created_at"`
+	Payload   string    `db:"payload"`
+	Topic     string    `db:"topic"`
 }
 
 type RiverQueue struct {
-	Name      string
-	CreatedAt time.Time
-	Metadata  []byte
-	PausedAt  *time.Time
-	UpdatedAt time.Time
+	Name      string     `db:"name"`
+	CreatedAt time.Time  `db:"created_at"`
+	Metadata  []byte     `db:"metadata"`
+	PausedAt  *time.Time `db:"paused_at"`
+	UpdatedAt time.Time  `db:"updated_at"`
+}
+
+type SchemaFloor struct {
+	Singleton bool  `db:"singleton"`
+	Version   int64 `db:"version"`
 }
 
 type Usage struct {
-	ID               string
-	OrgID            string
-	NodeID           string
-	LeaseID          *string
-	Principal        string
-	Model            *string
-	InputTokens      int64
-	OutputTokens     int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-	Kind             string
-	Basis            *string
-	CreatedAt        time.Time
+	ID               string    `db:"id"`
+	OrgID            string    `db:"org_id"`
+	NodeID           string    `db:"node_id"`
+	LeaseID          *string   `db:"lease_id"`
+	Principal        string    `db:"principal"`
+	Model            *string   `db:"model"`
+	InputTokens      int64     `db:"input_tokens"`
+	OutputTokens     int64     `db:"output_tokens"`
+	CacheReadTokens  int64     `db:"cache_read_tokens"`
+	CacheWriteTokens int64     `db:"cache_write_tokens"`
+	Kind             string    `db:"kind"`
+	Basis            *string   `db:"basis"`
+	CreatedAt        time.Time `db:"created_at"`
 }

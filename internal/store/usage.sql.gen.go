@@ -16,18 +16,18 @@ RETURNING id, org_id, node_id, lease_id, principal, model, input_tokens, output_
 `
 
 type CreateUsageParams struct {
-	ID               string
-	OrgID            string
-	NodeID           string
-	LeaseID          *string
-	Principal        string
-	Model            *string
-	InputTokens      int64
-	OutputTokens     int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-	Kind             string
-	Basis            *string
+	ID               string  `db:"id"`
+	OrgID            string  `db:"org_id"`
+	NodeID           string  `db:"node_id"`
+	LeaseID          *string `db:"lease_id"`
+	Principal        string  `db:"principal"`
+	Model            *string `db:"model"`
+	InputTokens      int64   `db:"input_tokens"`
+	OutputTokens     int64   `db:"output_tokens"`
+	CacheReadTokens  int64   `db:"cache_read_tokens"`
+	CacheWriteTokens int64   `db:"cache_write_tokens"`
+	Kind             string  `db:"kind"`
+	Basis            *string `db:"basis"`
 }
 
 func (q *Queries) CreateUsage(ctx context.Context, arg CreateUsageParams) (Usage, error) {
@@ -72,8 +72,8 @@ LIMIT 1
 `
 
 type GetCurrentEstimateParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 // The current estimate is the most recent one: derived, never stored on
@@ -106,8 +106,8 @@ ORDER BY created_at, id
 `
 
 type ListAllUsageForNodeParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 func (q *Queries) ListAllUsageForNode(ctx context.Context, arg ListAllUsageForNodeParams) ([]Usage, error) {
@@ -151,9 +151,9 @@ ORDER BY created_at DESC, id DESC
 `
 
 type ListUsageForNodeParams struct {
-	OrgID  string
-	NodeID string
-	Kind   string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
+	Kind   string `db:"kind"`
 }
 
 func (q *Queries) ListUsageForNode(ctx context.Context, arg ListUsageForNodeParams) ([]Usage, error) {
@@ -209,17 +209,17 @@ ORDER BY u.model
 `
 
 type RollupActualsParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 type RollupActualsRow struct {
-	Model            *string
-	Records          int64
-	InputTokens      int64
-	OutputTokens     int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
+	Model            *string `db:"model"`
+	Records          int64   `db:"records"`
+	InputTokens      int64   `db:"input_tokens"`
+	OutputTokens     int64   `db:"output_tokens"`
+	CacheReadTokens  int64   `db:"cache_read_tokens"`
+	CacheWriteTokens int64   `db:"cache_write_tokens"`
 }
 
 // Actuals over a node and every descendant through the parent relation,
@@ -277,17 +277,17 @@ ORDER BY c.model
 `
 
 type RollupEstimatesParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 type RollupEstimatesRow struct {
-	Model            *string
-	Records          int64
-	InputTokens      int64
-	OutputTokens     int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
+	Model            *string `db:"model"`
+	Records          int64   `db:"records"`
+	InputTokens      int64   `db:"input_tokens"`
+	OutputTokens     int64   `db:"output_tokens"`
+	CacheReadTokens  int64   `db:"cache_read_tokens"`
+	CacheWriteTokens int64   `db:"cache_write_tokens"`
 }
 
 // The current estimate of a node and every descendant, grouped by model.

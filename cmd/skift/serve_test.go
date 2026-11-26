@@ -217,20 +217,42 @@ var _ = Describe("skift serve and the schema", Label(testsupport.DBLabel), func(
 		Expect(err).To(MatchError(os.ErrNotExist))
 	})
 
-	DescribeTable("refuses a database migrated by a newer skift, naming both versions",
+	DescribeTable("refuses a database whose floor is above this build, naming the floor and its newest migration",
 		func(ctx SpecContext, flags ...string) {
 			url := pg.Database(ctx).Config().ConnString()
-			latest := markAhead(ctx, url)
+			latest, floor := aboveFloor(ctx, url)
 
-			By("when skift serve starts against a database ahead of it")
+			By("when skift serve starts against a database whose floor is above it")
 			session := serve(url, flags...)
 
-			By("then it exits non-zero naming both versions, and leaves no socket")
+			By("then it exits non-zero naming both, and leaves no socket")
 			Eventually(session, 30*time.Second).Should(gexec.Exit(cli.ExitFailure))
-			Expect(string(session.Err.Contents())).To(ContainSubstring(newerSchema(latest)))
-			Expect(schemaVersion(ctx, url)).To(Equal(latest + 1))
+			Expect(string(session.Err.Contents())).To(ContainSubstring(floorRefusal(latest, floor)))
+			Expect(schemaVersion(ctx, url)).To(Equal(floor))
 			_, err := os.Lstat(socket)
 			Expect(err).To(MatchError(os.ErrNotExist))
+		},
+		Entry("when it migrates at start"),
+		Entry("with --no-migrate", "--no-migrate"),
+	)
+
+	DescribeTable("serves a database migrated past this build within its floor, applying nothing",
+		func(ctx SpecContext, flags ...string) {
+			url := pg.Database(ctx).Config().ConnString()
+			latest := testsupport.MigratePast(ctx, url, testsupport.AddsColumn)
+
+			By("when skift serve starts against it")
+			session := serve(url, flags...)
+
+			By("then it reports itself ready and applies nothing")
+			Eventually(session.Err, 30*time.Second).Should(gbytes.Say("database reachable; ready"))
+			Expect(string(session.Err.Contents())).NotTo(ContainSubstring("migration applied"))
+			Expect(schemaVersion(ctx, url)).To(Equal(latest + 1))
+
+			By("and the health endpoint answers ok")
+			h, err := health(ctx, socket)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(h.Status).To(Equal("ok"))
 		},
 		Entry("when it migrates at start"),
 		Entry("with --no-migrate", "--no-migrate"),

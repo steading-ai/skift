@@ -16,11 +16,11 @@ RETURNING id, org_id, node_id, body, completed_by, created_at
 `
 
 type CreateResultParams struct {
-	ID          string
-	OrgID       string
-	NodeID      string
-	Body        string
-	CompletedBy string
+	ID          string `db:"id"`
+	OrgID       string `db:"org_id"`
+	NodeID      string `db:"node_id"`
+	Body        string `db:"body"`
+	CompletedBy string `db:"completed_by"`
 }
 
 func (q *Queries) CreateResult(ctx context.Context, arg CreateResultParams) (Result, error) {
@@ -57,13 +57,13 @@ WHERE e.org_id = $1 AND e.to_node = $2 AND e.kind = 'blocks' AND b.status = 'don
 `
 
 type InputsSizeParams struct {
-	OrgID  string
-	ToNode string
+	OrgID  string `db:"org_id"`
+	ToNode string `db:"to_node"`
 }
 
 type InputsSizeRow struct {
-	Count int32
-	Bytes int64
+	Count int32 `db:"count"`
+	Bytes int64 `db:"bytes"`
 }
 
 // InputsSize counts the current results of the blocking predecessors of
@@ -83,8 +83,8 @@ ORDER BY created_at DESC, id DESC
 `
 
 type ListResultsForNodeParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 // A node's results, newest first: the current one is the first row.

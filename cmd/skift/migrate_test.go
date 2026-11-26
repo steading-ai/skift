@@ -42,35 +42,47 @@ func schemaVersion(ctx context.Context, url string) int64 {
 	return v
 }
 
-// markAhead records a migration newer than any this build carries, as a
-// newer skift would have, and returns the build's newest version.
-func markAhead(ctx context.Context, url string) (latest int64) {
+// aboveFloor migrates the database past this build and raises its floor
+// above this build's newest migration, as a newer skift that removed
+// something would, and returns the build's newest version and the floor.
+func aboveFloor(ctx context.Context, url string) (latest, floor int64) {
 	GinkgoHelper()
-	latest = schemaVersion(ctx, url)
-	conn, err := pgx.Connect(ctx, url)
-	Expect(err).NotTo(HaveOccurred())
-	defer conn.Close(ctx) //nolint:errcheck // single-statement session
-	_, err = conn.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true)`, latest+1)
-	Expect(err).NotTo(HaveOccurred())
-	return latest
+	latest = testsupport.MigratePast(ctx, url, testsupport.AddsColumn, testsupport.RaisesFloor)
+	return latest, latest + 2
 }
 
-// newerSchema is what skift says when the database is ahead of it.
-func newerSchema(latest int64) string {
-	return fmt.Sprintf("schema %d is newer than this build's %d: restore the pre-upgrade backup or install a newer skift", latest+1, latest)
+// floorRefusal is what skift says when the database's floor is above it.
+func floorRefusal(latest, floor int64) string {
+	return fmt.Sprintf("schema %d needs migration %d, and this build's newest is %d: install skift that carries migration %d, or restore a snapshot", floor, floor, latest, floor)
 }
 
 var _ = Describe("skift admin migrate", func() {
-	It("refuses a database migrated by a newer skift, naming both versions", Label(testsupport.DBLabel), func(ctx SpecContext) {
+	It("refuses a database whose floor is above this build, naming both and changing nothing", Label(testsupport.DBLabel), func(ctx SpecContext) {
 		url := pg.Database(ctx).Config().ConnString()
-		latest := markAhead(ctx, url)
+		latest, floor := aboveFloor(ctx, url)
 
-		By("when skift admin migrate runs against a database ahead of it")
+		By("when skift admin migrate runs against a database whose floor is above it")
 		session := skift(binary, "admin", "migrate", "--database-url", url)
 
-		By("then it exits non-zero, names both versions, and changes nothing")
+		By("then it exits non-zero, names the floor and its newest migration, and changes nothing")
 		Expect(session.ExitCode()).To(Equal(cli.ExitFailure))
-		Expect(string(session.Err.Contents())).To(ContainSubstring(newerSchema(latest)))
+		Expect(string(session.Err.Contents())).To(ContainSubstring(floorRefusal(latest, floor)))
+		Expect(schemaVersion(ctx, url)).To(Equal(floor))
+	})
+
+	It("applies nothing to a newer schema whose floor it meets, and exits zero", Label(testsupport.DBLabel), func(ctx SpecContext) {
+		url := pg.Database(ctx).Config().ConnString()
+		latest := testsupport.MigratePast(ctx, url, testsupport.AddsColumn)
+
+		By("when skift admin migrate runs against a database migrated past it within its floor")
+		session := skift(binary, "admin", "migrate", "--database-url", url)
+
+		By("then it exits zero, applies nothing, and the schema is where it was")
+		Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+		var report migrateReport
+		Expect(json.Unmarshal(session.Out.Contents(), &report)).To(Succeed(), "stdout: %s", session.Out.Contents())
+		Expect(report.Applied).To(BeEmpty())
+		Expect(report.Version).To(Equal(latest + 1))
 		Expect(schemaVersion(ctx, url)).To(Equal(latest + 1))
 	})
 

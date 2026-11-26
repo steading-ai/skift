@@ -26,8 +26,8 @@ SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))
 `
 
 type LockNamespacedParams struct {
-	Namespace string
-	Key       string
+	Namespace string `db:"namespace"`
+	Key       string `db:"key"`
 }
 
 // LockNamespaced takes the advisory lock keyed by a namespace and a key

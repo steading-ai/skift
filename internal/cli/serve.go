@@ -391,7 +391,7 @@ func schemaPreparer(opts serveOptions) func(ctx context.Context, log *slog.Logge
 			if err != nil {
 				return err
 			}
-			if err := status.NotAhead(); err != nil {
+			if err := status.Servable(); err != nil {
 				return err
 			}
 			if status.Pending() {

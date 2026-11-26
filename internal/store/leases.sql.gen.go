@@ -17,15 +17,15 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type CreateLeaseParams struct {
-	ID         string
-	OrgID      string
-	NodeID     string
-	Holder     string
-	OnBehalfOf *string
-	Harness    string
-	AgentRef   string
-	SessionRef *string
-	ExpiresAt  time.Time
+	ID         string    `db:"id"`
+	OrgID      string    `db:"org_id"`
+	NodeID     string    `db:"node_id"`
+	Holder     string    `db:"holder"`
+	OnBehalfOf *string   `db:"on_behalf_of"`
+	Harness    string    `db:"harness"`
+	AgentRef   string    `db:"agent_ref"`
+	SessionRef *string   `db:"session_ref"`
+	ExpiresAt  time.Time `db:"expires_at"`
 }
 
 func (q *Queries) CreateLease(ctx context.Context, arg CreateLeaseParams) (Lease, error) {
@@ -66,8 +66,8 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type ExpireLeasesParams struct {
-	OrgID string
-	Ids   []string
+	OrgID string   `db:"org_id"`
+	Ids   []string `db:"ids"`
 }
 
 // Releases the given leases as expired, when their TTL has passed by the
@@ -114,8 +114,8 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type ExpireLeasesForNodeParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 // Releases the expired lease on one node, if there is one, so a claim can
@@ -161,9 +161,9 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type ExtendLeaseParams struct {
-	OrgID     string
-	ID        string
-	ExpiresAt time.Time
+	OrgID     string    `db:"org_id"`
+	ID        string    `db:"id"`
+	ExpiresAt time.Time `db:"expires_at"`
 }
 
 // Implicit renewal: a write by the holder moves the expiry out to the given
@@ -195,8 +195,8 @@ WHERE org_id = $1 AND id = $2
 `
 
 type GetLeaseParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) GetLease(ctx context.Context, arg GetLeaseParams) (Lease, error) {
@@ -225,8 +225,8 @@ WHERE org_id = $1 AND id = $2 AND released_at IS NULL AND expires_at > now()
 `
 
 type GetLiveLeaseParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 // The named lease only while it is live: unreleased, and its TTL not yet
@@ -257,8 +257,8 @@ WHERE org_id = $1 AND node_id = $2 AND released_at IS NULL
 `
 
 type GetUnreleasedLeaseParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 // The unreleased lease on a node, if any. Callers compare expires_at with
@@ -291,8 +291,8 @@ LIMIT $2
 `
 
 type ListExpiredLeasesParams struct {
-	OrgID    string
-	PageSize int32
+	OrgID    string `db:"org_id"`
+	PageSize int32  `db:"page_size"`
 }
 
 // Unreleased leases whose TTL has passed, for the expiry timer.
@@ -336,8 +336,8 @@ ORDER BY claimed_at DESC, id DESC
 `
 
 type ListLeasesForNodeParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 func (q *Queries) ListLeasesForNode(ctx context.Context, arg ListLeasesForNodeParams) ([]Lease, error) {
@@ -380,8 +380,8 @@ ORDER BY claimed_at, id
 `
 
 type ListUnreleasedLeasesForHolderParams struct {
-	OrgID  string
-	Holder string
+	OrgID  string `db:"org_id"`
+	Holder string `db:"holder"`
 }
 
 func (q *Queries) ListUnreleasedLeasesForHolder(ctx context.Context, arg ListUnreleasedLeasesForHolderParams) ([]Lease, error) {
@@ -423,8 +423,8 @@ WHERE l.org_id = $1 AND l.node_id = $2 AND l.released_at IS NULL AND l.expires_a
 `
 
 type NodeLiveLeaseParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 // NodeLiveLease is the node's live lease, of which there is at most one,
@@ -449,9 +449,9 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type ReleaseLeaseParams struct {
-	OrgID         string
-	ID            string
-	ReleaseReason *string
+	OrgID         string  `db:"org_id"`
+	ID            string  `db:"id"`
+	ReleaseReason *string `db:"release_reason"`
 }
 
 func (q *Queries) ReleaseLease(ctx context.Context, arg ReleaseLeaseParams) (Lease, error) {
@@ -482,9 +482,9 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type ReleaseLiveLeaseParams struct {
-	OrgID         string
-	ID            string
-	ReleaseReason *string
+	OrgID         string  `db:"org_id"`
+	ID            string  `db:"id"`
+	ReleaseReason *string `db:"release_reason"`
 }
 
 // Fenced release: the named lease, only while it is live. A lease whose TTL
@@ -517,9 +517,9 @@ RETURNING id, org_id, node_id, holder, on_behalf_of, harness, agent_ref, session
 `
 
 type RenewLeaseParams struct {
-	OrgID     string
-	ID        string
-	ExpiresAt time.Time
+	OrgID     string    `db:"org_id"`
+	ID        string    `db:"id"`
+	ExpiresAt time.Time `db:"expires_at"`
 }
 
 // Fenced renewal: only the named lease, only while it is live.

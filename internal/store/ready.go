@@ -236,7 +236,7 @@ type ReadyPage struct {
 // readySQL renders the ready query. $1 is always the organization, so a
 // filter can narrow the set and never widen it.
 //
-// The rendered statement selects `n.*` from `nodes n`, so a caller that
+// The rendered statement selects n's columns from `nodes n`, so a caller that
 // needs to lock what it reads may append `FOR UPDATE OF n SKIP LOCKED`.
 func readySQL(orgID string, projects []string, f ReadyFilter, page ReadyPage) (string, []any, error) {
 	where, args, err := f.clauses(readyWhere, []any{orgID})
@@ -244,7 +244,7 @@ func readySQL(orgID string, projects []string, f ReadyFilter, page ReadyPage) (s
 		return "", nil, err
 	}
 	var b strings.Builder
-	b.WriteString("SELECT n.* FROM nodes n WHERE " + where)
+	b.WriteString("SELECT " + nodeColumns + " FROM nodes n WHERE " + where)
 	if len(projects) > 0 {
 		args = append(args, projects)
 		fmt.Fprintf(&b, " AND n.project_id = ANY($%d::text[])", len(args))
@@ -394,7 +394,7 @@ func (t Tx) OpenChildrenOf(ctx context.Context, orgID, nodeID string) ([]Node, e
 // explainRows runs one readiness subquery for the node $2 of organization
 // $1 and collects its rows as T.
 func explainRows[T any](ctx context.Context, t Tx, sub, order, orgID, nodeID string) ([]T, error) {
-	sql := "SELECT x.* FROM nodes n CROSS JOIN LATERAL (" + sub + ") x WHERE n.org_id = $1 AND n.id = $2 " + order
+	sql := "SELECT " + selectList[T]("x") + " FROM nodes n CROSS JOIN LATERAL (" + sub + ") x WHERE n.org_id = $1 AND n.id = $2 " + order
 	rows, err := t.tx.Query(ctx, sql, orgID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("explain node: %w", err)

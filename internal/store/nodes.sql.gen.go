@@ -16,18 +16,18 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type CreateNodeParams struct {
-	ID           string
-	Number       int64
-	OrgID        string
-	ProjectID    string
-	ParentID     *string
-	Kind         string
-	Title        string
-	Body         string
-	Priority     string
-	AssigneeKind *string
-	Assignee     *string
-	Labels       []string
+	ID           string   `db:"id"`
+	Number       int64    `db:"number"`
+	OrgID        string   `db:"org_id"`
+	ProjectID    string   `db:"project_id"`
+	ParentID     *string  `db:"parent_id"`
+	Kind         string   `db:"kind"`
+	Title        string   `db:"title"`
+	Body         string   `db:"body"`
+	Priority     string   `db:"priority"`
+	AssigneeKind *string  `db:"assignee_kind"`
+	Assignee     *string  `db:"assignee"`
+	Labels       []string `db:"labels"`
 }
 
 func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) (Node, error) {
@@ -76,8 +76,8 @@ WHERE org_id = $1 AND id = $2
 `
 
 type GetNodeParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) GetNode(ctx context.Context, arg GetNodeParams) (Node, error) {
@@ -113,9 +113,9 @@ WHERE org_id = $1 AND project_id = $2 AND number = $3
 `
 
 type GetNodeByNumberParams struct {
-	OrgID     string
-	ProjectID string
-	Number    int64
+	OrgID     string `db:"org_id"`
+	ProjectID string `db:"project_id"`
+	Number    int64  `db:"number"`
 }
 
 func (q *Queries) GetNodeByNumber(ctx context.Context, arg GetNodeByNumberParams) (Node, error) {
@@ -153,8 +153,8 @@ FOR UPDATE
 `
 
 type GetNodesForUpdateParams struct {
-	OrgID string
-	Ids   []string
+	OrgID string   `db:"org_id"`
+	Ids   []string `db:"ids"`
 }
 
 func (q *Queries) GetNodesForUpdate(ctx context.Context, arg GetNodesForUpdateParams) ([]Node, error) {
@@ -205,10 +205,10 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type HoldNodeParams struct {
-	OrgID      string
-	ID         string
-	HeldBy     *string
-	HeldReason *string
+	OrgID      string  `db:"org_id"`
+	ID         string  `db:"id"`
+	HeldBy     *string `db:"held_by"`
+	HeldReason *string `db:"held_reason"`
 }
 
 // Parks a node. Containment carries the hold at read time, so nothing is
@@ -253,11 +253,11 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type HoldNodeSetParams struct {
-	OrgID      string
-	HeldBy     *string
-	HeldReason *string
-	HoldGroup  *string
-	Ids        []string
+	OrgID      string   `db:"org_id"`
+	HeldBy     *string  `db:"held_by"`
+	HeldReason *string  `db:"held_reason"`
+	HoldGroup  *string  `db:"hold_group"`
+	Ids        []string `db:"ids"`
 }
 
 // Parks the nodes a sweep selected, skipping any that already carry a
@@ -316,8 +316,8 @@ ORDER BY number
 `
 
 type ListChildrenParams struct {
-	OrgID    string
-	ParentID string
+	OrgID    string `db:"org_id"`
+	ParentID string `db:"parent_id"`
 }
 
 func (q *Queries) ListChildren(ctx context.Context, arg ListChildrenParams) ([]Node, error) {
@@ -368,10 +368,10 @@ LIMIT $4 OFFSET $3
 `
 
 type ListNodesParams struct {
-	OrgID      string
-	ProjectID  string
-	PageOffset int32
-	PageSize   int32
+	OrgID      string `db:"org_id"`
+	ProjectID  string `db:"project_id"`
+	PageOffset int32  `db:"page_offset"`
+	PageSize   int32  `db:"page_size"`
 }
 
 func (q *Queries) ListNodes(ctx context.Context, arg ListNodesParams) ([]Node, error) {
@@ -424,8 +424,8 @@ SELECT 1 FROM nodes n WHERE n.org_id = $1 AND n.id = $2 FOR UPDATE
 `
 
 type LockNodeParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 // LockNode locks one node's row for the rest of the transaction. The lock
@@ -444,8 +444,8 @@ ORDER BY hold_group
 `
 
 type NodeHoldGroupsParams struct {
-	OrgID     string
-	ProjectID string
+	OrgID     string `db:"org_id"`
+	ProjectID string `db:"project_id"`
 }
 
 // The sweeps with live node holds in a project, so the active one can be
@@ -490,15 +490,15 @@ ORDER BY array_length(c.path, 1)
 `
 
 type NodeLineageParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 type NodeLineageRow struct {
-	ID        string
-	ParentID  *string
-	ProjectID string
-	CreatedBy string
+	ID        string  `db:"id"`
+	ParentID  *string `db:"parent_id"`
+	ProjectID string  `db:"project_id"`
+	CreatedBy string  `db:"created_by"`
 }
 
 // A node and each of its ancestors up to the root, nearest first, with the
@@ -538,13 +538,13 @@ WHERE org_id = $1 AND project_id = $2 AND status = 'open'
 `
 
 type OpenNodesOfProjectParams struct {
-	OrgID     string
-	ProjectID string
+	OrgID     string `db:"org_id"`
+	ProjectID string `db:"project_id"`
 }
 
 type OpenNodesOfProjectRow struct {
-	ID       string
-	ParentID *string
+	ID       string  `db:"id"`
+	ParentID *string `db:"parent_id"`
 }
 
 // The containment of every open node of a project, which is all a sweep
@@ -577,8 +577,8 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type ReleaseNodeHoldGroupParams struct {
-	OrgID     string
-	HoldGroup *string
+	OrgID     string  `db:"org_id"`
+	HoldGroup *string `db:"hold_group"`
 }
 
 // Releases every node hold one sweep placed, and only those.
@@ -630,9 +630,9 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type SetNodeStatusParams struct {
-	OrgID  string
-	ID     string
-	Status string
+	OrgID  string `db:"org_id"`
+	ID     string `db:"id"`
+	Status string `db:"status"`
 }
 
 func (q *Queries) SetNodeStatus(ctx context.Context, arg SetNodeStatusParams) (Node, error) {
@@ -670,8 +670,8 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type UnholdNodeParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) UnholdNode(ctx context.Context, arg UnholdNodeParams) (Node, error) {
@@ -710,16 +710,16 @@ RETURNING id, number, org_id, project_id, parent_id, kind, title, body, status, 
 `
 
 type UpdateNodeParams struct {
-	OrgID        string
-	ID           string
-	ParentID     *string
-	Kind         string
-	Title        string
-	Body         string
-	Priority     string
-	AssigneeKind *string
-	Assignee     *string
-	Labels       []string
+	OrgID        string   `db:"org_id"`
+	ID           string   `db:"id"`
+	ParentID     *string  `db:"parent_id"`
+	Kind         string   `db:"kind"`
+	Title        string   `db:"title"`
+	Body         string   `db:"body"`
+	Priority     string   `db:"priority"`
+	AssigneeKind *string  `db:"assignee_kind"`
+	Assignee     *string  `db:"assignee"`
+	Labels       []string `db:"labels"`
 }
 
 func (q *Queries) UpdateNode(ctx context.Context, arg UpdateNodeParams) (Node, error) {

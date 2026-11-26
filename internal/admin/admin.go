@@ -31,13 +31,15 @@ func Migrate(ctx context.Context, databaseURL string) error {
 }
 
 // ApplyMigrations is [Migrate] reporting which migrations it applied. It
-// refuses a database migrated by a newer skift.
+// refuses a database whose floor is above this build's newest migration,
+// and applies nothing to one migrated past this build within its floor.
 func ApplyMigrations(ctx context.Context, databaseURL string) (MigrationReport, error) {
 	return migrations.Apply(ctx, databaseURL)
 }
 
-// InspectSchema reads the schema version of the database without changing
-// it, for a caller that must refuse a database that is behind or ahead.
+// InspectSchema reads the schema version and floor of the database without
+// changing it, for a caller that must refuse a database that is behind or
+// above its floor.
 func InspectSchema(ctx context.Context, databaseURL string) (SchemaStatus, error) {
 	return migrations.Inspect(ctx, databaseURL)
 }
@@ -55,8 +57,10 @@ func Open(ctx context.Context, databaseURL string) (*store.Store, error) {
 // OpenCurrent connects to the database at databaseURL for a command that
 // acts on it once and exits, such as bootstrap or the jobs commands. It
 // reads the schema version first and refuses, before anything is read or
-// written, a database migrated by a newer skift or not yet migrated to
-// this build's schema. See docs/adrs/015-upgrades-and-migrations.md.
+// written, a database whose floor is above this build's newest migration
+// or not yet migrated to this build's schema. A database migrated past this
+// build within its floor is served. See
+// docs/adrs/018-unattended-upgrades.md.
 func OpenCurrent(ctx context.Context, databaseURL string) (*store.Store, error) {
 	status, err := migrations.Inspect(ctx, databaseURL)
 	if err != nil {
