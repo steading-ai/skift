@@ -3,9 +3,21 @@
 # systemd see the new units. The service is not enabled or started here:
 # a first install has no database configured yet and would fail to become
 # active. $1 is 1 on first install and 2 or more on upgrade.
+#
+# A first install also creates /etc/skift/env, the settings file the unit
+# reads, if nothing is there yet. It is the operator's from then on: no
+# install, upgrade or removal writes it again. Group readable only, as it
+# will carry the database URL's password. An env.rpmsave beside it is
+# settings an older release saved on its way out, which posttrans.sh puts
+# back instead.
 set -e
 systemd-tmpfiles --create skift.conf >/dev/null 2>&1 || :
 if [ "$1" -eq 1 ]; then
+  if [ ! -e /etc/skift/env ] && [ ! -L /etc/skift/env ] && [ ! -e /etc/skift/env.rpmsave ]; then
+    (umask 077 && printf '%s\n' '# Settings for skift.service, one KEY=value per line. See /usr/share/doc/skift/env.example for a commented template.' >/etc/skift/env)
+    chown root:skift /etc/skift/env
+    chmod 0640 /etc/skift/env
+  fi
   systemctl daemon-reload >/dev/null 2>&1 || :
   systemctl preset skift.service >/dev/null 2>&1 || :
 else

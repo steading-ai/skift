@@ -31,17 +31,27 @@ contents:
     dst: /usr/lib/sysusers.d/skift.conf
   - src: packaging/tmpfiles.d/skift.conf
     dst: /usr/lib/tmpfiles.d/skift.conf
-  # The environment template, kept across upgrades once edited. Group
-  # readable only: the database URL carries a password.
-  - src: packaging/env
-    dst: /etc/skift/env
-    type: config|noreplace
+  # The directory of the settings file, /etc/skift/env, which the package
+  # does not own: postinstall.sh writes it on a first install and rpm never
+  # touches it after, so no upgrade changes it or leaves an env.rpmnew, and
+  # removing the package leaves it in place. rpm -qf names no package for
+  # it. Releases up to 0.4.0 owned it as config|noreplace; posttrans.sh puts
+  # back what the upgrade from one of those saves as env.rpmsave.
+  - dst: /etc/skift
+    type: dir
     file_info:
-      mode: 0640
-      owner: root
-      group: skift
+      mode: 0755
+  # The commented template the settings file points at. Not type: doc, so
+  # an install that leaves documentation out still carries it.
+  - src: packaging/env
+    dst: /usr/share/doc/skift/env.example
+    file_info:
+      mode: 0644
 scripts:
   preinstall: packaging/scripts/preinstall.sh
   postinstall: packaging/scripts/postinstall.sh
   preremove: packaging/scripts/preremove.sh
   postremove: packaging/scripts/postremove.sh
+rpm:
+  scripts:
+    posttrans: packaging/scripts/posttrans.sh

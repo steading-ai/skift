@@ -1,12 +1,13 @@
 // Renovate keeps every dependency this repository pins current: the Go modules
-// in go.mod, the tools in mise.toml with their lockfile mise.lock, the images in
-// compose files and Containerfiles, the PostgreSQL image the database specs
-// start, the hk release hk.pkl names, the GitHub Actions in .github/workflows
-// with their lockfile actions.lock, and the gh-actions-lock release the
-// actions-lock workflow installs. No manager is switched off, so a new kind of
-// manifest is managed from the day it is added. The preset holds a release for
-// three days and then merges its update once the pull request's checks pass,
-// with no exception here; docs/ci.md says which checks those are.
+// in go.mod, the tools in mise.toml with their lockfile mise.lock, the images
+// in compose files and Containerfiles, the PostgreSQL image the database specs
+// start, the Fedora image the rpm's specs install on, the hk release hk.pkl
+// names, the GitHub Actions in .github/workflows with their lockfile
+// actions.lock, and the gh-actions-lock release the actions-lock workflow
+// installs. No manager is switched off, so a new kind of manifest is managed
+// from the day it is added. The preset holds a release for three days and then
+// merges its update once the pull request's checks pass, with no exception
+// here; docs/ci.md says which checks those are.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: [
@@ -34,6 +35,15 @@
       managerFilePatterns: ["/^internal/testsupport/postgres\\.go$/"],
       matchStrings: [
         'postgresImage = "(?<depName>[^:"]+):(?<currentValue>[^@"]+)@(?<currentDigest>sha256:[0-9a-f]+)"',
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      description: "The Fedora image the rpm's specs install the package on",
+      customType: "regex",
+      managerFilePatterns: ["/^packaging_fedora_test\\.go$/"],
+      matchStrings: [
+        'fedoraImage = "(?<depName>[^:"]+):(?<currentValue>[^@"]+)@(?<currentDigest>sha256:[0-9a-f]+)"',
       ],
       datasourceTemplate: "docker",
     },

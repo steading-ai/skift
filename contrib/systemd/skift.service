@@ -10,9 +10,11 @@
 #   systemctl enable --now skift.service
 #
 # DATABASE_URL and any other settings come from /etc/skift/env, one
-# KEY=value per line; the package ships a template there. The tailnet is
-# turned on from the same file: SKIFT_TAILNET_HOSTNAME, SKIFT_TAILNET_TAGS
-# and TS_AUTHKEY, with the node's state kept under StateDirectory=.
+# KEY=value per line. The package creates the file on first install and
+# leaves it alone after; /usr/share/doc/skift/env.example is a commented
+# template. The tailnet is turned on from the same file:
+# SKIFT_TAILNET_HOSTNAME, SKIFT_TAILNET_TAGS and TS_AUTHKEY, with the
+# node's state kept under StateDirectory=.
 #
 # Readiness is sd_notify: the unit is active only once the service has
 # bound its socket, the database has answered, and the schema is current
