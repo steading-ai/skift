@@ -33,7 +33,7 @@ the service has anyone to serve. Each takes the database URL that
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(newMigrateCommand(), newBootstrapCommand(), newJobsCommand(), newSnapshotCommand())
+	cmd.AddCommand(newMigrateCommand(), newBootstrapCommand(), newJobsCommand(), newSnapshotCommand(), newRestoreCommand())
 	return cmd
 }
 

@@ -349,6 +349,11 @@ func ReadSnapshotManifest(path string) (SnapshotManifest, error) {
 		return SnapshotManifest{}, fmt.Errorf("open snapshot: %w", err)
 	}
 	defer func() { _ = archive.Close() }()
+	return readManifest(&archive.Reader)
+}
+
+// readManifest reads the manifest of an open snapshot archive.
+func readManifest(archive *zip.Reader) (SnapshotManifest, error) {
 	f, err := archive.Open(manifestEntry)
 	if err != nil {
 		return SnapshotManifest{}, fmt.Errorf("open snapshot manifest: %w", err)

@@ -20,6 +20,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
@@ -142,7 +143,13 @@ type deployment struct {
 // scenario ends.
 func deploy(ctx context.Context) *deployment {
 	GinkgoHelper()
-	pool := pg.Database(ctx)
+	return deployOn(pg.Database(ctx))
+}
+
+// deployOn starts a service over the database pool reaches, which the
+// caller owns. It is torn down when the scenario ends.
+func deployOn(pool *pgxpool.Pool) *deployment {
+	GinkgoHelper()
 	dir := GinkgoT().TempDir()
 	d := &deployment{socket: filepath.Join(dir, "skift.sock"), databaseURL: pool.Config().ConnString()}
 
