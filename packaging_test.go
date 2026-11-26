@@ -303,7 +303,7 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			"/usr/lib/systemd/system/skift.service",
 			"/usr/lib/sysusers.d/skift.conf",
 			"/usr/lib/tmpfiles.d/skift.conf",
-			"/etc/skift/env",
+			"/usr/share/doc/skift/env.example",
 		}
 
 		It("is built for both architectures with the units and fragments", func() {

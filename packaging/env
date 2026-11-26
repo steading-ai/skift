@@ -1,5 +1,6 @@
-# Environment for skift.service, one KEY=value per
-# line. Readable by the skift group only: the URL carries a password.
+# Settings for skift.service, which reads them from /etc/skift/env, one
+# KEY=value per line. That file is readable by the skift group only: the
+# URL carries a password.
 #
 # The service does not create its database; that must exist before it can
 # become active. It brings the schema up to date itself at start.

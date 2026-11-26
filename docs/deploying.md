@@ -32,7 +32,7 @@ The package installs the `skift` binary, the system units, and the `skift` user 
 sudo editor /etc/skift/env            # DATABASE_URL=...
 ```
 
-`skift.service` reads `DATABASE_URL` from `/etc/skift/env`, one `KEY=value` per line; the package ships the template.
+`skift.service` reads `DATABASE_URL` from `/etc/skift/env`, one `KEY=value` per line. The package creates the file on first install, mode `0640` and group `skift` since the URL carries a password, and no upgrade or removal changes it after: it is yours, and no package owns it. `/usr/share/doc/skift/env.example` is a commented template to copy from.
 
 ## Apply the schema
 
@@ -112,7 +112,7 @@ Anything written between the upgrade and the restore is lost. Restoring is the o
 
 ## Serve callers on other machines
 
-To serve a tailnet alongside the socket, set `SKIFT_TAILNET_HOSTNAME` in `/etc/skift/env`, with `TS_AUTHKEY` to enrol the node and `SKIFT_TAILNET_TAGS` for the ACL tags it advertises; the template shows the three. Then restart `skift.service`. The node's state lives under the unit's `StateDirectory=`, `/var/lib/skift`, so a restart is the same node.
+To serve a tailnet alongside the socket, set `SKIFT_TAILNET_HOSTNAME` in `/etc/skift/env`, with `TS_AUTHKEY` to enrol the node and `SKIFT_TAILNET_TAGS` for the ACL tags it advertises; `/usr/share/doc/skift/env.example` shows the three. Then restart `skift.service`. The node's state lives under the unit's `StateDirectory=`, `/var/lib/skift`, so a restart is the same node.
 
 Bind each calling node to a principal with `--tailscale-node`:
 
