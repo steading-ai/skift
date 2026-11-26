@@ -81,6 +81,7 @@ Specs are Ginkgo and Gomega. Two lint rules carry design decisions rather than s
 - No repo-wide reformatting, and no dependency the work order did not name.
 - Never commit a secret. `.env` is ignored; `.env.example` is the template.
 - Generated code is committed. Run `make generate` and include the result.
+- A migration never introduces a required stop. It applies in one run from every released schema; work that cannot becomes a migration that can, or a background job the new binary carries. A migration that removes or changes something raises the schema's compatibility floor, and only to a release that has been on `stable` for seven days. `docs/adrs/015-upgrades-and-migrations.md` and `docs/adrs/018-unattended-upgrades.md` have the rules and what enforces them.
 
 ## Where to look first
 
