@@ -221,6 +221,7 @@ func seedFor(v int64) func(context.Context, *pgxpool.Pool) {
 	GinkgoHelper()
 	fixtures := map[int64]func(context.Context, *pgxpool.Pool){
 		20: seedSchema20,
+		28: seedSchema28,
 	}
 	var best int64
 	for at := range fixtures {
@@ -279,6 +280,42 @@ func seedSchema20(ctx context.Context, db *pgxpool.Pool) {
 	_, err = db.Exec(ctx, `INSERT INTO claim_cursors (org_id, principal_id, filter_hash, project_id) VALUES ($1, $2, $3, $4)`,
 		f.org, f.agent, requestHash("filter"), f.project)
 	Expect(err).NotTo(HaveOccurred())
+}
+
+// seedSchema28 writes a row into every table of schema 28, the schema
+// v0.4.0 shipped: schema 20's rows, an event in every partition of the
+// horizon its migration 00028 made, and a row in each of River's tables.
+func seedSchema28(ctx context.Context, db *pgxpool.Pool) {
+	GinkgoHelper()
+	seedSchema20(ctx, db)
+
+	By("an event in every partition the horizon made")
+	for _, name := range partitions(ctx, db) {
+		var n int64
+		Expect(db.QueryRow(ctx, `SELECT count(*) FROM `+pgx.Identifier{name}.Sanitize()).Scan(&n)).To(Succeed())
+		if n > 0 {
+			continue
+		}
+		month, err := time.Parse("200601", strings.TrimPrefix(name, "events_"))
+		Expect(err).NotTo(HaveOccurred(), "partition %s", name)
+		_, err = db.Exec(ctx, `
+			INSERT INTO events (id, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, request_id, op, before, after, occurred_at)
+			SELECT $1, org_id, project_id, node_id, principal_id, principal_kind, identity_scheme, policy_version, $2, op, before, after, $3
+			  FROM events LIMIT 1`,
+			newULID(), "req-"+name, month.AddDate(0, 0, 1))
+		Expect(err).NotTo(HaveOccurred(), "an event in %s", name)
+	}
+
+	By("a job, a leader, a queue and a notification in River's tables")
+	for _, stmt := range []string{
+		`INSERT INTO river_job (kind, args, max_attempts) VALUES ('ensure_event_partitions', '{}', 1)`,
+		`INSERT INTO river_leader (elected_at, expires_at, leader_id, name) VALUES (now(), now() + interval '1 minute', 'spec', 'default')`,
+		`INSERT INTO river_queue (name, updated_at) VALUES ('default', now())`,
+		`INSERT INTO river_notification (payload, topic) VALUES ('{}', 'river_insert')`,
+	} {
+		_, err := db.Exec(ctx, stmt)
+		Expect(err).NotTo(HaveOccurred(), stmt)
+	}
 }
 
 // rowCounts counts the rows in every table but goose's own, partitions
