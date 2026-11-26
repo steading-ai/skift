@@ -186,7 +186,7 @@ var _ = Describe("The deployment compose file", Label("unit"), func() {
 		postgres := deploy.Services["postgres"]
 		Expect(postgres.Image).To(Equal(loadCompose("compose.yaml").Services["postgres"].Image),
 			"the development database and the deployment run one PostgreSQL")
-		Expect(postgres.Image).To(MatchRegexp(`^docker\.io/library/postgres:18@sha256:[0-9a-f]{64}$`))
+		Expect(postgres.Image).To(MatchRegexp(`^docker\.io/library/postgres:[0-9]+@sha256:[0-9a-f]{64}$`))
 		Expect(postgres.Command).To(BeNil(), "the image's own command: no durability traded away")
 		Expect(postgres.Ports).To(BeEmpty())
 		Expect(postgres.Volumes).To(ConsistOf("pgdata:/var/lib/postgresql"))

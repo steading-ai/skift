@@ -30,7 +30,7 @@ import (
 	"github.com/steading-ai/skift/internal/store/dbpool"
 )
 
-// postgresImage is the same pinned postgres:18 the development stack in
+// postgresImage is the same pinned PostgreSQL image the development stack in
 // compose.yaml runs, so specs and `make db-up` see one server version.
 const postgresImage = "docker.io/library/postgres:18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b"
 

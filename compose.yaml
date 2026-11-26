@@ -11,7 +11,7 @@ name: skift
 
 services:
   postgres:
-    # postgres:18, pinned to the multi-arch index digest. The database specs
+    # Pinned to the multi-arch index digest. The database specs
     # pin the same one in internal/testsupport/postgres.go.
     image: docker.io/library/postgres:18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b
     environment:

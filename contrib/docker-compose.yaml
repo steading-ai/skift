@@ -1,5 +1,13 @@
 # skift and the PostgreSQL it keeps its graph in, from the released image.
 #
+# This file is for trying skift and setting it up quickly with Docker or
+# Podman, not a production deployment: copy it and adapt it to your host.
+# Renovate moves the PostgreSQL image below to each new major release as it
+# comes out, and a new PostgreSQL major cannot open the data directory of
+# the one before it. A stack started from an earlier copy keeps the
+# PostgreSQL it was started with until you carry its volume across, with
+# pg_upgrade or a dump and restore.
+#
 # Put the variables this file reads in an env file and start the stack:
 #
 #   docker compose --env-file skift.env up -d
@@ -30,7 +38,7 @@ name: skift
 
 services:
   postgres:
-    # postgres:18, pinned to the multi-arch index digest.
+    # Pinned to the multi-arch index digest.
     image: docker.io/library/postgres:18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the env file}
