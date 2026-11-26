@@ -318,6 +318,31 @@ jobs:
           gh release upload "$TAG" packslip/packslip.sigstore.json
           gh release edit "$TAG" --draft=false
 
+  # Has pkgs.stead.ing look for the release now rather than at its next
+  # scheduled sync. The token is the steading-pkgs-dispatch App's, scoped
+  # to that repository and to starting its workflows. Nothing waits on
+  # this job: if it fails, the schedule still picks the release up.
+  dispatch:
+    name: dispatch
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - id: token
+        uses: actions/create-github-app-token@v3.4.0
+        with:
+          client-id: ${{ vars.PKGS_DISPATCH_CLIENT_ID }}
+          private-key: ${{ secrets.PKGS_DISPATCH_PRIVATE_KEY }}
+          owner: steading-ai
+          repositories: pkgs.stead.ing
+          permission-actions: write
+
+      - name: Start pkgs.stead.ing's publish
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: gh workflow run publish.yml -R steading-ai/pkgs.stead.ing -f action=sync
+
   # Tags follow publication and never lead it, so no tag ever names an
   # image whose release did not publish. The full version is refused if it
   # exists; `make image-tags` decides whether this release moves edge.
