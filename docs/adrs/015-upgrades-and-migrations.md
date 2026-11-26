@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-11-25
+date: 2026-11-26
 ---
 
 # Upgrades go forward from any release, and tools hold migrations to it
@@ -31,7 +31,7 @@ What does skift promise an operator about upgrading and downgrading, and how is 
 
 Chosen option: **upgrade from any release, held by a linter, code, and tests**, because it is the simplest promise for an operator and the only one whose safeguards do not depend on someone remembering them.
 
-**The promise.** Any released version of skift upgrades directly from any earlier released version, by installing the new release and starting it. A migration added to skift must therefore apply cleanly, in one run, to the schema of every earlier release, with that release's data in every table. A migration that cannot, because it depends on a previous migration having run against a live database first, or because it needs longer than the service's start-up allows, requires a required stop: a release that operators must install and start before upgrading further. The maintainer who cuts the release decides whether to take a required stop, and its release notes announce it. An agent writing such a migration stops and says so; it does not introduce the stop itself.
+**The promise.** Any released version of skift upgrades directly from any earlier released version, by installing the new release and starting it. A migration added to skift must therefore apply cleanly, in one run, to the schema of every earlier release, with that release's data in every table. A migration that cannot, because it depends on a previous migration having run against a live database first, or because it needs longer than the service's start-up allows, is written as one that can, or as a background job the new binary carries. [ADR-018](018-unattended-upgrades.md) rules out required stops: no release is one that operators must install and start before upgrading further.
 
 **The budget.** Migrations run inside `skift serve`'s start-up, which systemd bounds with its default start timeout of 90 seconds. Every pending migration, with its lock retries, must finish well inside that.
 
@@ -58,9 +58,8 @@ The review row stays short on purpose. Anything that can move into a linter, cod
 - **Good**: An operator's upgrade is one step from any release, and their way back is a backup they already took.
 - **Good**: A lock-unsafe statement, a concurrent migration, a stale binary and a migration that fails on real data are each caught by a machine before a release ships.
 - **Good**: The upgrade spec makes the promise check itself: a migration that breaks it fails `make test`.
-- **Bad**: Every migration has to work from the oldest release forward, so the chain of migrations only grows until a required stop lets it be squashed.
+- **Bad**: Every migration has to work from the oldest release forward, so the chain of migrations only grows.
 - **Bad**: Nothing yet takes the backup for the operator; it is a documented step until skift snapshots its own database.
-- **Neutral**: A required stop is a person's decision, so an agent that needs one has to stop and ask.
 
 ## Rejected Options
 
@@ -80,4 +79,6 @@ The rules above, written as prose for whoever writes the next migration.
 
 ## More Information
 
-[ADR-013](013-postgresql-only-through-the-store.md) puts every migration and every SQL statement in the store. [Releasing](../releasing.md) is where a required stop is announced, and [deploying](../deploying.md#upgrade-it) has the operator's steps for upgrading and going back. Revisit the "adopt when needed" practices when skift runs more than one serving process, offers zero-downtime upgrades, or first needs a migration that takes minutes; revisit the backup step if skift starts taking its own.
+[ADR-013](013-postgresql-only-through-the-store.md) puts every migration and every SQL statement in the store. [Deploying](../deploying.md#upgrade-it) has the operator's steps for upgrading and going back. Revisit the "adopt when needed" practices when skift runs more than one serving process, offers zero-downtime upgrades, or first needs a migration that takes minutes; revisit the backup step if skift starts taking its own.
+
+[ADR-018](018-unattended-upgrades.md) amends this decision for unattended upgrades: it replaces required stops, the rule that a downgrade is a restore, the operator's backup step, and the refusal of every newer schema, with a snapshot the package takes before migrating and a compatibility floor that lets an older release serve a newer schema.

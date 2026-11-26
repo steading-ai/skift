@@ -80,7 +80,7 @@ skift ready
 
 ## Upgrade it
 
-Any release upgrades directly from any earlier one, unless the release notes of a release in between announce a required stop; then install that release first. [ADR-015](adrs/015-upgrades-and-migrations.md) has the promise and what holds migrations to it.
+Any release upgrades directly from any earlier one; no release is one you must stop at on the way. [ADR-015](adrs/015-upgrades-and-migrations.md) has the promise and what holds migrations to it, and [ADR-018](adrs/018-unattended-upgrades.md) how upgrades become unattended.
 
 Back up the database first. It is the way back if the new release does not suit you:
 
