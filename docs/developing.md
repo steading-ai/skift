@@ -81,6 +81,22 @@ Specs labelled `db` need podman. Store specs start their own PostgreSQL through 
 
 The harness finds the rootless podman socket on its own. Set `DOCKER_HOST` to point it somewhere else.
 
+## Run the downgrade spec
+
+```sh
+go tool ginkgo --label-filter=downgrade ./internal/store/migrations
+```
+
+The downgrade spec, in `internal/store/migrations/downgrade_test.go`, holds [ADR-018](adrs/018-unattended-upgrades.md)'s promise that `dnf downgrade` brings back a serving release. For every release tag whose newest migration meets the current schema's compatibility floor, it fetches that release's archive for this platform, checks it against the release's `SHA256SUMS`, and runs the release's `skift serve` against the schema this tree builds, with a row in every table. The release has to report ready, create two linked nodes, claim one and complete it through its socket, and stop cleanly. The spec is labelled `downgrade` and `slow`, and `make test` and CI run it with the rest.
+
+Archives are kept under `skift/releases` in the user cache directory, `~/.cache/skift/releases` on Linux, one directory per tag, so a run that finds every eligible archive there needs no network. Each release below the floor is skipped, and the output names its newest migration and the floor. Until a release carries the floor check, which arrived in migration 29, no release is eligible, and the spec skips itself as vacuous.
+
+Beside it, a binary built from this tree stands in for a release twice: it serves a schema that a newer migration only added to, and a migration that drops a column without raising the floor fails it, with the failure naming the binary. To hold another build to the spec as though it were an eligible release, a build of an earlier commit for instance, name it in `SKIFT_DOWNGRADE_STANDINS`, with several separated as in `PATH`:
+
+```sh
+SKIFT_DOWNGRADE_STANDINS=/path/to/older/skift go tool ginkgo --label-filter=downgrade ./internal/store/migrations
+```
+
 ## Run the mutation tests
 
 ```sh

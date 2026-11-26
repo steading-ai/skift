@@ -50,6 +50,11 @@ jobs:
         with:
           key: ${{ github.repository }}-golangci-lint-check
           path: ~/.cache/golangci-lint
+      # The release archives the downgrade spec fetches.
+      - uses: useblacksmith/stickydisk@v1.8.0
+        with:
+          key: ${{ github.repository }}-releases
+          path: ~/.cache/skift/releases
 
       # Every tool comes from mise.toml, at the version a developer runs.
       # The tools are on a sticky disk, so the action caches nothing itself.
@@ -87,6 +92,10 @@ jobs:
         with:
           key: ${{ github.repository }}-golangci-lint-race
           path: ~/.cache/golangci-lint
+      - uses: useblacksmith/stickydisk@v1.8.0
+        with:
+          key: ${{ github.repository }}-releases
+          path: ~/.cache/skift/releases
       - uses: jdx/mise-action@v5.3.0
         with:
           cache: false
