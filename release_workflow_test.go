@@ -188,7 +188,7 @@ var _ = Describe("The release workflow", Label("unit"), func() {
 
 		var releaseWriters, packageWriters []string
 		for name, job := range w.Jobs {
-			Expect(job.Permissions).NotTo(BeEmpty(), name)
+			Expect(job.Permissions).NotTo(BeNil(), "%s states its own permissions, even when that is none", name)
 			if job.Permissions["contents"] == "write" {
 				releaseWriters = append(releaseWriters, name)
 			}
@@ -200,6 +200,27 @@ var _ = Describe("The release workflow", Label("unit"), func() {
 		// release's title and notes; image, likewise, to the one that pushes.
 		Expect(releaseWriters).To(ConsistOf("draft", "publish", "notes"))
 		Expect(packageWriters).To(ConsistOf("image", "tag-image"))
+	})
+
+	// docs/adrs/017-release-channels-and-packages.md: pkgs.stead.ing signs
+	// what it has verified, so the dispatch only says "look now".
+	It("starts pkgs.stead.ing's publish once the release is published, holding nothing of this repository", func() {
+		job := w.Jobs["dispatch"]
+		Expect(job.Needs).To(ConsistOf("publish"))
+		Expect(job.Permissions).NotTo(BeNil())
+		Expect(job.Permissions).To(BeEmpty(), "the App's token does the work; the job needs no GITHUB_TOKEN permission")
+
+		Expect(job.Steps).To(HaveLen(2))
+		mint, start := job.Steps[0], job.Steps[1]
+		Expect(mint.Uses).To(HavePrefix("actions/create-github-app-token@"))
+		Expect(mint.With).To(HaveKeyWithValue("repositories", "pkgs.stead.ing"))
+		Expect(mint.With).To(HaveKeyWithValue("permission-actions", "write"))
+		Expect(start.Env).To(HaveKeyWithValue("GH_TOKEN", "${{ steps."+mint.ID+".outputs.token }}"))
+		Expect(start.Run).To(Equal("gh workflow run publish.yml -R steading-ai/pkgs.stead.ing -f action=sync"))
+
+		for name, other := range w.Jobs {
+			Expect(other.Needs).NotTo(ContainElement("dispatch"), name)
+		}
 	})
 
 	It("lets only the tagging job, of those that run here, write packages", func() {
