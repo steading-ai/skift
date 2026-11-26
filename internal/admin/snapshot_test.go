@@ -94,6 +94,21 @@ var _ = Describe("Taking a snapshot", Label(testsupport.DBLabel), func() {
 			}
 		})
 
+		It("takes no snapshot of a database skift has never migrated, which has nothing to lose", func(ctx SpecContext) {
+			empty := pg.EmptyDatabase(ctx)
+			out, err := admin.TakeSnapshot(ctx, empty, admin.SnapshotParams{Dir: dir, Keep: 1, IfBehind: 30})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out.Path).To(BeEmpty())
+			Expect(out.Skipped).To(ContainSubstring("no skift schema"))
+			Expect(out.SchemaVersion).To(BeZero())
+			Expect(dir).NotTo(BeAnExistingFile())
+
+			By("and without --if-behind it still fails")
+			_, err = admin.TakeSnapshot(ctx, empty, admin.SnapshotParams{Dir: dir, Keep: 1})
+			Expect(err).To(MatchError(store.ErrNoSchema))
+			Expect(filesIn(dir)).To(BeEmpty())
+		})
+
 		It("takes one when the database is behind the version", func(ctx SpecContext) {
 			status, err := admin.InspectSchema(ctx, url)
 			Expect(err).NotTo(HaveOccurred())

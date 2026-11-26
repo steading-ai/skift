@@ -95,6 +95,8 @@ sudo dnf install ./dist/skift-*.$(uname -m).rpm
 sudo systemctl restart skift.service
 ```
 
+Before an upgrade whose release adds migrations the database has not had, the package snapshots the database. Its pre-install step runs the installed release's `skift admin snapshot` as user `skift`, which copies every table to a file in `/var/lib/skift/backups/` and keeps the five newest. If the snapshot fails, because the database cannot be reached or the disk is full, the pre-install step fails: dnf installs nothing of the new release, the installed one keeps running, and the next upgrade tries again. The reason is in dnf's output and in the journal, under `journalctl -t skift-upgrade`. No snapshot is taken on a first install, by an upgrade that adds no migration, when `/etc/skift/env` names no database, or when the installed release is 0.4.0 or earlier, which has no `admin snapshot`. Nothing reads a snapshot back yet, so keep taking the backup above.
+
 The service applies the new release's migrations as it starts, and reports ready only once the schema is current. Don't run `skift admin migrate` from the new release while the old one is still serving: the old binary would be answering on a schema it was not built for.
 
 ## Go back to an older release

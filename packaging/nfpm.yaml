@@ -26,6 +26,8 @@ license: ISC
 umask: 0022
 depends:
   - systemd
+  # setpriv, with which the pre-install step runs the snapshot as skift.
+  - util-linux
 contents:
   - src: dist/skift-linux-${GOARCH}
     dst: /usr/bin/skift
@@ -55,7 +57,9 @@ contents:
     file_info:
       mode: 0644
 scripts:
-  preinstall: packaging/scripts/preinstall.sh
+  # packaging/scripts/preinstall.sh with this package's version and schema
+  # written in, by the Makefile.
+  preinstall: dist/packaging/preinstall.sh
   postinstall: packaging/scripts/postinstall.sh
   preremove: packaging/scripts/preremove.sh
   postremove: packaging/scripts/postremove.sh
