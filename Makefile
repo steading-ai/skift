@@ -314,9 +314,11 @@ image-tags:
 .env:
 	cp .env.example .env
 
-# Start PostgreSQL and block until it accepts TCP connections.
+# Start PostgreSQL and block until it accepts TCP connections. compose.yaml's
+# health check decides how long that may take: --wait fails as soon as it
+# reports the container unhealthy, so no second limit is set here.
 db-up: .env
-	$(COMPOSE) up -d --wait --wait-timeout 30
+	$(COMPOSE) up -d --wait
 
 # Stop the stack. The data volume survives; `podman compose down -v` removes it.
 db-down:
