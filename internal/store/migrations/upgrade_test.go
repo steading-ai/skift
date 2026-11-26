@@ -130,22 +130,12 @@ type releases struct {
 	unreachable string
 }
 
-// releasedMigrations reads the release tags, skipping candidates, since a
-// candidate is not a release anyone upgrades from.
+// releasedMigrations reads the release tags.
 func releasedMigrations() releases {
 	GinkgoHelper()
-	out, err := exec.Command("git", "tag", "--list", "v*", "--sort=v:refname").Output()
-	if err != nil {
-		return releases{unreachable: "no git repository here to read release tags from: " + err.Error()}
-	}
-	var tags []string
-	for _, tag := range strings.Fields(string(out)) {
-		if !strings.Contains(tag, "-") {
-			tags = append(tags, tag)
-		}
-	}
-	if len(tags) == 0 {
-		return releases{unreachable: "no release tag is reachable from this checkout; fetch tags to run it"}
+	tags, unreachable := releaseTags()
+	if tags == nil {
+		return releases{unreachable: unreachable}
 	}
 	r := releases{newestTag: tags[len(tags)-1]}
 	for _, tag := range tags {
@@ -160,6 +150,26 @@ func releasedMigrations() releases {
 	}
 	slices.Sort(r.versions)
 	return r
+}
+
+// releaseTags lists the release tags reachable from this checkout, oldest
+// first, leaving out candidates, since a candidate is not a release anyone
+// upgrades from or downgrades to. tags is nil, with unreachable saying
+// why, when there are none.
+func releaseTags() (tags []string, unreachable string) {
+	out, err := exec.Command("git", "tag", "--list", "v*", "--sort=v:refname").Output()
+	if err != nil {
+		return nil, "no git repository here to read release tags from: " + err.Error()
+	}
+	for _, tag := range strings.Fields(string(out)) {
+		if !strings.Contains(tag, "-") {
+			tags = append(tags, tag)
+		}
+	}
+	if len(tags) == 0 {
+		return nil, "no release tag is reachable from this checkout; fetch tags to run it"
+	}
+	return tags, ""
 }
 
 // shippedMigrations lists the goose migration files a tag carries, oldest

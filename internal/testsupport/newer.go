@@ -48,6 +48,17 @@ $$;
 	},
 }
 
+// DropsColumn removes a column this build reads and writes, nodes.body,
+// and leaves the floor where it was: the mistake the floor exists to
+// catch, since every release at or above the floor still serves the
+// schema and then fails on the missing column.
+var DropsColumn = NewerMigration{
+	Name: "drops_column",
+	Up: func(int64) string {
+		return `ALTER TABLE nodes DROP COLUMN body;`
+	},
+}
+
 // RaisesFloor stands for a migration that removes or changes something
 // this build relies on. It is reduced to the one statement such a
 // migration carries: raising the floor, here to its own version.
