@@ -23,8 +23,8 @@ env:
   TAG: ${{ github.ref_name }}
 
 jobs:
-  # Builds what the release uploads and attests each archive: who built
-  # it, and what is in it.
+  # Builds what the release uploads and attests each archive, who built it
+  # and what is in it, and each rpm, who built it.
   build:
     name: build
     runs-on: ubuntu-latest
@@ -75,6 +75,12 @@ jobs:
       - uses: actions/attest@v4.2.2
         with:
           subject-path: dist/release/*.tar.gz
+
+      # pkgs.stead.ing signs and publishes an rpm only once it has checked
+      # this attestation.
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/release/*.rpm
 
       - uses: actions/attest@v4.2.2
         with:
@@ -217,6 +223,26 @@ jobs:
           done
           test "$archives" -eq 4 ||
             { echo "::error::expected 4 archives, found $archives"; exit 1; }
+
+      # Exactly these two rpms, by these names: pkgs.stead.ing takes one per
+      # architecture, its version the tag's.
+      - name: Each architecture has its rpm, its checksum and its attestation
+        working-directory: release
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          want="skift-$VERSION-1.aarch64.rpm skift-$VERSION-1.x86_64.rpm"
+          shopt -s nullglob
+          found="$(echo *.rpm)"
+          test "$found" = "$want" ||
+            { echo "::error::expected the rpms $want, found ${found:-none}"; exit 1; }
+          for rpm in $want; do
+            grep -q "  $rpm\$" SHA256SUMS ||
+              { echo "::error::$rpm is not in SHA256SUMS"; exit 1; }
+            gh attestation verify "$rpm" --repo "$GH_REPO" \
+              --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
+              --deny-self-hosted-runners
+          done
 
       # The notes are GitHub's until better ones are written; they stay
       # editable after the release is published.

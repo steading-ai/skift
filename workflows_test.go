@@ -36,7 +36,10 @@ type workflowJob struct {
 	Environment string            `yaml:"environment"`
 	Permissions map[string]string `yaml:"permissions"`
 	Outputs     map[string]string `yaml:"outputs"`
-	Strategy    struct {
+	Container   struct {
+		Image string `yaml:"image"`
+	} `yaml:"container"`
+	Strategy struct {
 		Matrix struct {
 			Include []map[string]string `yaml:"include"`
 		} `yaml:"matrix"`

@@ -207,19 +207,32 @@ clean:
 	rm -f $(BINARY)
 	rm -rf dist
 
+# The commit's time, in seconds, which every timestamp in an archive and
+# an rpm takes. Empty outside a git checkout.
+COMMIT_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null)
+
+# rpms runs nfpm over packaging/nfpm.yaml for each GOARCH in $(1) and
+# writes the packages into $(2). Each packs dist/skift-linux-<arch>,
+# whichever target put it there.
+define rpms
+mkdir -p $(2)
+for arch in $(1); do \
+  GOARCH=$$arch VERSION='$(VERSION)' $(if $(COMMIT_EPOCH),SOURCE_DATE_EPOCH=$(COMMIT_EPOCH)) \
+    nfpm package --config packaging/nfpm.yaml --packager rpm --target $(2)/ || exit 1; \
+done
+endef
+
 # The rpm, for each architecture in PACKAGE_ARCHES: a cross-compiled skift
-# and the units, fragments and scriptlets under contrib/ and packaging/,
-# assembled by nfpm from packaging/nfpm.yaml. Output lands in dist/.
+# and the units, fragments and scriptlets under contrib/ and packaging/. A
+# release's rpms are the same package around the binaries in its archives;
+# see release.
 PACKAGE_ARCHES ?= amd64 arm64
 # Where the finished rpms go. stead passes its channel directory; staging
 # stays under dist/ regardless.
 DESTDIR ?= dist
 
 package: $(foreach arch,$(PACKAGE_ARCHES),dist/skift-linux-$(arch))
-	mkdir -p $(DESTDIR)
-	for arch in $(PACKAGE_ARCHES); do \
-	  GOARCH=$$arch VERSION=$(VERSION) nfpm package --config packaging/nfpm.yaml --packager rpm --target $(DESTDIR)/ || exit 1; \
-	done
+	$(call rpms,$(PACKAGE_ARCHES),$(DESTDIR))
 
 dist/skift-linux-%: FORCE
 	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/skift
@@ -227,28 +240,34 @@ dist/skift-linux-%: FORCE
 FORCE:
 
 # What a release uploads, in dist/release/: for each platform an archive
-# and its SBOM, and SHA256SUMS over them all. goreleaser builds them from
-# .goreleaser.yaml, always as a snapshot: it publishes nothing and takes
-# its version from here, so a rehearsal and a release are the same build.
-# The linux binaries are then lifted out of their archives to where
-# packaging/Containerfile reads them, so the image holds the very bytes a
+# and its SBOM, an rpm for each linux architecture, and SHA256SUMS over
+# them all. goreleaser builds the archives from .goreleaser.yaml, always
+# as a snapshot: it publishes nothing and takes its version from here, so
+# a rehearsal and a release are the same build. The linux binaries are
+# then lifted out of their archives to where packaging/Containerfile and
+# the rpm read them, so the image and the rpms hold the very bytes a
 # release's archives do.
 #
-# Every timestamp in an archive is the commit's, passed in both spellings
-# goreleaser's templates take, so one commit always builds the same bytes.
+# Every timestamp in an archive and an rpm is the commit's, passed in each
+# spelling goreleaser's templates and nfpm take, so one commit always
+# builds the same bytes.
 RELEASE_DIR := dist/release
+# sha256sum's output, from whichever of the two tools this machine has.
+SHA256SUM := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo shasum -a 256)
 
 release:
 	rm -rf $(RELEASE_DIR)
-	epoch=$$(git log -1 --format=%ct) && \
+	test -n '$(COMMIT_EPOCH)' || { echo "release: no commit to take the time from" >&2; exit 1; }
 	date=$$(TZ=UTC0 git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd) && \
-	VERSION='$(VERSION)' SOURCE_DATE_EPOCH=$$epoch COMMIT_DATE=$$date goreleaser release --snapshot --clean
+	VERSION='$(VERSION)' SOURCE_DATE_EPOCH=$(COMMIT_EPOCH) COMMIT_DATE=$$date goreleaser release --snapshot --clean
 	mkdir -p $(RELEASE_DIR)
 	cp dist/goreleaser/skift_$(VERSION)_*.tar.gz dist/goreleaser/skift_$(VERSION)_*.cdx.json dist/goreleaser/SHA256SUMS $(RELEASE_DIR)/
 	for arch in amd64 arm64; do \
 	  tar -xzOf $(RELEASE_DIR)/skift_$(VERSION)_linux_$$arch.tar.gz skift > dist/skift-linux-$$arch && \
 	  chmod 0755 dist/skift-linux-$$arch || exit 1; \
 	done
+	$(call rpms,amd64 arm64,$(RELEASE_DIR))
+	cd $(RELEASE_DIR) && $(SHA256SUM) skift-*.rpm >> SHA256SUMS
 
 # The compose file a release carries: contrib/docker-compose.yaml with the
 # skift service's image line naming IMAGE, the released image as

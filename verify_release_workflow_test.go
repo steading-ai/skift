@@ -80,6 +80,38 @@ var _ = Describe("The verify-release workflow", Label("unit"), func() {
 		Expect(check).NotTo(ContainSubstring("${version%.*}"))
 	})
 
+	// The check pkgs.stead.ing makes before it signs an rpm.
+	It("checks each rpm's attestation as pkgs.stead.ing does", func() {
+		var check string
+		for _, step := range w.Jobs["verify"].Steps {
+			if strings.Contains(step.Run, "assets/*.rpm") {
+				check = step.Run
+			}
+		}
+		Expect(check).NotTo(BeEmpty(), "the verify job checks no rpm")
+		Expect(check).To(ContainSubstring(`--signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG"`))
+		Expect(check).To(ContainSubstring("--deny-self-hosted-runners"))
+	})
+
+	It("installs the x86_64 rpm on Fedora, for a release that carries one", func() {
+		const carriesRPM = "steps.rpm.outputs.released == 'true'"
+
+		job := w.Jobs["rpm"]
+		Expect(job.Container.Image).To(HavePrefix("registry.fedoraproject.org/fedora:"))
+		Expect(job.Steps[0].ID).To(Equal("rpm"))
+		Expect(job.Steps[0].Run).To(ContainSubstring(`rpm="skift-$version-1.x86_64.rpm"`))
+
+		var checks strings.Builder
+		for _, step := range job.Steps[1:] {
+			Expect(step.If).To(Equal(carriesRPM), step.Name)
+			checks.WriteString(step.Run)
+		}
+		Expect(checks.String()).To(ContainSubstring("dnf -y install"))
+		Expect(checks.String()).To(ContainSubstring(`"skift version $version"`))
+		Expect(checks.String()).To(ContainSubstring("getent passwd skift"))
+		Expect(checks.String()).To(ContainSubstring("test -f /usr/lib/systemd/system/skift.service"))
+	})
+
 	It("installs every released platform with mise, by manifest and by asset name", func() {
 		install := w.Jobs["install"]
 
