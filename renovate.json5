@@ -70,6 +70,12 @@
       groupName: "PostgreSQL image",
     },
     {
+      description: "A new PostgreSQL major cannot open the data directory of the one before it, so contrib/docker-compose.yaml moves to one only with a way to carry its volume across. Renovate proposes the major and a person decides.",
+      matchDepNames: ["docker.io/library/postgres"],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+    },
+    {
       description: "mise.toml writes a version without the v its GitHub tag carries. Go's tags are go1.2.3, which the mise manager reads by itself.",
       matchManagers: ["mise"],
       matchDatasources: ["github-releases", "github-tags"],
