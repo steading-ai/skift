@@ -22,22 +22,71 @@ const fedoraImage = "quay.io/fedora/fedora:45@sha256:92837d4834c1cff45cc2d534b65
 // must leave the operator's file as it found it.
 const configRelease = "v0.4.0"
 
+// rpmIn is the one package for this machine's architecture with the given
+// version in a dist directory.
+func rpmIn(dist, version string) string {
+	GinkgoHelper()
+	found, err := filepath.Glob(filepath.Join(dist, "skift-"+version+"-1.*.rpm"))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(found).To(HaveLen(1))
+	return found[0]
+}
+
+// fedoraBase builds Fedora with the package's dependencies, so a spec
+// installs skift from its own files with every repository off, and
+// returns the image's name. The image is removed when the spec's container
+// ends.
+func fedoraBase(dir string) string {
+	GinkgoHelper()
+	base := specName("fedora")
+	builder := specName("fedora-build")
+	runIn(dir, 10*time.Minute, "podman", "run", "--name", builder, fedoraImage, "dnf", "-y", "-q", "install", "systemd", "util-linux")
+	DeferCleanup(func() {
+		runIn(dir, time.Minute, "podman", "rm", "--force", builder)
+	})
+	runIn(dir, time.Minute, "podman", "commit", "--quiet", builder, base)
+	DeferCleanup(func() {
+		runIn(dir, time.Minute, "podman", "rmi", "--force", base)
+	})
+	return base
+}
+
+// The database a spec's Fedora reaches, from fedoraBesideDatabase. The
+// password holds what a shell would expand, so a script that ran
+// /etc/skift/env, rather than reading it, would not reach the database.
+const (
+	podDatabasePassword = `s3cret$HOME`
+	podDatabaseURL      = "postgres://skift:" + podDatabasePassword + "@127.0.0.1:5432/skift?sslmode=disable"
+)
+
+// fedoraBesideDatabase starts a container of base running command, and a
+// PostgreSQL beside it in one pod, the one compose.yaml runs, answering at
+// podDatabaseURL with nothing in it yet. Both are removed when the spec
+// ends. It returns their names.
+func fedoraBesideDatabase(dir, base string, command ...string) (fedora, db string) {
+	GinkgoHelper()
+	pod := specName("pod")
+	runIn(dir, time.Minute, "podman", "pod", "create", "--name", pod)
+	DeferCleanup(func() {
+		runIn(dir, time.Minute, "podman", "pod", "rm", "--force", "--time", "0", pod)
+	})
+	db, fedora = pod+"-db", pod+"-fedora"
+	postgres := pinnedIn("compose.yaml", `(?m)^\s+image: (\S*/postgres:\S+)$`)
+	runIn(dir, 5*time.Minute, "podman", "run", "--detach", "--pod", pod, "--name", db,
+		"--env", "POSTGRES_USER=skift", "--env", "POSTGRES_PASSWORD="+podDatabasePassword, "--env", "POSTGRES_DB=skift", postgres)
+	runIn(dir, time.Minute, "podman", append([]string{"run", "--detach", "--pod", pod, "--name", fedora, base}, command...)...)
+	Eventually(func() *gexec.Session {
+		return sessionIn(dir, time.Minute, "podman", "exec", db, "pg_isready", "--quiet", "--host", "127.0.0.1", "--username", "skift")
+	}).WithTimeout(time.Minute).WithPolling(time.Second).Should(gexec.Exit(0))
+	return fedora, db
+}
+
 // The rpm installed and upgraded by dnf on Fedora. Needs podman, like the
 // database specs, so it carries their "db" label and stays out of `make
 // test-unit`. Serial, as the image's spec is: it compiles skift and runs
 // containers.
 var _ = Describe("The rpm on Fedora", Label("db", "slow"), Serial, Ordered, func() {
 	var dir, base, released, next, later string
-
-	// rpmIn is the one package for this machine's architecture with the
-	// given version in a dist directory.
-	rpmIn := func(dist, version string) string {
-		GinkgoHelper()
-		found, err := filepath.Glob(filepath.Join(dist, "skift-"+version+"-1.*.rpm"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(found).To(HaveLen(1))
-		return found[0]
-	}
 
 	BeforeAll(func() {
 		// Two packages from this tree whose templates differ by a comment,
@@ -66,29 +115,17 @@ var _ = Describe("The rpm on Fedora", Label("db", "slow"), Serial, Ordered, func
 		runIn(dir, 10*time.Minute, "make", "package", "VERSION=9.9.9", "PACKAGE_ARCHES="+runtime.GOARCH)
 		later = rpmIn(filepath.Join(dir, "dist"), "9.9.9")
 
-		// Fedora with the package's one dependency, so each spec installs
-		// from its own files with every repository off.
-		base = specName("fedora")
-		builder := specName("fedora-build")
-		runIn(dir, 10*time.Minute, "podman", "run", "--name", builder, fedoraImage, "dnf", "-y", "-q", "install", "systemd")
-		DeferCleanup(func() {
-			runIn(dir, time.Minute, "podman", "rm", "--force", builder)
-		})
-		runIn(dir, time.Minute, "podman", "commit", "--quiet", builder, base)
-		DeferCleanup(func() {
-			runIn(dir, time.Minute, "podman", "rmi", "--force", base)
-		})
+		base = fedoraBase(dir)
 	})
 
-	// host starts a container that has never had skift installed.
+	// host starts a container that has never had skift installed, beside
+	// an empty database. An upgrade asks the database whether it is behind
+	// the new package's schema before going ahead; this one has no schema
+	// yet, so there is nothing to snapshot.
 	host := func() string {
 		GinkgoHelper()
-		name := specName("fedora")
-		runIn(dir, time.Minute, "podman", "run", "--detach", "--name", name, base, "sleep", "infinity")
-		DeferCleanup(func() {
-			runIn(dir, time.Minute, "podman", "rm", "--force", "--time", "0", name)
-		})
-		return name
+		fedora, _ := fedoraBesideDatabase(dir, base, "sleep", "infinity")
+		return fedora
 	}
 
 	// sh runs a script in the container and returns its stdout, exactly.
@@ -109,7 +146,7 @@ var _ = Describe("The rpm on Fedora", Label("db", "slow"), Serial, Ordered, func
 
 	edit := func(container string) {
 		GinkgoHelper()
-		sh(container, `printf '%s\n' 'DATABASE_URL=postgres://skift:secret@db.example/skift' >>/etc/skift/env`)
+		sh(container, `printf '%s\n' 'DATABASE_URL=`+podDatabaseURL+`' >>/etc/skift/env`)
 	}
 
 	settings := func(container string) []string {

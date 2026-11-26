@@ -3,6 +3,7 @@ package skift_test
 import (
 	"archive/tar"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -344,6 +345,18 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 				body, err := os.ReadFile(filepath.Join(dir, "packaging/scripts", script))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(body)).NotTo(MatchRegexp(`systemctl\b.*\b(start|restart|enable)\b`), script)
+			}
+		})
+
+		It("snapshots before an upgrade, with its version and its binary's newest migration written in", func() {
+			for _, name := range []string{"skift-9.9.9-1.x86_64.rpm", "skift-9.9.9-1.aarch64.rpm"} {
+				pkg, err := rpm.Open(filepath.Join(dir, "dist", name))
+				Expect(err).NotTo(HaveOccurred())
+				script := pkg.PreInstallScript()
+				Expect(script).To(ContainSubstring("admin snapshot"), name)
+				Expect(script).To(ContainSubstring("\nversion=9.9.9\n"), name)
+				Expect(script).To(ContainSubstring(fmt.Sprintf("\nschema=%d\n", newestMigration(dir))), name)
+				Expect(script).NotTo(MatchRegexp(`@[A-Z_]+@`), name)
 			}
 		})
 

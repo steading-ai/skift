@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -207,6 +208,16 @@ var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 				}
 			}
 			Expect(packed).To(Equal(hex.EncodeToString(archived[:])), "the header's digest of /usr/bin/skift in %s", arch)
+		}
+	})
+
+	It("writes the release's version and its binary's newest migration into each rpm's pre-install step", func() {
+		for _, arch := range rpmArches {
+			pkg, err := rpm.Open(filepath.Join(release, rpmName(arch)))
+			Expect(err).NotTo(HaveOccurred(), arch)
+			script := pkg.PreInstallScript()
+			Expect(script).To(ContainSubstring("\nversion="+releaseVersion+"\n"), arch)
+			Expect(script).To(ContainSubstring(fmt.Sprintf("\nschema=%d\n", newestMigration(dir))), arch)
 		}
 	})
 

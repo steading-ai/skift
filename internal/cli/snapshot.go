@@ -41,7 +41,9 @@ snapshot that fails leaves none. After a snapshot is in place, all but the
 With --if-behind VERSION, it first reads the database's schema version
 and, when that is already VERSION or later, takes no snapshot, says why,
 and exits 0. An upgrade runs it this way with the schema the new release
-migrates to, so one that migrates nothing does nothing extra.
+migrates to, so one that migrates nothing does nothing extra. A database
+skift has never migrated has nothing to lose, so --if-behind skips it
+too; without --if-behind, a snapshot of it fails.
 
 The database's schema need not be this build's: the snapshot records
 whatever version it holds.`,

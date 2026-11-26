@@ -213,7 +213,8 @@ COMMIT_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null)
 
 # rpms runs nfpm over packaging/nfpm.yaml for each GOARCH in $(1) and
 # writes the packages into $(2). Each packs dist/skift-linux-<arch>,
-# whichever target put it there.
+# whichever target put it there, and dist/packaging/preinstall.sh, which
+# a target that calls it names as a prerequisite.
 define rpms
 mkdir -p $(2)
 for arch in $(1); do \
@@ -231,11 +232,27 @@ PACKAGE_ARCHES ?= amd64 arm64
 # stays under dist/ regardless.
 DESTDIR ?= dist
 
-package: $(foreach arch,$(PACKAGE_ARCHES),dist/skift-linux-$(arch))
+package: $(foreach arch,$(PACKAGE_ARCHES),dist/skift-linux-$(arch)) dist/packaging/preinstall.sh
 	$(call rpms,$(PACKAGE_ARCHES),$(DESTDIR))
 
 dist/skift-linux-%: FORCE
 	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/skift
+
+# The newest migration in the tree, which every binary built from it
+# carries: the greatest number before the underscore in goose's
+# NNNNN_name.sql files under internal/store/migrations.
+SCHEMA_VERSION := $(shell ls internal/store/migrations 2>/dev/null | \
+  sed -n 's/^0*\([0-9][0-9]*\)_.*\.sql$$/\1/p' | sort -n | tail -n 1)
+
+# The rpm's pre-install scriptlet with this package's version and schema
+# written in, since nfpm takes a scriptlet as a file. FORCE, because
+# VERSION is not a file make can compare.
+dist/packaging/preinstall.sh: packaging/scripts/preinstall.sh FORCE
+	@test -n '$(SCHEMA_VERSION)' || { echo "$@: no migration found under internal/store/migrations" >&2; exit 1; }
+	@mkdir -p $(@D)
+	sed -e 's/@VERSION@/$(VERSION)/g' -e 's/@SCHEMA_VERSION@/$(SCHEMA_VERSION)/g' $< > $@.tmp
+	@! grep -n '@[A-Z_]*@' $@.tmp || { echo "$@: a placeholder is left unfilled" >&2; rm -f $@.tmp; exit 1; }
+	mv $@.tmp $@
 
 FORCE:
 
@@ -255,7 +272,7 @@ RELEASE_DIR := dist/release
 # sha256sum's output, from whichever of the two tools this machine has.
 SHA256SUM := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo shasum -a 256)
 
-release:
+release: dist/packaging/preinstall.sh
 	rm -rf $(RELEASE_DIR)
 	test -n '$(COMMIT_EPOCH)' || { echo "release: no commit to take the time from" >&2; exit 1; }
 	date=$$(TZ=UTC0 git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd) && \

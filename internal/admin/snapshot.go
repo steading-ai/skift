@@ -164,8 +164,10 @@ type SnapshotSequence struct {
 // It reads the schema but neither checks it against this binary nor needs
 // it to be current: a snapshot is of whatever schema the database is at,
 // labelled with it. With params.IfBehind it first reads only the schema
-// version, and when that is already at or above IfBehind returns with
-// Skipped set, having written and removed nothing.
+// version, and when that is already at or above IfBehind, or is 0 because
+// skift has never migrated the database, returns with Skipped set, having
+// written and removed nothing. Without IfBehind, a database at schema 0
+// fails with [store.ErrNoSchema].
 //
 // The file is written under a temporary name in Dir, synced, and renamed
 // into place only once complete, so a snapshot that fails or is
@@ -196,6 +198,9 @@ func TakeSnapshot(ctx context.Context, databaseURL string, params SnapshotParams
 				SchemaVersion: current,
 				Skipped:       fmt.Sprintf("the database is at schema %d, not behind %d", current, params.IfBehind),
 			}, nil
+		}
+		if current == 0 {
+			return SnapshotResult{Skipped: "the database has no skift schema yet, so there is nothing to lose"}, nil
 		}
 	}
 
