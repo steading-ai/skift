@@ -146,3 +146,7 @@ One place for the version and no new tool. Rejected because the reproducible arc
 ### goreleaser end to end
 
 One command and one configuration file. Rejected because the order of publication is the security property: the image must be attested before the release names its digest, the release must be complete before it is published, and tags must follow publication. `goreleaser release` does these in its own order, in one job with every write permission, and splitting its phases across jobs is not available in its open-source edition.
+
+## More Information
+
+[ADR-017](017-release-channels-and-packages.md) amends six parts of this record: [§1](#1-trigger-and-version), where every release is a plain version with no pre-release part, and never a GitHub prerelease; [§2](#2-who-builds-and-who-publishes), where the rpm is built from the release's own linux binaries instead of `make package`'s `go build`; [§3](#3-release-assets-and-their-names), whose asset table gains an attested rpm for x86_64 and aarch64; [§4](#4-signing), where a Steading OpenPGP key signs packages and repository metadata in `pkgs.stead.ing`, though a component's release still holds no key; [§6](#6-the-image), where the image gains `edge` and `stable` tags, and `latest`, `X.Y` and `X` move on promotion instead of on release; and the [out-of-scope](#out-of-scope) list, from which package repositories leave.
