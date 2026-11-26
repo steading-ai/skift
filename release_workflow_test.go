@@ -2,10 +2,15 @@ package skift_test
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gexec"
 )
 
 // .github/workflows/release.yml turns a tag into a published release. The
@@ -53,6 +58,98 @@ var _ = Describe("The release workflow", Label("unit"), func() {
 	It("tags the image only after the release is published", func() {
 		Expect(w.Jobs["tag-image"].Needs).To(ContainElements("publish", "image"))
 		Expect(w.Jobs["verify"].Needs).To(ContainElement("tag-image"))
+	})
+
+	// docs/adrs/017-release-channels-and-packages.md, decision 3: a release
+	// moves edge, and promotion moves the rest.
+	It("moves no tag that promotion owns, and marks nothing a prerelease", func() {
+		for _, script := range w.scripts() {
+			Expect(script).NotTo(MatchRegexp(`\b(latest|stable)\b`))
+			Expect(script).NotTo(ContainSubstring("--prerelease"))
+		}
+	})
+
+	Describe("the version step", Label("slow"), func() {
+		var dir string
+
+		// The build job's step that reads the version, and where it falls
+		// among the job's steps.
+		versionStep := func() (workflowStep, int) {
+			GinkgoHelper()
+			for i, step := range w.Jobs["build"].Steps {
+				if step.ID == "version" {
+					return step, i
+				}
+			}
+			Fail("the build job has no step with id version")
+			return workflowStep{}, -1
+		}
+
+		// runVersionStep runs the step's script in the copy as the runner
+		// would, for a push of tag, and returns the session and what the
+		// step handed to later steps.
+		runVersionStep := func(tag string) (*gexec.Session, string) {
+			GinkgoHelper()
+			step, _ := versionStep()
+			output := filepath.Join(GinkgoT().TempDir(), "github_output")
+			Expect(os.WriteFile(output, nil, 0o600)).To(Succeed())
+
+			// https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsshell
+			cmd := exec.Command("bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step.Run)
+			cmd.Dir = dir
+			for _, kv := range os.Environ() {
+				if inherited(kv) {
+					cmd.Env = append(cmd.Env, kv)
+				}
+			}
+			cmd.Env = append(cmd.Env, "TAG="+tag, "GITHUB_OUTPUT="+output)
+			session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+			Expect(err).NotTo(HaveOccurred())
+			session.Wait(time.Minute)
+
+			handed, err := os.ReadFile(output)
+			Expect(err).NotTo(HaveOccurred())
+			return session, string(handed)
+		}
+
+		// The copy has no history of its own, so each spec gives it one
+		// commit, clean, for its tag to sit on.
+		BeforeEach(func() {
+			dir = checkout()
+			git(dir, "init", "-q")
+			git(dir, "add", "-A")
+			git(dir, "commit", "-q", "--no-verify", "-m", "initial")
+		})
+
+		It("A tag with a pre-release part fails the build before anything is built", func() {
+			By("given a checkout tagged v0.0.0-rc.1")
+			git(dir, "tag", "v0.0.0-rc.1")
+
+			By("when the build job's version step runs for that tag")
+			session, handed := runVersionStep("v0.0.0-rc.1")
+
+			By("then it exits non-zero")
+			Expect(session).NotTo(gexec.Exit(0))
+			By("and its error names ADR-017")
+			Expect(string(session.Out.Contents())).To(SatisfyAll(
+				ContainSubstring("::error::"),
+				ContainSubstring("ADR-017"),
+			))
+			By("and it hands no version on")
+			Expect(handed).To(BeEmpty())
+			By("and no step but the checkout runs before it")
+			_, at := versionStep()
+			for _, step := range w.Jobs["build"].Steps[:at] {
+				Expect(step.Uses).To(HavePrefix("actions/checkout@"), step.Name)
+			}
+		})
+
+		It("passes a plain version tag and hands its version on", func() {
+			git(dir, "tag", "v9.9.9")
+			session, handed := runVersionStep("v9.9.9")
+			Expect(session).To(gexec.Exit(0))
+			Expect(handed).To(Equal("version=9.9.9\n"))
+		})
 	})
 
 	It("lets nothing wait on the notes", func() {

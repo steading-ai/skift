@@ -188,8 +188,8 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 	})
 
 	// What `make image-tags` prints is what the release workflow tags the
-	// image with. docs/adrs/011-releases-are-immutable-and-attested.md,
-	// decision 6, fixes the rule.
+	// image with. docs/adrs/017-release-channels-and-packages.md, decision
+	// 3, fixes the rule.
 	Describe("the image tags", func() {
 		var dir string
 
@@ -217,53 +217,43 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			return strings.Split(runIn(dir, time.Minute, "make", "image-tags", "VERSION="+version), "\n")
 		}
 
-		It("The first stable release takes the moving tags", func() {
-			By("given a repository whose only version tag is v0.1.0")
-			tagged("v0.1.0")
-
-			By("when make image-tags runs with VERSION=0.1.0")
-			tags := imageTags("0.1.0")
-
-			By("then it prints 0.1.0, 0.1 and latest")
-			Expect(tags).To(Equal([]string{"0.1.0", "0.1", "latest"}))
-			By("and it does not print 0")
-			Expect(tags).NotTo(ContainElement("0"))
-		})
-
-		It("A prerelease owns only its exact tag", func() {
-			By("given a repository tagged v0.1.0 and v0.2.0-rc.1")
-			tagged("v0.1.0", "v0.2.0-rc.1")
-
-			By("when make image-tags runs with VERSION=0.2.0-rc.1")
-			tags := imageTags("0.2.0-rc.1")
-
-			By("then it prints 0.2.0-rc.1 and nothing else")
-			Expect(tags).To(Equal([]string{"0.2.0-rc.1"}))
-		})
-
-		It("A patch to an older line does not take latest", func() {
-			By("given a repository tagged v1.2.3, v1.3.0 and v1.2.4")
-			tagged("v1.2.3", "v1.3.0", "v1.2.4")
-
-			By("when make image-tags runs with VERSION=1.2.4")
-			tags := imageTags("1.2.4")
-
-			By("then it prints 1.2.4 and 1.2")
-			Expect(tags).To(Equal([]string{"1.2.4", "1.2"}))
-			By("and it prints neither 1 nor latest")
-			Expect(tags).NotTo(ContainElement("1"))
-			Expect(tags).NotTo(ContainElement("latest"))
-		})
-
-		It("A release past 1.0 takes its major tag", func() {
+		It("A release sets its version and moves edge, and nothing else", func() {
 			By("given a repository tagged v0.9.0 and v1.0.0")
 			tagged("v0.9.0", "v1.0.0")
 
 			By("when make image-tags runs with VERSION=1.0.0")
 			tags := imageTags("1.0.0")
 
-			By("then it prints 1.0.0, 1.0, 1 and latest")
-			Expect(tags).To(Equal([]string{"1.0.0", "1.0", "1", "latest"}))
+			By("then it prints 1.0.0 and edge")
+			Expect(tags).To(Equal([]string{"1.0.0", "edge"}))
+			By("and none of the tags promotion moves")
+			for _, promoted := range []string{"stable", "latest", "1.0", "1"} {
+				Expect(tags).NotTo(ContainElement(promoted))
+			}
+		})
+
+		It("A version with a pre-release part owns no tags", func() {
+			By("given a repository tagged v0.1.0 and v0.2.0-rc.1")
+			tagged("v0.1.0", "v0.2.0-rc.1")
+
+			By("when make image-tags runs with VERSION=0.2.0-rc.1")
+			session := sessionIn(dir, time.Minute, "make", "image-tags", "VERSION=0.2.0-rc.1")
+
+			By("then it exits non-zero")
+			Expect(session).NotTo(gexec.Exit(0))
+			By("and prints nothing on stdout")
+			Expect(session.Out.Contents()).To(BeEmpty())
+		})
+
+		It("A patch to an older line does not move edge", func() {
+			By("given a repository tagged v1.2.3, v1.3.0 and v1.2.4")
+			tagged("v1.2.3", "v1.3.0", "v1.2.4")
+
+			By("when make image-tags runs with VERSION=1.2.4")
+			tags := imageTags("1.2.4")
+
+			By("then it prints 1.2.4 alone")
+			Expect(tags).To(Equal([]string{"1.2.4"}))
 		})
 
 		It("A development build owns no tags", func() {
@@ -283,16 +273,18 @@ var _ = Describe("Packaging", Label("unit", "slow"), func() {
 			Expect(session.Out.Contents()).To(BeEmpty())
 		})
 
+		// The repository still carries the release candidates tagged before
+		// every release was a plain version.
 		It("never counts a prerelease tag as a later version", func() {
 			tagged("v0.1.0", "v0.2.0-rc.1")
-			Expect(imageTags("0.1.0")).To(Equal([]string{"0.1.0", "0.1", "latest"}))
+			Expect(imageTags("0.1.0")).To(Equal([]string{"0.1.0", "edge"}))
 		})
 
 		// Versions order by number, not by spelling: 1.10 is after 1.9.
-		It("moves a tag forward past a two-digit version, and not back before one", func() {
+		It("moves edge forward past a two-digit version, and not back before one", func() {
 			tagged("v1.9.0", "v1.10.0", "v1.10.1")
-			Expect(imageTags("1.9.1")).To(Equal([]string{"1.9.1", "1.9"}))
-			Expect(imageTags("1.10.1")).To(Equal([]string{"1.10.1", "1.10", "1", "latest"}))
+			Expect(imageTags("1.9.1")).To(Equal([]string{"1.9.1"}))
+			Expect(imageTags("1.10.1")).To(Equal([]string{"1.10.1", "edge"}))
 		})
 	})
 

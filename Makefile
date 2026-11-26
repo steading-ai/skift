@@ -268,43 +268,33 @@ $(RELEASE_DIR)/docker-compose.yaml: contrib/docker-compose.yaml FORCE
 	  END { if (pinned != 1) { print "$@: $< has " (pinned + 0) " image lines reading SKIFT_IMAGE, not one" > "/dev/stderr"; exit 1 } }' \
 	  $< > $@ || { rm -f $@; exit 1; }
 
-# The image tags a release of VERSION owns, one per line, given the v*
-# tags in the repository. Always the version itself, which never moves.
-# A stable release also takes the moving tags, each only forward: X.Y
-# unless a later stable X.Y.* is tagged, X from 1.0 on unless a later
-# stable X.* is, and latest unless any later stable version is. So a patch
-# to an older line moves its own X.Y and nothing else. A prerelease owns
-# its exact tag alone, and a prerelease tag never counts as later. A
-# version with build metadata, which every development build has, is not a
-# release: the target fails and prints no tag.
-# docs/adrs/011-releases-are-immutable-and-attested.md, decision 6.
+# The image tags a release of VERSION sets, one per line, given the v*
+# tags in the repository. Always the version itself, which never moves,
+# and edge unless a later version is tagged, so edge only moves forward.
+# A release is a plain X.Y.Z. Any other version, such as one with a
+# pre-release part or the build metadata every development build has, is
+# not a release: the target fails and prints no tag. stable, latest and
+# X.Y move on promotion, which no release does.
+# docs/adrs/017-release-channels-and-packages.md, decision 3.
 #
 # The tags are read from git, so they must have been fetched: without
-# them every release would be handed latest.
+# them every release would move edge.
 image-tags:
 	@tags=$$(git tag --list 'v*') || exit 1; \
 	printf '%s\n' "$$tags" | awk -v version='$(VERSION)' ' \
 	  BEGIN { \
-	    release = version ~ /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$/; \
-	    stable = release && version !~ /-/; \
+	    release = version ~ /^[0-9]+\.[0-9]+\.[0-9]+$$/; \
 	    split(version, v, "."); major = v[1] + 0; minor = v[2] + 0; patch = v[3] + 0; \
 	    if (release) print version \
 	  } \
-	  stable && /^v[0-9]+\.[0-9]+\.[0-9]+$$/ { \
+	  release && /^v[0-9]+\.[0-9]+\.[0-9]+$$/ { \
 	    split(substr($$0, 2), t, "."); a = t[1] + 0; b = t[2] + 0; c = t[3] + 0; \
-	    if (a > major || (a == major && (b > minor || (b == minor && c > patch)))) { \
-	      later = 1; \
-	      if (a == major) { later_in_major = 1; if (b == minor) later_in_minor = 1 } \
-	    } \
+	    if (a > major || (a == major && (b > minor || (b == minor && c > patch)))) later = 1 \
 	  } \
 	  END { \
 	    if (!release) { \
-	      print "image-tags: " version " is not a release version" > "/dev/stderr"; exit 1 \
-	    } else if (stable) { \
-	      if (!later_in_minor) print major "." minor; \
-	      if (major >= 1 && !later_in_major) print major; \
-	      if (!later) print "latest" \
-	    } \
+	      print "image-tags: " version " is not a release version, which is a plain X.Y.Z" > "/dev/stderr"; exit 1 \
+	    } else if (!later) print "edge" \
 	  }'
 
 # Development database. See compose.yaml and docs/developing.md.

@@ -48,8 +48,9 @@ Every other workflow runs on GitHub's own runners, and for `release.yml`, `relea
 ## The image
 
 - **Name:** `ghcr.io/steading-ai/skift`
-- **Edge tags**, from `publish.yml`: the full commit SHA, one per push to `main`, which never moves, and `main`, which moves to whatever the latest push produced. An edge image is not attested.
-- **Release tags**, from `release.yml`: `X.Y.Z`, which never moves, because the workflow refuses a version that is already tagged. A stable release also moves `X.Y`, `X` from 1.0 on, and `latest`, each only forward, so a patch to an older line moves its own `X.Y` and nothing else. A prerelease such as `X.Y.Z-rc.1` gets its exact tag alone. `make image-tags VERSION=X.Y.Z` prints the tags a version takes. A release's image is attested, and [How to verify a release](verifying-a-release.md#check-the-image) checks it.
+- **Development tags**, from `publish.yml`: the full commit SHA, one per push to `main`, which never moves, and `main`, which moves to whatever the latest push produced. A development image is not attested, is not a release, and belongs to neither channel.
+- **Release tags**, from `release.yml`: `X.Y.Z`, which never moves, because the workflow refuses a version that is already tagged, and `edge`, which moves to each release's digest, only forward, so a patch to an older line leaves it where it is. A release is a plain version: the build job fails a tag with a pre-release part before it builds anything. `make image-tags VERSION=X.Y.Z` prints the tags a version takes. A release's image is attested, and [How to verify a release](verifying-a-release.md#check-the-image) checks it.
+- **Promotion tags**, from the `pkgs.stead.ing` repository: `stable`, `latest`, `X.Y`, and `X` from 1.0 on move when a build is promoted from `edge` to `stable`, and no workflow here writes them. [ADR-017's image tags](adrs/017-release-channels-and-packages.md#3-the-image-follows-the-channels) has the rule.
 - **Digest pin:** a reference that carries a digest names one image whatever its tags do afterwards. The compose file a release carries pins its image this way:
 
   ```yaml

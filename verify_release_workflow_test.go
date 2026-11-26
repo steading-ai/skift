@@ -66,6 +66,20 @@ var _ = Describe("The verify-release workflow", Label("unit"), func() {
 		Expect(checks).To(Equal(2), "the image's attestations, and the digest the compose file pins")
 	})
 
+	// docs/adrs/017-release-channels-and-packages.md, decision 3: a release
+	// moves edge, and promotion, outside this repository, moves the rest.
+	It("checks edge, and none of the tags promotion moves", func() {
+		var check string
+		for _, step := range w.Jobs["verify"].Steps {
+			if strings.Contains(step.Run, "digest_of") {
+				check = step.Run
+			}
+		}
+		Expect(check).To(ContainSubstring("digest_of edge"))
+		Expect(check).NotTo(MatchRegexp(`\b(latest|stable)\b`))
+		Expect(check).NotTo(ContainSubstring("${version%.*}"))
+	})
+
 	It("installs every released platform with mise, by manifest and by asset name", func() {
 		install := w.Jobs["install"]
 

@@ -43,10 +43,13 @@ jobs:
           persist-credentials: false
 
       # Before anything else touches the checkout, so the answer is the
-      # tag's and not a later step's.
-      - name: The tag is the version the Makefile computes
+      # tag's and not a later step's, and before anything is built or
+      # uploaded, so a tag that is not a release leaves nothing behind.
+      - name: The tag is a plain version, the one the Makefile computes
         id: version
         run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+            { echo "::error::$TAG is not a plain vX.Y.Z: a release has no pre-release part or build metadata, as ADR-017 decides (docs/adrs/017-release-channels-and-packages.md)"; exit 1; }
           version="$(make version)"
           test "v$version" = "$TAG" ||
             { echo "::error::the tag is $TAG but make version says $version"; exit 1; }
@@ -215,14 +218,10 @@ jobs:
           test "$archives" -eq 4 ||
             { echo "::error::expected 4 archives, found $archives"; exit 1; }
 
-      # A tag with a semver prerelease part, such as v0.2.0-rc.1, is a
-      # prerelease. The notes are GitHub's until better ones are written;
-      # they stay editable after the release is published.
+      # The notes are GitHub's until better ones are written; they stay
+      # editable after the release is published.
       - name: Draft the release with every asset
-        run: |
-          flags=(--draft --verify-tag --generate-notes --title "$TAG")
-          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
-          gh release create "$TAG" "${flags[@]}" release/*
+        run: gh release create "$TAG" --draft --verify-tag --generate-notes --title "$TAG" release/*
 
   # Signs the manifest installers read, as this workflow. It can write
   # nothing: the bundle leaves as a workflow artifact.
@@ -295,7 +294,9 @@ jobs:
 
   # Tags follow publication and never lead it, so no tag ever names an
   # image whose release did not publish. The full version is refused if it
-  # exists; `make image-tags` decides which moving tags this release owns.
+  # exists; `make image-tags` decides whether this release moves edge.
+  # stable, latest and X.Y move on promotion, outside this repository:
+  # docs/adrs/017-release-channels-and-packages.md, decision 3.
   tag-image:
     name: tag-image
     needs: [build, image, publish]
