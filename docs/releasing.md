@@ -42,7 +42,7 @@ A person chooses the version; nothing derives it from the commit history. It is 
 
 While skift is at 0.x, take a new minor version for a change that can break a caller of a public surface and a patch version for anything else. A minor release may make such a change without a deprecation period; its release notes say what changed and what to do instead.
 
-To see which image tags the version will take, given the versions already tagged:
+To see which image tags the release will set, given the versions already tagged: the version itself, and `edge` unless a later version is tagged. `stable`, `latest` and `X.Y` move only when the build is promoted.
 
 ```sh
 git fetch --tags
@@ -83,13 +83,13 @@ gh run watch <run id> --exit-status
 
 The jobs of `release.yml`, in order:
 
-- `build` checks that the tag is the version the Makefile computes, runs `make release`, and attests each archive's provenance and SBOM.
+- `build` checks that the tag is a plain version, the one the Makefile computes, runs `make release`, and attests each archive's provenance and SBOM. A tag with a pre-release part fails here, before anything is built.
 - `image` has `release-image.yml` assemble the image from the linux binaries, push it by digest under no tag, and attest it.
 - `compose` renders `docker-compose.yaml` with the image pinned to that digest, and adds it to `SHA256SUMS`.
 - `draft` refuses an incomplete set of files, then puts every file on a draft release.
 - `sign` signs the packslip manifest installers read.
 - `publish` adds the manifest and publishes the draft. From here the release is immutable.
-- `tag-image` gives the image the tags `make image-tags` prints, and refuses a version that is already tagged.
+- `tag-image` gives the image the tags `make image-tags` prints, its version and `edge`, and refuses a version that is already tagged.
 - `notes` has `release-notes.yml` replace the generated notes with written ones. Nothing waits on it.
 - `verify` has `verify-release.yml` check the published release from outside and install it with mise on every platform.
 

@@ -131,13 +131,14 @@ jobs:
             { echo "::error::docker-compose.yaml pins $pinned, but $IMAGE:$version is $digest"; exit 1; }
           echo "docker-compose.yaml pins $pinned"
 
-          # The moving tags belong to the newest stable release.
-          if test "$(gh release view --repo "$REPO" --json tagName --jq .tagName)" = "$TAG"; then
-            for tag in "${version%.*}" latest; do
-              test "$(digest_of "$tag")" = "$digest" ||
-                { echo "::error::$IMAGE:$tag does not resolve to $digest"; exit 1; }
-              echo "$IMAGE:$tag -> $digest"
-            done
+          # edge belongs to the highest version released. The tags
+          # promotion moves are not a release's, so nothing here checks them.
+          newest="$(gh release list --repo "$REPO" --exclude-drafts --limit 1000 --json tagName --jq '.[].tagName' |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          if test "$newest" = "$TAG"; then
+            test "$(digest_of edge)" = "$digest" ||
+              { echo "::error::$IMAGE:edge does not resolve to $digest"; exit 1; }
+            echo "$IMAGE:edge -> $digest"
           fi
 
   install:
