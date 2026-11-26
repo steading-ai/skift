@@ -166,7 +166,7 @@ jobs:
     permissions:
       contents: read # read the release the rpm is downloaded from
     container:
-      image: registry.fedoraproject.org/fedora:45@sha256:92837d4834c1cff45cc2d534b655489b8e536271de1897932117e396cc9980c5
+      image: registry.fedoraproject.org/fedora:46@sha256:e6a12a27a823ca838a401a6820ced64ee508db3f4c0323cc2bc0042ff1829b85
     defaults:
       run:
         shell: bash
