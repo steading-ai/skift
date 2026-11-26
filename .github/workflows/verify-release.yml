@@ -1,7 +1,8 @@
 # Verifies a published release from the outside, the way a stranger would:
 # with public tools and the release's own URLs, and nothing from the build
 # that made it. Then installs it with mise on every platform it was built
-# for. release.yml calls this last; a person can dispatch it for any tag.
+# for, and its rpm with dnf on Fedora. release.yml calls this last; a
+# person can dispatch it for any tag.
 # See docs/adrs/011-releases-are-immutable-and-attested.md.
 name: verify-release
 
@@ -29,8 +30,8 @@ concurrency:
 env:
   REPO: steading-ai/skift
   IMAGE: ghcr.io/steading-ai/skift
-  # The only workflows whose attestations count: the archives are attested
-  # where they are built, the image by the workflow that pushes it.
+  # The only workflows whose attestations count: the archives and rpms are
+  # attested where they are built, the image by the workflow that pushes it.
   SIGNER: steading-ai/skift/.github/workflows/release.yml
   IMAGE_SIGNER: steading-ai/skift/.github/workflows/release-image.yml
   TAG: ${{ inputs.tag }}
@@ -67,11 +68,12 @@ jobs:
             gh release verify-asset "$TAG" "$asset" --repo "$REPO"
           done
 
-      - name: Check SHA256SUMS, and that it covers every archive and SBOM
+      - name: Check SHA256SUMS, and that it covers every archive, SBOM and rpm
         working-directory: assets
         run: |
           sha256sum --check --strict SHA256SUMS
-          for asset in *.tar.gz *.cdx.json; do
+          shopt -s nullglob
+          for asset in *.tar.gz *.cdx.json *.rpm; do
             grep -q "  $asset\$" SHA256SUMS ||
               { echo "::error::$asset is not listed in SHA256SUMS"; exit 1; }
           done
@@ -86,6 +88,19 @@ jobs:
             gh attestation verify "$archive" --repo "$REPO" \
               --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
               --predicate-type https://cyclonedx.org/bom
+          done
+
+      # The check pkgs.stead.ing makes before it signs an rpm. A release
+      # from before the rpms has none, and nothing to check.
+      - name: Verify each rpm's provenance, built on a GitHub-hosted runner
+        run: |
+          shopt -s nullglob
+          rpms=(assets/*.rpm)
+          test "${#rpms[@]}" -gt 0 || echo "$TAG has no rpm assets: it predates them, so there is nothing to check."
+          for rpm in "${rpms[@]}"; do
+            gh attestation verify "$rpm" --repo "$REPO" \
+              --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" \
+              --deny-self-hosted-runners
           done
 
       # A release from before the image was released has no compose file,
@@ -140,6 +155,63 @@ jobs:
               { echo "::error::$IMAGE:edge does not resolve to $digest"; exit 1; }
             echo "$IMAGE:edge -> $digest"
           fi
+
+  # Installs the x86_64 rpm on Fedora with dnf, from the release's own URL,
+  # and checks what the package put in place. A release from before the
+  # rpms has none, and nothing to install.
+  rpm:
+    name: rpm (fedora x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # read the release the rpm is downloaded from
+    container:
+      image: registry.fedoraproject.org/fedora:45@sha256:92837d4834c1cff45cc2d534b655489b8e536271de1897932117e396cc9980c5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download the rpm, and check it against SHA256SUMS
+        id: rpm
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          rpm="skift-$version-1.x86_64.rpm"
+          base="https://github.com/$REPO/releases/download/$TAG"
+          status="$(curl -sSL -o "$rpm" -w '%{http_code}' "$base/$rpm")"
+          case "$status" in
+            200) ;;
+            404)
+              echo "$TAG has no $rpm: it predates the rpms, so the install is skipped."
+              echo "released=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *) echo "::error::downloading $rpm answered HTTP $status"; exit 1 ;;
+          esac
+          curl -fsSL -o SHA256SUMS "$base/SHA256SUMS"
+          grep "  $rpm\$" SHA256SUMS | sha256sum --check --strict
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "rpm=$rpm" >> "$GITHUB_OUTPUT"
+
+      - name: Install it with dnf
+        if: steps.rpm.outputs.released == 'true'
+        env:
+          RPM: ${{ steps.rpm.outputs.rpm }}
+        run: dnf -y install "./$RPM"
+
+      - name: The package is skift at the release's version, and installed what it should
+        if: steps.rpm.outputs.released == 'true'
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          test "$(rpm -q --queryformat '%{NAME} %{VERSION} %{RELEASE}' skift)" = "skift $version 1" ||
+            { echo "::error::the installed package is $(rpm -q skift), not skift-$version-1"; exit 1; }
+          test "$(skift version)" = "skift version $version" ||
+            { echo "::error::skift version printed '$(skift version)', not 'skift version $version'"; exit 1; }
+          getent passwd skift ||
+            { echo "::error::installing the package created no skift user"; exit 1; }
+          test -f /usr/lib/systemd/system/skift.service ||
+            { echo "::error::the package installed no /usr/lib/systemd/system/skift.service"; exit 1; }
 
   install:
     name: install (${{ matrix.platform }})

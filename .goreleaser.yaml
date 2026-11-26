@@ -1,5 +1,7 @@
 # Builds what a release uploads: an archive, an SBOM and a checksum line for
-# each platform. `make release` runs this, always as a snapshot, so a
+# each platform. The rpms are packaging/nfpm.yaml's, run by the Makefile
+# over the linux binaries in these archives, so the package is defined in
+# one place. `make release` runs this, always as a snapshot, so a
 # rehearsal on a laptop and the release workflow take one path. It publishes
 # nothing; creating the release, the image, signing and attesting belong to
 # the workflow. See docs/adrs/011-releases-are-immutable-and-attested.md.

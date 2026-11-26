@@ -12,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cavaliergopher/rpm"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -23,11 +25,15 @@ import (
 // appear in asset names.
 var releasePlatforms = []string{"linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"}
 
-// releaseVersion is the version the specs build a release as. A release
-// candidate's, so the names carry a prerelease part as a rehearsal's do,
-// and so the stamp can be found in a binary that cannot run here: no
-// dependency carries this string by chance, as several do "9.9.9".
-const releaseVersion = "9.9.9-rc.1"
+// releaseVersion is the version the specs build a release as. A plain
+// version, as every release's is, and one the stamp can be found by in a
+// binary that cannot run here: no dependency carries this string by
+// chance, as several do "9.9.9".
+const releaseVersion = "9.87.65"
+
+// rpmArches maps each linux platform a release is built for to the
+// architecture its rpm is named for.
+var rpmArches = map[string]string{"linux_amd64": "x86_64", "linux_arm64": "aarch64"}
 
 // archiveEntry is one member of a release archive: its header and bytes.
 type archiveEntry struct {
@@ -88,12 +94,22 @@ func sbomName(platform string) string {
 	return "skift_" + releaseVersion + "_" + platform + ".cdx.json"
 }
 
-// archiveSums maps each release archive to its sha256.
-func archiveSums(release string) map[string]string {
+// rpmName is the name of an architecture's rpm in a release, which
+// pkgs.stead.ing relies on: the name skift, the release's version, and
+// the package release 1.
+func rpmName(arch string) string {
+	return "skift-" + releaseVersion + "-1." + arch + ".rpm"
+}
+
+// packageSums maps each release archive and rpm to its sha256.
+func packageSums(release string) map[string]string {
 	GinkgoHelper()
 	sums := map[string]string{}
 	for _, platform := range releasePlatforms {
 		sums[archiveName(platform)] = sha256File(filepath.Join(release, archiveName(platform)))
+	}
+	for _, arch := range rpmArches {
+		sums[rpmName(arch)] = sha256File(filepath.Join(release, rpmName(arch)))
 	}
 	return sums
 }
@@ -119,10 +135,13 @@ var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 		release = filepath.Join(dir, "dist", "release")
 	})
 
-	It("builds every platform's archive and SBOM, and nothing else", func() {
+	It("builds every platform's archive and SBOM, each linux architecture's rpm, and nothing else", func() {
 		want := []string{"SHA256SUMS"}
 		for _, platform := range releasePlatforms {
 			want = append(want, archiveName(platform), sbomName(platform))
+		}
+		for _, arch := range rpmArches {
+			want = append(want, rpmName(arch))
 		}
 
 		entries, err := os.ReadDir(release)
@@ -171,6 +190,45 @@ var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 		}
 	})
 
+	It("packs each linux archive's binary into the rpm for its architecture, at the release's version", func() {
+		for platform, arch := range rpmArches {
+			pkg, err := rpm.Open(filepath.Join(release, rpmName(arch)))
+			Expect(err).NotTo(HaveOccurred(), arch)
+			Expect(pkg.Name()).To(Equal("skift"), arch)
+			Expect(pkg.Version()).To(Equal(releaseVersion), arch)
+			Expect(pkg.Release()).To(Equal("1"), arch)
+			Expect(pkg.Architecture()).To(Equal(arch))
+
+			archived := sha256.Sum256(archivedBinary(filepath.Join(release, archiveName(platform))))
+			var packed string
+			for _, f := range pkg.Files() {
+				if f.Name() == "/usr/bin/skift" {
+					packed = f.Digest()
+				}
+			}
+			Expect(packed).To(Equal(hex.EncodeToString(archived[:])), "the header's digest of /usr/bin/skift in %s", arch)
+		}
+	})
+
+	// What a package records of when and where it was built is the
+	// commit's time and no machine's name.
+	It("stamps each rpm with the commit's time and no host's name", func() {
+		epoch, err := strconv.ParseInt(runIn(dir, time.Minute, "git", "log", "-1", "--format=%ct"), 10, 64)
+		Expect(err).NotTo(HaveOccurred())
+		host, err := os.Hostname()
+		Expect(err).NotTo(HaveOccurred())
+		for _, arch := range rpmArches {
+			pkg, err := rpm.Open(filepath.Join(release, rpmName(arch)))
+			Expect(err).NotTo(HaveOccurred(), arch)
+			Expect(pkg.BuildTime().Unix()).To(Equal(epoch), arch)
+			Expect(pkg.BuildHost()).To(Equal("reproducible"), arch)
+			Expect(pkg.BuildHost()).NotTo(Equal(host), arch)
+			for _, f := range pkg.Files() {
+				Expect(f.ModTime().Unix()).To(Equal(epoch), "%s in %s", f.Name(), arch)
+			}
+		}
+	})
+
 	It("catalogues each archive as a CycloneDX SBOM naming its modules", func() {
 		for _, platform := range releasePlatforms {
 			raw, err := os.ReadFile(filepath.Join(release, sbomName(platform)))
@@ -192,7 +250,7 @@ var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 		}
 	})
 
-	It("checksums every archive and SBOM in SHA256SUMS", func() {
+	It("checksums every archive, SBOM and rpm in SHA256SUMS", func() {
 		f, err := os.Open(filepath.Join(release, "SHA256SUMS"))
 		Expect(err).NotTo(HaveOccurred())
 		defer func() { Expect(f.Close()).To(Succeed()) }()
@@ -209,15 +267,18 @@ var _ = Describe("The release", Label("unit", "slow"), Serial, Ordered, func() {
 		for _, platform := range releasePlatforms {
 			want = append(want, archiveName(platform), sbomName(platform))
 		}
+		for _, arch := range rpmArches {
+			want = append(want, rpmName(arch))
+		}
 		Expect(listed).To(ConsistOf(want))
 	})
 
-	It("builds the same archives from the same commit", func() {
-		before := archiveSums(release)
+	It("builds the same archives and rpms from the same commit", func() {
+		before := packageSums(release)
 
 		Expect(os.RemoveAll(filepath.Join(dir, "dist"))).To(Succeed())
 		runIn(dir, 10*time.Minute, "make", "release", "VERSION="+releaseVersion)
 
-		Expect(archiveSums(release)).To(Equal(before))
+		Expect(packageSums(release)).To(Equal(before))
 	})
 })

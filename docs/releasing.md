@@ -57,7 +57,7 @@ Build what the release will upload, on your own machine:
 make release VERSION=<version>
 ```
 
-The archives, their SBOMs and `SHA256SUMS` land in `dist/release/`. It is the build the workflow runs.
+The archives, their SBOMs, an rpm for each linux architecture and `SHA256SUMS` land in `dist/release/`. It is the build the workflow runs.
 
 There is no candidate tag. A release candidate is a release in `edge`: every release enters `edge` when it is published, and reaches `stable` when it is promoted.
 
@@ -83,15 +83,15 @@ gh run watch <run id> --exit-status
 
 The jobs of `release.yml`, in order:
 
-- `build` checks that the tag is a plain version, the one the Makefile computes, runs `make release`, and attests each archive's provenance and SBOM. A tag with a pre-release part fails here, before anything is built.
+- `build` checks that the tag is a plain version, the one the Makefile computes, runs `make release`, and attests each archive's provenance and SBOM and each rpm's provenance. A tag with a pre-release part fails here, before anything is built.
 - `image` has `release-image.yml` assemble the image from the linux binaries, push it by digest under no tag, and attest it.
 - `compose` renders `docker-compose.yaml` with the image pinned to that digest, and adds it to `SHA256SUMS`.
-- `draft` refuses an incomplete set of files, then puts every file on a draft release.
+- `draft` refuses an incomplete set of files, or an rpm missing for either architecture, then puts every file on a draft release.
 - `sign` signs the packslip manifest installers read.
 - `publish` adds the manifest and publishes the draft. From here the release is immutable.
 - `tag-image` gives the image the tags `make image-tags` prints, its version and `edge`, and refuses a version that is already tagged.
 - `notes` has `release-notes.yml` replace the generated notes with written ones. Nothing waits on it.
-- `verify` has `verify-release.yml` check the published release from outside and install it with mise on every platform.
+- `verify` has `verify-release.yml` check the published release from outside, install it with mise on every platform, and install its rpm on Fedora.
 
 ## Promote or yank it
 

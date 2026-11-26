@@ -42,6 +42,30 @@ var _ = Describe("The release workflow", Label("unit"), func() {
 		Expect(check).To(ContainSubstring(fmt.Sprintf(`test "$archives" -eq %d`, len(releasePlatforms))))
 	})
 
+	// pkgs.stead.ing signs an rpm only once it has checked the rpm's
+	// attestation, as the draft's check does here.
+	It("attests the rpms, and refuses a draft without one for each architecture", func() {
+		var attested []string
+		for _, step := range w.Jobs["build"].Steps {
+			if strings.HasPrefix(step.Uses, "actions/attest@") {
+				subject, _ := step.With["subject-path"].(string)
+				attested = append(attested, subject)
+			}
+		}
+		Expect(attested).To(ContainElement("dist/release/*.rpm"))
+
+		var check string
+		for _, s := range w.Jobs["draft"].Steps {
+			if strings.HasPrefix(s.Name, "Each architecture has its rpm") {
+				check = s.Run
+			}
+		}
+		Expect(check).NotTo(BeEmpty(), "the draft job has no check of the rpms")
+		Expect(check).To(ContainSubstring(`want="skift-$VERSION-1.aarch64.rpm skift-$VERSION-1.x86_64.rpm"`))
+		Expect(check).To(ContainSubstring(`grep -q "  $rpm\$" SHA256SUMS`))
+		Expect(check).To(ContainSubstring("--deny-self-hosted-runners"))
+	})
+
 	It("publishes nothing before it is signed", func() {
 		Expect(w.Jobs["draft"].Needs).To(ContainElement("build"))
 		Expect(w.Jobs["sign"].Needs).To(ContainElement("draft"))

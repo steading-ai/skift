@@ -1,6 +1,6 @@
 # How to verify a release
 
-This guide shows how to check that what you downloaded from a skift release is what this repository's release workflow built, and what is inside it: an archive, the release as a whole, the image, and an SBOM.
+This guide shows how to check that what you downloaded from a skift release is what this repository's release workflow built, and what is inside it: an archive, an rpm, the release as a whole, the image, and an SBOM.
 
 If you install with mise's `packslip:` backend, as [How to install skift](install.md) does, mise checks the archive for you: it verifies the release's signed manifest and pins who signed it.
 
@@ -13,6 +13,16 @@ gh attestation verify skift_<version>_<os>_<arch>.tar.gz --repo steading-ai/skif
 ```
 
 It succeeds only when `release.yml` in this repository built that file from that tag. Leave `--source-ref` out to accept the workflow's build of any tag. GitHub documents the command under [artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations).
+
+## Check an rpm
+
+A release carries an rpm for `x86_64` and one for `aarch64`, named `skift-<version>-1.<arch>.rpm`. Each holds the `skift` that is in the linux archive for its architecture. Check one as you would an archive:
+
+```sh
+gh attestation verify skift-<version>-1.<arch>.rpm --repo steading-ai/skift --signer-workflow steading-ai/skift/.github/workflows/release.yml --source-ref refs/tags/v<version> --deny-self-hosted-runners
+```
+
+`--deny-self-hosted-runners` also refuses an rpm built anywhere but a GitHub-hosted runner. The rpm has no SBOM of its own; its binary is the archive's, which has one.
 
 ## Check the release
 

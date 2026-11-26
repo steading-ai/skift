@@ -1,5 +1,9 @@
-# The rpm. `make package` builds skift for each architecture and runs nfpm
-# once per GOARCH with VERSION set; see the Makefile for both values.
+# The rpm, the one definition of it. The Makefile runs nfpm over this
+# once per GOARCH with VERSION set: `make package` on the binaries it
+# compiles, and `make release` on the binaries in the release's archives.
+# Each run sets SOURCE_DATE_EPOCH to the commit's time, which nfpm gives
+# every file and the header's build time, so one commit and one binary
+# make the same rpm.
 #
 # The package installs and does not start: the units are enabled by hand
 # once /etc/skift/env names a database.
@@ -17,6 +21,9 @@ description: |
 vendor: Ivy Evans
 homepage: https://github.com/steading-ai/skift
 license: ISC
+# The source files' modes are the checkout's, which depend on the umask
+# of whoever cloned it; this one makes them the same everywhere.
+umask: 0022
 depends:
   - systemd
 contents:
@@ -55,3 +62,6 @@ scripts:
 rpm:
   scripts:
     posttrans: packaging/scripts/posttrans.sh
+  # Unset, the header would name the machine that built the rpm. A fixed
+  # name keeps it the same wherever it is built.
+  buildhost: reproducible
