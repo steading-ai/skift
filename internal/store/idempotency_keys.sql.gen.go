@@ -17,10 +17,10 @@ RETURNING org_id, request_id, request_hash, response, created_at
 `
 
 type CreateIdempotencyKeyParams struct {
-	OrgID       string
-	RequestID   string
-	RequestHash string
-	Response    []byte
+	OrgID       string `db:"org_id"`
+	RequestID   string `db:"request_id"`
+	RequestHash string `db:"request_hash"`
+	Response    []byte `db:"response"`
 }
 
 func (q *Queries) CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) (IdempotencyKey, error) {
@@ -47,8 +47,8 @@ WHERE org_id = $1 AND created_at < $2
 `
 
 type DeleteIdempotencyKeysBeforeParams struct {
-	OrgID     string
-	CreatedAt time.Time
+	OrgID     string    `db:"org_id"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 func (q *Queries) DeleteIdempotencyKeysBefore(ctx context.Context, arg DeleteIdempotencyKeysBeforeParams) (int64, error) {
@@ -65,8 +65,8 @@ WHERE org_id = $1 AND request_id = $2
 `
 
 type GetIdempotencyKeyParams struct {
-	OrgID     string
-	RequestID string
+	OrgID     string `db:"org_id"`
+	RequestID string `db:"request_id"`
 }
 
 func (q *Queries) GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error) {
@@ -90,9 +90,9 @@ RETURNING org_id, request_id, request_hash, response, created_at
 `
 
 type SetIdempotencyKeyResponseParams struct {
-	OrgID     string
-	RequestID string
-	Response  []byte
+	OrgID     string `db:"org_id"`
+	RequestID string `db:"request_id"`
+	Response  []byte `db:"response"`
 }
 
 // A patch claims its key before doing any work and stores the response

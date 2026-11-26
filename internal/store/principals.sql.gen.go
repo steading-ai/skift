@@ -17,10 +17,10 @@ RETURNING principal_id, scheme, value, created_at
 `
 
 type AddPrincipalIdentityParams struct {
-	OrgID  string
-	ID     string
-	Scheme string
-	Value  string
+	OrgID  string `db:"org_id"`
+	ID     string `db:"id"`
+	Scheme string `db:"scheme"`
+	Value  string `db:"value"`
 }
 
 func (q *Queries) AddPrincipalIdentity(ctx context.Context, arg AddPrincipalIdentityParams) (PrincipalIdentity, error) {
@@ -47,9 +47,9 @@ RETURNING id, org_id, kind, created_at
 `
 
 type CreatePrincipalParams struct {
-	ID    string
-	OrgID string
-	Kind  string
+	ID    string `db:"id"`
+	OrgID string `db:"org_id"`
+	Kind  string `db:"kind"`
 }
 
 func (q *Queries) CreatePrincipal(ctx context.Context, arg CreatePrincipalParams) (Principal, error) {
@@ -70,8 +70,8 @@ WHERE org_id = $1 AND id = $2
 `
 
 type GetPrincipalParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) GetPrincipal(ctx context.Context, arg GetPrincipalParams) (Principal, error) {
@@ -93,8 +93,8 @@ WHERE i.scheme = $1 AND i.value = $2
 `
 
 type GetPrincipalByIdentityParams struct {
-	Scheme string
-	Value  string
+	Scheme string `db:"scheme"`
+	Value  string `db:"value"`
 }
 
 // The transport's question: which principal presented this identity? An

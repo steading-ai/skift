@@ -57,27 +57,39 @@ var _ = Describe("One-shot admin commands check the schema before acting", Label
 		Entry("skift admin jobs run", "admin", "jobs", "run", "expire-leases"),
 	}
 
-	DescribeTable("refuse a database migrated by a newer skift, naming both versions, and write nothing",
+	DescribeTable("refuse a database whose floor is above this build, naming the floor and its newest migration, and write nothing",
 		func(ctx SpecContext, args ...string) {
-			By("given a database whose schema is one migration ahead of this build")
+			By("given a database migrated past this build, with its floor raised above it")
 			url := pg.Database(ctx).Config().ConnString()
-			latest := latestSchema(ctx, url)
-			schemaSQL(ctx, url, `INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true)`, latest+1)
+			latest, floor := aboveFloor(ctx, url)
 			before := writes(ctx, url)
 
 			By("when the command runs")
 			session := skift(binary, append(args, "--database-url", url)...)
 
-			By("then it fails, naming both versions and the way out")
+			By("then it fails, naming the floor, this build's newest migration and the way out")
 			Expect(session.ExitCode()).To(Equal(cli.ExitFailure), "stdout: %s", session.Out.Contents())
-			Expect(string(session.Err.Contents())).To(SatisfyAll(
-				ContainSubstring(fmt.Sprintf("schema %d is newer than this build's %d", latest+1, latest)),
-				ContainSubstring("restore the pre-upgrade backup or install a newer skift"),
-			))
+			Expect(string(session.Err.Contents())).To(ContainSubstring(floorRefusal(latest, floor)))
 			Expect(session.Out.Contents()).To(BeEmpty())
 
 			By("and nothing was written")
 			Expect(writes(ctx, url)).To(Equal(before))
+		},
+		commands,
+	)
+
+	DescribeTable("act on a database migrated past this build within its floor",
+		func(ctx SpecContext, args ...string) {
+			By("given a database one additive migration past this build, its floor unchanged")
+			url := pg.Database(ctx).Config().ConnString()
+			latest := testsupport.MigratePast(ctx, url, testsupport.AddsColumn)
+
+			By("when the command runs")
+			session := skift(binary, append(args, "--database-url", url)...)
+
+			By("then it succeeds, and the schema is where it was")
+			Expect(session.ExitCode()).To(BeZero(), "stderr: %s", session.Err.Contents())
+			Expect(schemaVersion(ctx, url)).To(Equal(latest + 1))
 		},
 		commands,
 	)

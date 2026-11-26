@@ -28,7 +28,9 @@ func newMigrateCommand() *cobra.Command {
 		Long: `Apply every migration the binary carries that the database has not seen,
 in order, and print what was applied. A database already at the current
 schema applies nothing, and that is not an error, so this is safe to run
-on every deploy. A database migrated by a newer skift is refused.
+on every deploy. A database migrated by a newer skift is left as it is, and
+refused only when its compatibility floor is above this build's newest
+migration.
 
 "skift serve" does the same at start unless told not to; this command is for
 running the migrations ahead of the service, as an installer or a person.

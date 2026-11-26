@@ -54,20 +54,20 @@ LIMIT $6 OFFSET $5
 `
 
 type SearchNodesParams struct {
-	OrgID           string
-	Query           string
-	IncludeArchived bool
-	ProjectID       *string
-	PageOffset      int32
-	PageSize        int32
+	OrgID           string  `db:"org_id"`
+	Query           string  `db:"query"`
+	IncludeArchived bool    `db:"include_archived"`
+	ProjectID       *string `db:"project_id"`
+	PageOffset      int32   `db:"page_offset"`
+	PageSize        int32   `db:"page_size"`
 }
 
 type SearchNodesRow struct {
-	Node        Node
-	ProjectSlug string
-	Rank        float32
-	Source      string
-	Snippet     string
+	Node        Node    `db:"node"`
+	ProjectSlug string  `db:"project_slug"`
+	Rank        float32 `db:"rank"`
+	Source      string  `db:"source"`
+	Snippet     string  `db:"snippet"`
 }
 
 // Lexical search. See the Search section of docs/domain-model.md and

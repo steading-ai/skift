@@ -17,9 +17,9 @@ RETURNING node_counter - $3::bigint AS first_number
 `
 
 type AllocateNodeNumbersParams struct {
-	OrgID string
-	ID    string
-	Count int64
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
+	Count int64  `db:"count"`
 }
 
 // Hands out a block of node numbers in one statement: the first number of
@@ -40,8 +40,8 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type ArchiveProjectParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) (Project, error) {
@@ -72,12 +72,12 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type CreateProjectParams struct {
-	ID       string
-	OrgID    string
-	Slug     string
-	Title    string
-	Priority string
-	VcsUrl   string
+	ID       string `db:"id"`
+	OrgID    string `db:"org_id"`
+	Slug     string `db:"slug"`
+	Title    string `db:"title"`
+	Priority string `db:"priority"`
+	VcsUrl   string `db:"vcs_url"`
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
@@ -114,8 +114,8 @@ WHERE org_id = $1 AND id = $2
 `
 
 type GetProjectParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project, error) {
@@ -146,8 +146,8 @@ WHERE p.org_id = $1 AND s.slug = $2
 `
 
 type GetProjectBySlugParams struct {
-	OrgID string
-	Slug  string
+	OrgID string `db:"org_id"`
+	Slug  string `db:"slug"`
 }
 
 // Resolves a slug whether it is live or retired: the lookup behind
@@ -181,10 +181,10 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type HoldProjectParams struct {
-	OrgID      string
-	ID         string
-	HeldBy     *string
-	HeldReason *string
+	OrgID      string  `db:"org_id"`
+	ID         string  `db:"id"`
+	HeldBy     *string `db:"held_by"`
+	HeldReason *string `db:"held_reason"`
 }
 
 // Parks a project: every node in it leaves the ready set, and unlike
@@ -224,11 +224,11 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type HoldProjectsOutsideParams struct {
-	OrgID      string
-	HeldBy     *string
-	HeldReason *string
-	HoldGroup  *string
-	Keep       []string
+	OrgID      string   `db:"org_id"`
+	HeldBy     *string  `db:"held_by"`
+	HeldReason *string  `db:"held_reason"`
+	HoldGroup  *string  `db:"hold_group"`
+	Keep       []string `db:"keep"`
 }
 
 // The projects a sweep would park: everything outside the keep-set that is
@@ -282,10 +282,10 @@ LIMIT $4 OFFSET $3
 `
 
 type ListProjectsParams struct {
-	OrgID           string
-	IncludeArchived bool
-	PageOffset      int32
-	PageSize        int32
+	OrgID           string `db:"org_id"`
+	IncludeArchived bool   `db:"include_archived"`
+	PageOffset      int32  `db:"page_offset"`
+	PageSize        int32  `db:"page_size"`
 }
 
 // Most recently created first. Archived projects are hidden unless asked
@@ -365,8 +365,8 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type ReleaseProjectHoldGroupParams struct {
-	OrgID     string
-	HoldGroup *string
+	OrgID     string  `db:"org_id"`
+	HoldGroup *string `db:"hold_group"`
 }
 
 func (q *Queries) ReleaseProjectHoldGroup(ctx context.Context, arg ReleaseProjectHoldGroupParams) ([]Project, error) {
@@ -411,10 +411,10 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type RenameProjectParams struct {
-	OrgID string
-	ID    string
-	Slug  string
-	Title string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
+	Slug  string `db:"slug"`
+	Title string `db:"title"`
 }
 
 func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (Project, error) {
@@ -451,9 +451,9 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type SetProjectVCSURLParams struct {
-	OrgID  string
-	ID     string
-	VcsUrl string
+	OrgID  string `db:"org_id"`
+	ID     string `db:"id"`
+	VcsUrl string `db:"vcs_url"`
 }
 
 func (q *Queries) SetProjectVCSURL(ctx context.Context, arg SetProjectVCSURLParams) (Project, error) {
@@ -485,8 +485,8 @@ RETURNING id, org_id, slug, title, priority, node_counter, archived_at, created_
 `
 
 type UnholdProjectParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) UnholdProject(ctx context.Context, arg UnholdProjectParams) (Project, error) {

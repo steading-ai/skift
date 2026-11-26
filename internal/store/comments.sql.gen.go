@@ -17,12 +17,12 @@ RETURNING id, org_id, node_id, author, body, in_reply_to, resolved_at, resolved_
 `
 
 type CreateCommentParams struct {
-	ID        string
-	OrgID     string
-	NodeID    string
-	Author    string
-	Body      string
-	InReplyTo *string
+	ID        string  `db:"id"`
+	OrgID     string  `db:"org_id"`
+	NodeID    string  `db:"node_id"`
+	Author    string  `db:"author"`
+	Body      string  `db:"body"`
+	InReplyTo *string `db:"in_reply_to"`
 }
 
 func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (Comment, error) {
@@ -55,8 +55,8 @@ WHERE org_id = $1 AND id = $2
 `
 
 type GetCommentParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (Comment, error) {
@@ -85,13 +85,13 @@ LIMIT 1
 `
 
 type LatestUnresolvedCommentParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 type LatestUnresolvedCommentRow struct {
-	CreatedAt  time.Time
-	Unresolved int32
+	CreatedAt  time.Time `db:"created_at"`
+	Unresolved int32     `db:"unresolved"`
 }
 
 // The newest unresolved comment on a node, with how many are unresolved:
@@ -113,8 +113,8 @@ ORDER BY r.revision
 `
 
 type ListCommentRevisionsParams struct {
-	OrgID     string
-	CommentID string
+	OrgID     string `db:"org_id"`
+	CommentID string `db:"comment_id"`
 }
 
 // Revisions reach their organization through the comment they belong to.
@@ -152,10 +152,10 @@ LIMIT $4 OFFSET $3
 `
 
 type ListCommentsForNodeParams struct {
-	OrgID      string
-	NodeID     string
-	PageOffset int32
-	PageSize   int32
+	OrgID      string `db:"org_id"`
+	NodeID     string `db:"node_id"`
+	PageOffset int32  `db:"page_offset"`
+	PageSize   int32  `db:"page_size"`
 }
 
 func (q *Queries) ListCommentsForNode(ctx context.Context, arg ListCommentsForNodeParams) ([]Comment, error) {
@@ -201,9 +201,9 @@ RETURNING id, org_id, node_id, author, body, in_reply_to, resolved_at, resolved_
 `
 
 type ResolveCommentParams struct {
-	OrgID      string
-	ID         string
-	ResolvedBy *string
+	OrgID      string  `db:"org_id"`
+	ID         string  `db:"id"`
+	ResolvedBy *string `db:"resolved_by"`
 }
 
 func (q *Queries) ResolveComment(ctx context.Context, arg ResolveCommentParams) (Comment, error) {
@@ -231,9 +231,9 @@ RETURNING id, org_id, node_id, author, body, in_reply_to, resolved_at, resolved_
 `
 
 type UpdateCommentBodyParams struct {
-	OrgID string
-	ID    string
-	Body  string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
+	Body  string `db:"body"`
 }
 
 // The prior body moves to comment_revisions by trigger.

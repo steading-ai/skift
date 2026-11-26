@@ -15,8 +15,8 @@ WHERE org_id = $1 AND blob_digest = $2
 `
 
 type CountBlobReferencesParams struct {
-	OrgID      string
-	BlobDigest *string
+	OrgID      string  `db:"org_id"`
+	BlobDigest *string `db:"blob_digest"`
 }
 
 func (q *Queries) CountBlobReferences(ctx context.Context, arg CountBlobReferencesParams) (int64, error) {
@@ -33,13 +33,13 @@ RETURNING id, org_id, node_id, name, description, metadata, created_by, created_
 `
 
 type CreateArtifactParams struct {
-	ID          string
-	OrgID       string
-	NodeID      string
-	Name        string
-	Description string
-	Metadata    []byte
-	CreatedBy   string
+	ID          string `db:"id"`
+	OrgID       string `db:"org_id"`
+	NodeID      string `db:"node_id"`
+	Name        string `db:"name"`
+	Description string `db:"description"`
+	Metadata    []byte `db:"metadata"`
+	CreatedBy   string `db:"created_by"`
 }
 
 func (q *Queries) CreateArtifact(ctx context.Context, arg CreateArtifactParams) (Artifact, error) {
@@ -73,16 +73,16 @@ RETURNING org_id, artifact_id, position, kind, text, blob_digest, reference_uri,
 `
 
 type CreateArtifactPartParams struct {
-	OrgID           string
-	ArtifactID      string
-	Position        int32
-	Kind            string
-	Text            *string
-	BlobDigest      *string
-	ReferenceUri    *string
-	ReferenceDigest *string
-	MediaType       *string
-	Size            *int64
+	OrgID           string  `db:"org_id"`
+	ArtifactID      string  `db:"artifact_id"`
+	Position        int32   `db:"position"`
+	Kind            string  `db:"kind"`
+	Text            *string `db:"text"`
+	BlobDigest      *string `db:"blob_digest"`
+	ReferenceUri    *string `db:"reference_uri"`
+	ReferenceDigest *string `db:"reference_digest"`
+	MediaType       *string `db:"media_type"`
+	Size            *int64  `db:"size"`
 }
 
 func (q *Queries) CreateArtifactPart(ctx context.Context, arg CreateArtifactPartParams) (ArtifactPart, error) {
@@ -122,11 +122,11 @@ RETURNING org_id, digest, media_type, size, backend, created_at
 `
 
 type CreateBlobParams struct {
-	OrgID     string
-	Digest    string
-	MediaType string
-	Size      int64
-	Backend   string
+	OrgID     string `db:"org_id"`
+	Digest    string `db:"digest"`
+	MediaType string `db:"media_type"`
+	Size      int64  `db:"size"`
+	Backend   string `db:"backend"`
 }
 
 func (q *Queries) CreateBlob(ctx context.Context, arg CreateBlobParams) (Blob, error) {
@@ -155,8 +155,8 @@ WHERE org_id = $1 AND id = $2
 `
 
 type GetArtifactParams struct {
-	OrgID string
-	ID    string
+	OrgID string `db:"org_id"`
+	ID    string `db:"id"`
 }
 
 func (q *Queries) GetArtifact(ctx context.Context, arg GetArtifactParams) (Artifact, error) {
@@ -181,8 +181,8 @@ WHERE org_id = $1 AND digest = $2
 `
 
 type GetBlobParams struct {
-	OrgID  string
-	Digest string
+	OrgID  string `db:"org_id"`
+	Digest string `db:"digest"`
 }
 
 func (q *Queries) GetBlob(ctx context.Context, arg GetBlobParams) (Blob, error) {
@@ -206,8 +206,8 @@ ORDER BY position
 `
 
 type ListArtifactPartsParams struct {
-	OrgID      string
-	ArtifactID string
+	OrgID      string `db:"org_id"`
+	ArtifactID string `db:"artifact_id"`
 }
 
 func (q *Queries) ListArtifactParts(ctx context.Context, arg ListArtifactPartsParams) ([]ArtifactPart, error) {
@@ -248,8 +248,8 @@ ORDER BY created_at, id
 `
 
 type ListArtifactsForNodeParams struct {
-	OrgID  string
-	NodeID string
+	OrgID  string `db:"org_id"`
+	NodeID string `db:"node_id"`
 }
 
 func (q *Queries) ListArtifactsForNode(ctx context.Context, arg ListArtifactsForNodeParams) ([]Artifact, error) {

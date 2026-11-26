@@ -16,17 +16,17 @@ RETURNING id, org_id, project_id, node_id, principal_id, principal_kind, identit
 `
 
 type CreatePolicyDenialParams struct {
-	ID             string
-	OrgID          string
-	ProjectID      *string
-	NodeID         *string
-	PrincipalID    string
-	PrincipalKind  string
-	IdentityScheme string
-	RequestID      *string
-	Op             string
-	Reasons        []string
-	PolicyVersion  string
+	ID             string   `db:"id"`
+	OrgID          string   `db:"org_id"`
+	ProjectID      *string  `db:"project_id"`
+	NodeID         *string  `db:"node_id"`
+	PrincipalID    string   `db:"principal_id"`
+	PrincipalKind  string   `db:"principal_kind"`
+	IdentityScheme string   `db:"identity_scheme"`
+	RequestID      *string  `db:"request_id"`
+	Op             string   `db:"op"`
+	Reasons        []string `db:"reasons"`
+	PolicyVersion  string   `db:"policy_version"`
 }
 
 func (q *Queries) CreatePolicyDenial(ctx context.Context, arg CreatePolicyDenialParams) (PolicyDenial, error) {
@@ -69,9 +69,9 @@ LIMIT $3
 `
 
 type ListPolicyDenialsAfterParams struct {
-	OrgID    string
-	AfterID  string
-	PageSize int32
+	OrgID    string `db:"org_id"`
+	AfterID  string `db:"after_id"`
+	PageSize int32  `db:"page_size"`
 }
 
 // The audit of one organization's refusals after a cursor, oldest first.

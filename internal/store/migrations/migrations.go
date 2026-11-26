@@ -8,6 +8,7 @@ package migrations
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -63,6 +64,7 @@ const lockNotAvailable = "55P03"
 // Migrator applies migrations to one database.
 type Migrator struct {
 	provider    *goose.Provider
+	db          *sql.DB
 	retryBudget time.Duration
 	// lockTimeouts counts the lock timeouts the last Apply retried after,
 	// for the specs.
@@ -97,7 +99,7 @@ func Open(ctx context.Context, databaseURL string) (*Migrator, error) {
 	if err := provider.Ping(ctx); err != nil {
 		return nil, joinClose(fmt.Errorf("connect to database: %w: %w", ErrUnreachable, err), db)
 	}
-	return &Migrator{provider: provider, retryBudget: RetryBudget}, nil
+	return &Migrator{provider: provider, db: db, retryBudget: RetryBudget}, nil
 }
 
 // Close releases the connection.
@@ -114,17 +116,19 @@ func (m *Migrator) Up(ctx context.Context) error {
 // Apply applies every pending migration and returns the versions it
 // applied, oldest first; none when the database was already current.
 //
-// It refuses a database whose schema is newer than the binary's with a
-// [*SchemaAheadError], before applying anything. A migration that hits
-// [LockTimeout] rolls back alone, since goose runs each in its own
-// transaction; Apply then backs off and runs again, which recomputes what
-// is pending, until the run succeeds or [RetryBudget] is spent.
+// It refuses a database whose floor is above the binary's newest
+// migration with a [*SchemaFloorError], before applying anything. A
+// database migrated past the binary within its floor has nothing pending,
+// so Apply applies nothing to it. A migration that hits [LockTimeout]
+// rolls back alone, since goose runs each in its own transaction; Apply
+// then backs off and runs again, which recomputes what is pending, until
+// the run succeeds or [RetryBudget] is spent.
 func (m *Migrator) Apply(ctx context.Context) ([]int64, error) {
-	current, err := m.Version(ctx)
+	status, err := m.Status(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read schema version: %w", err)
+		return nil, err
 	}
-	if err := (Status{Current: current, Latest: m.Latest()}).NotAhead(); err != nil {
+	if err := status.Servable(); err != nil {
 		return nil, err
 	}
 	m.lockTimeouts = 0
@@ -184,6 +188,38 @@ func (m *Migrator) DownTo(ctx context.Context, version int64) error {
 // Version reports the newest applied migration, or 0 on an empty database.
 func (m *Migrator) Version(ctx context.Context) (int64, error) {
 	return m.provider.GetDBVersion(ctx)
+}
+
+// Status reads where the database's schema stands against the migrations
+// the binary carries, its floor included.
+func (m *Migrator) Status(ctx context.Context) (Status, error) {
+	current, err := m.Version(ctx)
+	if err != nil {
+		return Status{}, fmt.Errorf("read schema version: %w", err)
+	}
+	floor, err := m.floor(ctx, current)
+	if err != nil {
+		return Status{}, fmt.Errorf("read schema floor: %w", err)
+	}
+	return Status{Current: current, Latest: m.Latest(), Floor: floor}, nil
+}
+
+// floor reads the schema's compatibility floor from schema_floor. A schema
+// that predates the table records none, and needs a binary that carries
+// its newest migration, current.
+func (m *Migrator) floor(ctx context.Context, current int64) (int64, error) {
+	var recorded bool
+	if err := m.db.QueryRowContext(ctx, `SELECT to_regclass('schema_floor') IS NOT NULL`).Scan(&recorded); err != nil {
+		return 0, err
+	}
+	if !recorded {
+		return current, nil
+	}
+	var floor int64
+	if err := m.db.QueryRowContext(ctx, `SELECT version FROM schema_floor`).Scan(&floor); err != nil {
+		return 0, err
+	}
+	return floor, nil
 }
 
 // Latest is the newest migration in [FS]: the version a current database
@@ -257,6 +293,10 @@ type Status struct {
 	Current int64
 	// Latest is the newest migration in [FS].
 	Latest int64
+	// Floor is the schema's compatibility floor: the lowest migration a
+	// binary must carry to serve it. A schema that records none has its
+	// Current as its floor. See docs/adrs/018-unattended-upgrades.md.
+	Floor int64
 }
 
 // Pending reports whether the database is behind the binary.
@@ -264,40 +304,44 @@ func (s Status) Pending() bool { return s.Current < s.Latest }
 
 // Ahead reports whether the database carries migrations the binary does
 // not: it was migrated by a newer skift. goose ignores versions above its
-// own newest, so without this check an older binary would serve a schema
-// it does not know.
+// own newest, so an ahead schema has nothing pending, and only its floor
+// says whether this binary may serve it.
 func (s Status) Ahead() bool { return s.Current > s.Latest }
 
-// NotAhead is nil unless the database is [Status.Ahead], when it is a
-// [*SchemaAheadError] naming both versions.
-func (s Status) NotAhead() error {
-	if s.Ahead() {
-		return &SchemaAheadError{Current: s.Current, Latest: s.Latest}
+// Servable is nil when the binary carries the schema's floor, whether or
+// not the schema is ahead of the binary, and otherwise a
+// [*SchemaFloorError] naming the floor and the binary's newest migration.
+func (s Status) Servable() error {
+	if s.Floor > s.Latest {
+		return &SchemaFloorError{Current: s.Current, Floor: s.Floor, Latest: s.Latest}
 	}
 	return nil
 }
 
-// SchemaAheadError refuses a database migrated by a newer skift. A
-// downgrade means restoring the backup taken before the upgrade, so the
-// error names that and the other way out. See
-// docs/adrs/015-upgrades-and-migrations.md.
-type SchemaAheadError struct {
+// SchemaFloorError refuses a database migrated by a newer skift past what
+// this binary can serve: its floor is above the binary's newest migration.
+// The way back is a skift that carries the floor, or a snapshot taken
+// before the upgrade. See docs/adrs/018-unattended-upgrades.md.
+type SchemaFloorError struct {
 	// Current is the database's schema version.
 	Current int64
+	// Floor is the lowest migration a binary must carry to serve it.
+	Floor int64
 	// Latest is the newest migration this binary carries.
 	Latest int64
 }
 
-func (e *SchemaAheadError) Error() string {
-	return fmt.Sprintf("schema %d is newer than this build's %d: restore the pre-upgrade backup or install a newer skift", e.Current, e.Latest)
+func (e *SchemaFloorError) Error() string {
+	return fmt.Sprintf("schema %d needs migration %d, and this build's newest is %d: install skift that carries migration %d, or restore a snapshot", e.Current, e.Floor, e.Latest, e.Floor)
 }
 
-// Check is nil when the database is at exactly this build's schema. A
-// database migrated by a newer skift is a [*SchemaAheadError], and one
+// Check is nil when the binary can act on the database as it stands: the
+// binary carries the schema's floor, and the database is not behind. A
+// schema whose floor is above the binary is a [*SchemaFloorError], and one
 // not yet migrated to this build's schema is a [*SchemaBehindError]. It is
 // the check for a command that acts on the database without migrating it.
 func (s Status) Check() error {
-	if err := s.NotAhead(); err != nil {
+	if err := s.Servable(); err != nil {
 		return err
 	}
 	if s.Pending() {
@@ -319,18 +363,19 @@ func (e *SchemaBehindError) Error() string {
 	return fmt.Sprintf("schema %d is behind this build's %d: run skift admin migrate", e.Current, e.Latest)
 }
 
-// Inspect reads the schema version of the database at databaseURL without
-// changing it. A database that does not answer fails with [ErrUnreachable].
+// Inspect reads the schema version and floor of the database at
+// databaseURL without changing it. A database that does not answer fails
+// with [ErrUnreachable].
 func Inspect(ctx context.Context, databaseURL string) (Status, error) {
 	m, err := Open(ctx, databaseURL)
 	if err != nil {
 		return Status{}, err
 	}
-	current, err := m.Version(ctx)
+	status, err := m.Status(ctx)
 	if err != nil {
-		return Status{}, joinClose(fmt.Errorf("read schema version: %w", err), m)
+		return Status{}, joinClose(err, m)
 	}
-	return Status{Current: current, Latest: m.Latest()}, m.Close()
+	return status, m.Close()
 }
 
 type closer interface{ Close() error }

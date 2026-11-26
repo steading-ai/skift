@@ -51,7 +51,7 @@ func (t Tx) FilterNodes(ctx context.Context, orgID string, f NodeFilter, limit, 
 // filter can narrow the page and never widen it.
 func nodeListSQL(orgID string, f NodeFilter, limit, offset int) (string, []any, error) {
 	var b strings.Builder
-	b.WriteString("SELECT n.* FROM nodes n WHERE n.org_id = $1")
+	b.WriteString("SELECT " + nodeColumns + " FROM nodes n WHERE n.org_id = $1")
 	args := []any{orgID}
 	where := func(clause string, value any) {
 		args = append(args, value)

@@ -15,9 +15,9 @@ WHERE org_id = $1 AND principal_id = $2 AND filter_hash = $3
 `
 
 type GetClaimCursorParams struct {
-	OrgID       string
-	PrincipalID string
-	FilterHash  string
+	OrgID       string `db:"org_id"`
+	PrincipalID string `db:"principal_id"`
+	FilterHash  string `db:"filter_hash"`
 }
 
 func (q *Queries) GetClaimCursor(ctx context.Context, arg GetClaimCursorParams) (ClaimCursor, error) {
@@ -42,10 +42,10 @@ RETURNING org_id, principal_id, filter_hash, project_id, updated_at
 `
 
 type UpsertClaimCursorParams struct {
-	OrgID       string
-	PrincipalID string
-	FilterHash  string
-	ProjectID   string
+	OrgID       string `db:"org_id"`
+	PrincipalID string `db:"principal_id"`
+	FilterHash  string `db:"filter_hash"`
+	ProjectID   string `db:"project_id"`
 }
 
 // A successful claim advances the cursor to the project it drew from; a

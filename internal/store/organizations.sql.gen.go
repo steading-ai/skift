@@ -17,8 +17,8 @@ RETURNING id, name, created_at
 `
 
 type CreateOrganizationParams struct {
-	ID   string
-	Name string
+	ID   string `db:"id"`
+	Name string `db:"name"`
 }
 
 // Organizations are the tenancy root: the one table with no org_id to
