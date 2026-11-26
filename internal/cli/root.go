@@ -47,6 +47,7 @@ Run without a subcommand it is the CLI, a Connect client with JSON output.
 "skift admin migrate" brings the database to the current schema.
 "skift admin bootstrap" creates the first organization and principal.
 "skift admin jobs" lists and runs the background jobs serve runs.
+"skift admin snapshot" copies the database to a file before an upgrade.
 "skift doctor" checks that the CLI, the service, the MCP server and the
 skills are set up.
 
