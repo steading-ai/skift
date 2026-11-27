@@ -359,6 +359,29 @@ SELECT count(*) FROM nodes WHERE org_id = $1;
 		})
 	})
 
+	It("A new migration that raises the floor past every release fails lint", func() {
+		By("given a copy of the tree tagged as a release")
+		dir := checkout()
+		git(dir, "init", "--quiet")
+		git(dir, "add", "--all")
+		git(dir, "commit", "--quiet", "--message", "the release")
+		git(dir, "tag", "v9.9.9")
+
+		By("and a migration since that release raising the floor to itself")
+		writeFile(dir, "internal/store/migrations/00099_raise_floor.sql",
+			"-- +goose Up\nUPDATE schema_floor SET version = 99;\n\n-- +goose Down\nUPDATE schema_floor SET version = 29;\n")
+
+		By("when the floor-policy step runs")
+		// The step alone: the new migration also leaves the generated code
+		// stale, which the generated-code step reports, not this one.
+		session := hkStep(dir, "floor-policy")
+
+		By("then it fails naming the migration and the floor, without reading the promotion history")
+		Expect(session).NotTo(gexec.Exit(0))
+		Expect(string(session.Out.Contents()) + string(session.Err.Contents())).To(ContainSubstring(
+			"internal/store/migrations/00099_raise_floor.sql:2: raises the floor to migration 99, which no release carries yet"))
+	})
+
 	It("Specs stay in Ginkgo", func() {
 		By(`given a test file that is not a suite bootstrap importing "testing"`)
 		dir := checkout()

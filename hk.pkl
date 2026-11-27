@@ -84,6 +84,19 @@ local linters = new Mapping<String, Step> {
             effect = "read"
         }
     }
+    // A migration the newest release tag does not carry may raise the
+    // compatibility floor only to a release seven days on stable and not
+    // yanked (docs/adrs/018-unattended-upgrades.md). The check reads the
+    // promotion history only when a migration raises the floor, and fails
+    // when it cannot; internal/tools/floorpolicy says how to skip it
+    // offline.
+    ["floor-policy"] {
+        glob = "internal/store/migrations/*.sql"
+        check = new CommandSpec {
+            command = "go run ./internal/tools/floorpolicy {{files}}"
+            effect = "read"
+        }
+    }
     // Generated code is committed, so the proto, the queries, the migrations
     // sqlc reads, and the generator configuration are each a reason to check
     // that the generated tree is current.

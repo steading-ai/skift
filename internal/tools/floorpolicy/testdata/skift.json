@@ -1,0 +1,46 @@
+{
+  "component": "skift",
+  "updated_at": "2026-12-10T00:00:00Z",
+  "versions": [
+    {
+      "version": "0.5.0",
+      "tag": "v0.5.0",
+      "edge_at": "2026-12-09T00:00:00Z",
+      "stable_at": null,
+      "yanked": false,
+      "yanked_at": null,
+      "yank_reason": null,
+      "rpms": {"x86_64": {"path": "pool/skift-0.5.0-1.x86_64.rpm", "sha256": "00", "size": 1}}
+    },
+    {
+      "version": "0.4.0",
+      "tag": "v0.4.0",
+      "edge_at": "2026-12-05T00:00:00Z",
+      "stable_at": "2026-12-07T00:00:00Z",
+      "yanked": false,
+      "yanked_at": null,
+      "yank_reason": null,
+      "rpms": {"x86_64": {"path": "pool/skift-0.4.0-1.x86_64.rpm", "sha256": "00", "size": 1}}
+    },
+    {
+      "version": "0.3.0",
+      "tag": "v0.3.0",
+      "edge_at": "2026-11-30T00:00:00Z",
+      "stable_at": "2026-12-02T00:00:00Z",
+      "yanked": false,
+      "yanked_at": null,
+      "yank_reason": null,
+      "rpms": {"x86_64": {"path": "pool/skift-0.3.0-1.x86_64.rpm", "sha256": "00", "size": 1}}
+    },
+    {
+      "version": "0.2.0",
+      "tag": "v0.2.0",
+      "edge_at": "2026-11-01T00:00:00Z",
+      "stable_at": "2026-11-03T00:00:00Z",
+      "yanked": true,
+      "yanked_at": "2026-11-20T00:00:00Z",
+      "yank_reason": "loses holds on restart",
+      "rpms": {"x86_64": {"path": "pool/skift-0.2.0-1.x86_64.rpm", "sha256": "00", "size": 1}}
+    }
+  ]
+}
