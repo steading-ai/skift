@@ -254,6 +254,41 @@ var _ = Describe("Upgrading the rpm", Label("db", "slow"), Serial, Ordered, func
 		Expect(backups(fedora)).To(BeEmpty())
 	})
 
+	// The release owned /etc/skift/env, so rpm moves it aside as the
+	// release is erased, and the release's postremove restarts the service
+	// before posttrans.sh puts it back.
+	It("A service running a release that owned the settings file is serving the new release when the upgrade ends", func() {
+		By("given " + snapshotlessRelease + " is installed and serving the database /etc/skift/env names")
+		fedora, db := host()
+		Expect(dnf(fedora, "install", snapshotless)).To(gexec.Exit(0))
+		configure(fedora)
+		serve(fedora)
+
+		By("when a package carrying a new migration is installed")
+		Expect(dnf(fedora, "upgrade", migrating)).To(gexec.Exit(0))
+
+		By("then the service is active as dnf returns, not waiting to restart, on the new release with its settings")
+		Expect(sh(fedora, "systemctl show --property ActiveState --value skift.service")).To(Equal("active\n"))
+		Expect(sh(fedora, "journalctl --no-pager --output cat --unit skift.service | grep 'skift serve starting' | tail -n 1")).
+			To(ContainSubstring("version=9.9.9"))
+		Expect(schemaOf(db)).To(Equal(schema + 1))
+		Expect(strings.Fields(sh(fedora, "ls -A /etc/skift"))).To(ConsistOf("env"))
+	})
+
+	It("A stopped service stays stopped when the settings file is put back", func() {
+		By("given " + snapshotlessRelease + " is installed, configured and stopped")
+		fedora, _ := host()
+		Expect(dnf(fedora, "install", snapshotless)).To(gexec.Exit(0))
+		configure(fedora)
+
+		By("when a newer package is installed")
+		Expect(dnf(fedora, "upgrade", migrating)).To(gexec.Exit(0))
+
+		By("then the settings are back and the service is not started")
+		Expect(strings.Fields(sh(fedora, "ls -A /etc/skift"))).To(ConsistOf("env"))
+		Expect(sh(fedora, "systemctl show --property ActiveState --value skift.service")).To(Equal("inactive\n"))
+	})
+
 	It("An upgrade on a host whose settings name no database goes ahead and says no snapshot was taken", func() {
 		By("given skift is installed and /etc/skift/env sets no DATABASE_URL")
 		fedora, _ := host()
