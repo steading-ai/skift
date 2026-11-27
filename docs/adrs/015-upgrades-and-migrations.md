@@ -79,6 +79,6 @@ The rules above, written as prose for whoever writes the next migration.
 
 ## More Information
 
-[ADR-013](013-postgresql-only-through-the-store.md) puts every migration and every SQL statement in the store. [Deploying](../deploying.md#upgrade-it) has the operator's steps for upgrading and going back. Revisit the "adopt when needed" practices when skift runs more than one serving process, offers zero-downtime upgrades, or first needs a migration that takes minutes; revisit the backup step if skift starts taking its own.
+[ADR-013](013-postgresql-only-through-the-store.md) puts every migration and every SQL statement in the store. [Deploying](../deploying.md#keep-it-current) has the operator's steps for upgrading and going back. Revisit the "adopt when needed" practices when skift runs more than one serving process, offers zero-downtime upgrades, or first needs a migration that takes minutes; revisit the backup step if skift starts taking its own.
 
 [ADR-018](018-unattended-upgrades.md) amends this decision for unattended upgrades: it replaces required stops, the rule that a downgrade is a restore, the operator's backup step, and the refusal of every newer schema, with a snapshot the package takes before migrating and a compatibility floor that lets an older release serve a newer schema.

@@ -12,7 +12,7 @@ One server holds the plan for every workstation. Pick the first row that fits:
 |----------|----------------|
 | A server someone else runs | Nothing to run. Get its address, and ask whoever runs it to [bind your workstation](#create-the-first-principal), then [install the CLI](#install-the-cli). |
 | A Linux host with Docker or Podman | [In containers](#run-the-server-in-containers), joined to a [Tailscale](https://tailscale.com/docs) tailnet that every workstation also joins. |
-| A Linux host that runs services under systemd | From the rpm: follow [How to deploy skift from the rpm](deploying.md), then [install the CLI](#install-the-cli). |
+| A Fedora host that runs services under systemd | From the rpm in [pkgs.stead.ing](https://pkgs.stead.ing), which keeps it current: follow [How to deploy skift from the rpm](deploying.md), then [install the CLI](#install-the-cli). |
 | Only a Mac, for yourself | [As a launch agent](#run-the-server-on-a-mac), on the same Mac you work on. |
 
 ## Run the server in containers
