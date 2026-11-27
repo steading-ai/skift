@@ -1,6 +1,6 @@
 # How to verify a release
 
-This guide shows how to check that what you downloaded from a skift release is what this repository's release workflow built, and what is inside it: an archive, an rpm, the release as a whole, the image, and an SBOM.
+This guide shows how to check that what you downloaded from a skift release is what this repository's release workflow built, and what is inside it: an archive, an rpm, an rpm installed from pkgs.stead.ing, the release as a whole, the image, and an SBOM.
 
 If you install with mise's `packslip:` backend, as [How to install skift](install.md) does, mise checks the archive for you: it verifies the release's signed manifest and pins who signed it.
 
@@ -23,6 +23,29 @@ gh attestation verify skift-<version>-1.<arch>.rpm --repo steading-ai/skift --si
 ```
 
 `--deny-self-hosted-runners` also refuses an rpm built anywhere but a GitHub-hosted runner. The rpm has no SBOM of its own; its binary is the archive's, which has one.
+
+## Check an rpm from pkgs.stead.ing
+
+[pkgs.stead.ing](https://pkgs.stead.ing) serves each release's rpm signed with the Steading key, and signs it only once it has verified the release's attestation for it. Signing changes the file, so `gh attestation verify` does not know the package dnf installs; what it signed is the release's rpm, header and payload unchanged. To check that, download the release's rpm and the repository's into separate directories:
+
+```sh
+gh release download v<version> --repo steading-ai/skift --pattern 'skift-<version>-1.<arch>.rpm' --dir release
+dnf download skift-<version> --arch <arch> --destdir pkgs
+```
+
+Check the release's rpm as [the section above](#check-an-rpm) does, and the repository's signature with the key you imported when you added the repository:
+
+```sh
+rpm --checksig pkgs/skift-<version>-1.<arch>.rpm
+```
+
+It prints `digests signatures OK` for a package that key signed. Then print each one's header and payload digests:
+
+```sh
+rpm -qp --qf '%{SHA256HEADER} %{PAYLOADSHA256}\n' release/skift-<version>-1.<arch>.rpm pkgs/skift-<version>-1.<arch>.rpm
+```
+
+The two lines are the same when the package is the release's. For the package already installed on a host, `rpm -q --qf '%{SHA256HEADER} %{PAYLOADSHA256}\n' skift` prints its line.
 
 ## Check the release
 
