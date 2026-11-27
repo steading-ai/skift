@@ -15,7 +15,7 @@ import (
 
 // fedoraImage is the Fedora the rpm is installed on to see what dnf does
 // with it. renovate.json5 keeps it current.
-const fedoraImage = "quay.io/fedora/fedora:45@sha256:806e6bc4b2f302baca3b0f53382416888f6ad46476063a2b47e72fc29968ae25"
+const fedoraImage = "quay.io/fedora/fedora:45@sha256:1bd80cd53c142fe07d25dac925494e02fa7aec33534ea30440e74f85014359a1"
 
 // configRelease is the release whose package installed /etc/skift/env as
 // %config(noreplace), carrying the template itself. An upgrade from it
