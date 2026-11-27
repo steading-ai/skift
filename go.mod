@@ -13,11 +13,12 @@ require (
 	github.com/pressly/goose/v3 v3.30.1
 	github.com/riverqueue/river v0.51.2
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.2
+	github.com/riverqueue/river/rivertype v0.51.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	github.com/testcontainers/testcontainers-go v0.45.0
 	go.yaml.in/yaml/v4 v4.0.0
-	golang.org/x/crypto/x509roots/fallback v0.0.0-20261115193255-739070949446
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261123192653-4dc4fb521066
 	golang.org/x/sys v0.50.0
 	google.golang.org/protobuf v1.36.12
 	pgregory.net/rapid v1.3.0
@@ -101,7 +102,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/riverqueue/river/riverdriver v0.51.2 // indirect
 	github.com/riverqueue/river/rivershared v0.51.2 // indirect
-	github.com/riverqueue/river/rivertype v0.51.2 // indirect
 	github.com/safchain/ethtool v0.7.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
