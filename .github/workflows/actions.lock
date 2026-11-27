@@ -33,7 +33,7 @@ workflows:
         - 'actions/download-artifact@v8.0.2'
         - 'actions/upload-artifact@v7.0.2'
         - 'jdx/mise-action@v5.3.0'
-        - 'jdx/packslip@v1.11.4'
+        - 'jdx/packslip@v1.11.5'
     '.github/workflows/site.yml':
         - 'actions/checkout@v7.0.1'
         - 'steading-ai/stead.ing@main'
@@ -119,9 +119,9 @@ dependencies:
         commit: 'sha1-924e7c586e33d7d4bae9c14e26c5d22e2beb6e78'
         owner_id: 216188
         repo_id: 738284564
-    'jdx/packslip@v1.11.4':
-        ref: 'v1.11.4'
-        commit: 'sha1-e0340e0c1d10c90a434de2b90f3a1ba345923564'
+    'jdx/packslip@v1.11.5':
+        ref: 'v1.11.5'
+        commit: 'sha1-9d5b1c469ba90d26b6dbd0a0162e84a95da524d5'
         owner_id: 216188
         repo_id: 1356006409
         uses:

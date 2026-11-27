@@ -274,7 +274,7 @@ jobs:
       # The archives were attested as they were built, so the manifest
       # links those attestations. Resource syntax:
       # https://packslip.dev/docs/resources/
-      - uses: jdx/packslip@v1.11.4
+      - uses: jdx/packslip@v1.11.5
         id: packslip
         with:
           artifacts: release/*.tar.gz
