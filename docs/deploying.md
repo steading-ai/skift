@@ -31,7 +31,7 @@ Instead of the package, you can add the repository's `.repo` file, which names t
 sudo dnf config-manager addrepo --from-repofile=https://pkgs.stead.ing/steading.repo
 ```
 
-Either way, `gpgcheck` and `repo_gpgcheck` are on: dnf reads no repository metadata and installs no package the key did not sign. The first time dnf reads a channel, it prints the key's fingerprint and asks whether to import it. Answer `y` only if the fingerprint is the one above. `config-manager` is in the `dnf5-plugins` package; if dnf has no such command, install that first.
+Either way, `gpgcheck` and `repo_gpgcheck` are on: dnf reads no repository metadata and installs no package the key did not sign. The first time dnf reads a channel, it prints the key's fingerprint and asks whether to import it, even after `rpm --import`: dnf keeps the key that checks each channel's metadata in a keyring of that channel's own. Answer `y` only if the fingerprint is the one above. A script that has already checked the fingerprint accepts it with `sudo dnf -y makecache --repo <channel>`. `config-manager` is in the `dnf5-plugins` package; if dnf has no such command, install that first.
 
 ### Choose a channel
 
