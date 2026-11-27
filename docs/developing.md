@@ -97,6 +97,20 @@ Beside it, a binary built from this tree stands in for a release twice: it serve
 SKIFT_DOWNGRADE_STANDINS=/path/to/older/skift go tool ginkgo --label-filter=downgrade ./internal/store/migrations
 ```
 
+## Raise the compatibility floor
+
+A migration that removes or changes something raises the floor with one statement in its Up section, `UPDATE schema_floor SET version = N;`, where N is the newest migration of the release it raises the floor to. [ADR-018](adrs/018-unattended-upgrades.md) allows that only for a release that has been on `stable` for at least seven days and is not yanked, and the `floor-policy` step in `make lint` holds the rule. Its code is in `internal/tools/floorpolicy`.
+
+For each such statement in a migration the newest release tag does not carry, the step names the oldest release tag whose newest migration is at least N, reads that release's entry in the [promotion history](https://pkgs.stead.ing/channels/skift.json) that pkgs.stead.ing publishes, and fails unless it entered `stable` at least seven days before the step runs. The failure names the migration, N, the release and when it entered `stable`, and the earliest the raise can pass. A migration that leaves the floor alone is never checked, so it needs neither the network nor the release tags.
+
+When the history can't be read, the step fails, saying it can't confirm the rule. To work offline, skip the history for yourself:
+
+```sh
+SKIFT_FLOOR_POLICY_SKIP=1 make lint
+```
+
+The step still maps each raise to a release and fails a raise no release carries yet. CI never sets the variable, so the pull request confirms the rule.
+
 ## Run the mutation tests
 
 ```sh
