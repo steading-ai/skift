@@ -38,10 +38,14 @@ services:
       # Over TCP on purpose: during first-run initialisation the server listens
       # only on its Unix socket, and a socket probe would report ready too early.
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      # make db-up waits on this alone. Failures in the start period don't
+      # count, and the first success ends it, so its length costs nothing
+      # when the server is quick: it is slack for a first run's initdb on a
+      # loaded machine.
       interval: 2s
       timeout: 3s
       retries: 15
-      start_period: 5s
+      start_period: 30s
 
 volumes:
   pgdata:
