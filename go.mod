@@ -22,7 +22,7 @@ require (
 	golang.org/x/sys v0.50.0
 	google.golang.org/protobuf v1.36.12
 	pgregory.net/rapid v1.3.0
-	tailscale.com v1.104.7
+	tailscale.com v1.106.1
 )
 
 require (
@@ -114,7 +114,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20261106233718-9e0ab45c16ca // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20261121000637-a8c4fbf26d6c // indirect
 	github.com/tidwall/gjson v1.20.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -142,7 +142,7 @@ require (
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/crypto/openpgp v0.1.0-deprecated // indirect
 	golang.org/x/exp v0.0.0-20261109185158-a52e3aef5920 // indirect
-	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/mod v0.43.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
@@ -152,7 +152,7 @@ require (
 	golang.org/x/tools v0.52.1-0.20261106145633-d407941a339a // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v1.0.1 // indirect
-	gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72 // indirect
+	gvisor.dev/gvisor v0.0.0-20261117040555-0303b2605d5e // indirect
 )
 
 tool (
